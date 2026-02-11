@@ -1,3 +1,4 @@
+'use client';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, updateProfile, User } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
@@ -56,8 +57,11 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     } catch (error: any) {
       console.error("Erro no login com Google via Firebase:", error);
       if (error.code === 'auth/unauthorized-domain') {
-        alert("Erro de autorização: O domínio deste aplicativo não foi autorizado para operações de login. Adicione o domínio atual à lista de 'Authorized domains' no seu console do Firebase em Authentication -> Settings.");
-      } else {
+        alert("Erro de autorização: O domínio deste aplicativo não foi autorizado para operações de login. Adicione o domínio atual à lista de 'Authorized domains' no seu console do Firebase em Authentication -> Settings -> Authorized domains.");
+      } else if (error.code === 'auth/operation-not-allowed') {
+        alert("Erro de Configuração: O login com Google não está ativado no seu projeto Firebase. Vá para o Firebase Console -> Authentication -> Sign-in method e ative o provedor 'Google'.");
+      }
+      else {
         alert("Ocorreu um erro ao tentar fazer login. A janela pode ter sido fechada ou houve um problema de rede.");
       }
     }
