@@ -28,7 +28,7 @@ export default function RootLayout({
         <Script src="https://accounts.google.com/gsi/client" async defer />
         <Script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js" />
         <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=AIzaSyB_w5sufKkLUMOdPVZCjD7YOrv_A9QJm2s&v=weekly&libraries=drawing,geometry`}
+          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&v=weekly&libraries=drawing,geometry`}
           strategy="afterInteractive"
         />
       </body>
