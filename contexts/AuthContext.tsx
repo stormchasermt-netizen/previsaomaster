@@ -53,9 +53,13 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
     }
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro no login com Google via Firebase:", error);
-      alert("Ocorreu um erro ao tentar fazer login. A janela pode ter sido fechada ou houve um problema de rede.");
+      if (error.code === 'auth/unauthorized-domain') {
+        alert("Erro de autorização: O domínio deste aplicativo não foi autorizado para operações de login. Adicione o domínio atual à lista de 'Authorized domains' no seu console do Firebase em Authentication -> Settings.");
+      } else {
+        alert("Ocorreu um erro ao tentar fazer login. A janela pode ter sido fechada ou houve um problema de rede.");
+      }
     }
   };
 
