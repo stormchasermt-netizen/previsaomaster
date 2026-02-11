@@ -54,7 +54,7 @@ async function canvasPreview(image: HTMLImageElement, crop: PixelCrop) {
       reader.onloadend = () => {
         resolve(reader.result as string);
       };
-    }, 'image/jpeg', 0.88); // HD quality for better model visibility
+    }, 'image/jpeg', 0.98); // HD quality for better model visibility
   });
 }
 

@@ -1,0 +1,18 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Permite a leitura pública dos eventos do jogo
+    match /events/{eventId} {
+      allow read: if true;
+      // Permite a escrita apenas para usuários autenticados (idealmente, seria restrito a admins)
+      allow write: if request.auth != null;
+    }
+    // Permite que todos leiam o ranking
+    // Permite que um usuário crie sua própria pontuação
+    match /scores/{scoreId} {
+       allow read: if true;
+       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    }
+  }
+}
