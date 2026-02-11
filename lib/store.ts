@@ -22,6 +22,7 @@ import { PrevisaoEvent, PrevisaoScore } from './types';
 
 // Helper to upload a base64 image and get its URL
 async function uploadBase64Image(base64: string, path: string): Promise<string> {
+    if (!storage) throw new Error("Firebase Storage não está configurado.");
     // If it's already a URL (http or gs), don't re-upload
     if (base64.startsWith('http') || base64.startsWith('gs://')) {
         return base64;
@@ -38,6 +39,10 @@ async function uploadBase64Image(base64: string, path: string): Promise<string> 
 
 export const mockStore = {
   getEvents: async (): Promise<PrevisaoEvent[]> => {
+    if (!db) {
+        console.warn("Firebase (Firestore) não está inicializado. Saltando getEvents.");
+        return [];
+    }
     try {
         const q = query(collection(db, 'events'), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
@@ -60,6 +65,10 @@ export const mockStore = {
   },
 
   getEventById: async (id: string): Promise<PrevisaoEvent | undefined> => {
+    if (!db) {
+        console.warn("Firebase (Firestore) não está inicializado. Saltando getEventById.");
+        return undefined;
+    }
     try {
         const docRef = doc(db, 'events', id);
         const docSnap = await getDoc(docRef);
@@ -80,6 +89,9 @@ export const mockStore = {
   },
 
   addEvent: async (eventData: Omit<PrevisaoEvent, 'id' | 'createdAt'>): Promise<PrevisaoEvent> => {
+    if (!db || !storage) {
+        throw new Error("Firebase não está configurado. Não é possível salvar o evento.");
+    }
     const eventId = `evt-${Date.now()}`;
     // Create a deep copy to avoid mutating the original object from the component state
     const finalEventData = JSON.parse(JSON.stringify(eventData));
@@ -109,6 +121,9 @@ export const mockStore = {
   },
 
   updateEvent: async (event: PrevisaoEvent): Promise<PrevisaoEvent> => {
+    if (!db || !storage) {
+        throw new Error("Firebase não está configurado. Não é possível atualizar o evento.");
+    }
     // Create a deep copy to avoid mutating the original object
     const finalEventData = JSON.parse(JSON.stringify(event));
     delete finalEventData.id; // Don't save ID inside the document
@@ -139,12 +154,19 @@ export const mockStore = {
   },
 
   deleteEvent: async (id: string) => {
+    if (!db) {
+        throw new Error("Firebase não está configurado. Não é possível excluir o evento.");
+    }
     // Note: This does not delete associated images from Storage. 
     // This would require a more complex backend setup (e.g., Cloud Function).
     await deleteDoc(doc(db, 'events', id));
   },
 
   getScores: async (): Promise<PrevisaoScore[]> => {
+    if (!db) {
+        console.warn("Firebase (Firestore) não está inicializado. Saltando getScores.");
+        return [];
+    }
     try {
         const q = query(collection(db, 'scores'), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
@@ -165,6 +187,9 @@ export const mockStore = {
   },
 
   addScore: async (scoreData: Omit<PrevisaoScore, 'id' | 'createdAt'>): Promise<PrevisaoScore> => {
+    if (!db) {
+        throw new Error("Firebase não está configurado. Não é possível salvar a pontuação.");
+    }
     const finalScoreData = {
         ...scoreData,
         createdAt: serverTimestamp()
@@ -174,6 +199,9 @@ export const mockStore = {
   },
 
   clearScores: async () => {
+    if (!db) {
+        throw new Error("Firebase não está configurado. Não é possível limpar as pontuações.");
+    }
     const scoresRef = collection(db, "scores");
     const querySnapshot = await getDocs(scoresRef);
     

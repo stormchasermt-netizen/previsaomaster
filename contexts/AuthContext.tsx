@@ -19,27 +19,38 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        const isAdmin = firebaseUser.email ? ADMIN_EMAILS.includes(firebaseUser.email) : false;
-        const appUser: AppUser = {
-          uid: firebaseUser.uid,
-          displayName: firebaseUser.displayName || 'Jogador',
-          email: firebaseUser.email || '',
-          photoURL: firebaseUser.photoURL || undefined,
-          type: isAdmin ? 'admin' : 'user'
-        };
-        setUser(appUser);
-      } else {
-        setUser(null);
-      }
+    // Only set up the listener if Firebase Auth was initialized correctly
+    if (auth) {
+      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        if (firebaseUser) {
+          const isAdmin = firebaseUser.email ? ADMIN_EMAILS.includes(firebaseUser.email) : false;
+          const appUser: AppUser = {
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName || 'Jogador',
+            email: firebaseUser.email || '',
+            photoURL: firebaseUser.photoURL || undefined,
+            type: isAdmin ? 'admin' : 'user'
+          };
+          setUser(appUser);
+        } else {
+          setUser(null);
+        }
+        setIsLoading(false);
+      });
+      return () => unsubscribe();
+    } else {
+      // If Firebase is not initialized, stop loading and ensure user is null.
       setIsLoading(false);
-    });
-
-    return () => unsubscribe();
+      setUser(null);
+    }
   }, []);
 
   const loginWithGoogle = async () => {
+    // Check if auth and provider are available before trying to log in
+    if (!auth || !googleProvider) {
+        alert("Erro de configuração do Firebase. Verifique suas chaves de API em lib/firebase.ts.");
+        return;
+    }
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
@@ -49,10 +60,9 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
   };
 
   const updateUsername = async (name: string) => {
-    if (auth.currentUser) {
+    if (auth?.currentUser) {
       try {
         await updateProfile(auth.currentUser, { displayName: name });
-        // The onAuthStateChanged listener will automatically pick up the change
         setUser(prevUser => prevUser ? { ...prevUser, displayName: name } : null);
       } catch (error) {
         console.error("Erro ao atualizar nome de usuário:", error);
@@ -61,7 +71,9 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await signOut(auth);
+    if (auth) {
+      await signOut(auth);
+    }
   };
   
   return (

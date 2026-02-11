@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { Lobby, LobbyPlayer, PrevisaoDifficulty, PrevisaoEvent, ChatMessage } from '@/lib/types';
 import { useAuth } from './AuthContext';
 import { useRouter } from 'next/navigation';
-import { Peer, DataConnection } from 'peerjs';
+import type { Peer, DataConnection } from 'peerjs';
 import { useToast } from './ToastContext';
 import { mockStore } from '@/lib/store';
 
@@ -144,6 +144,8 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
   const [myPing, setMyPing] = useState<number | null>(null);
   
   // Peers
+  const peerJsRef = useRef<typeof import('peerjs') | null>(null);
+  const [isPeerLoaded, setIsPeerLoaded] = useState(false);
   const [peer, setPeer] = useState<Peer | null>(null); // Lobby Peer (Host or Client)
   const [personalPeer, setPersonalPeer] = useState<Peer | null>(null); // For receiving invites on Home
   
@@ -176,16 +178,26 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
       if (stored) setRecentPlayers(JSON.parse(stored));
   }, []);
 
+  // Dynamically import PeerJS on the client
+  useEffect(() => {
+    import('peerjs').then((module) => {
+        peerJsRef.current = module;
+        setIsPeerLoaded(true);
+    });
+  }, []);
+
   // --- PERSONAL PEER (Global Presence for Invites) ---
   // Only active when NOT in a lobby and User is logged in
   useEffect(() => {
-      if (!user || lobby) {
+      if (!user || lobby || !isPeerLoaded) {
           if (personalPeer) {
               personalPeer.destroy();
               setPersonalPeer(null);
           }
           return;
       }
+      
+      const Peer = peerJsRef.current!.Peer;
 
       // Create Personal Peer
       const myPersonalId = `player_${user.uid}`;
@@ -217,7 +229,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
       return () => {
           pPeer.destroy();
       };
-  }, [user, lobby]); // Re-run if user logs in or lobby state changes
+  }, [user, lobby, isPeerLoaded]); // Re-run if user logs in or lobby state changes
 
   const broadcastLobby = (lobbyToBroadcast: Lobby) => {
       const msg: MPMessage = { type: 'SYNC_LOBBY', lobby: lobbyToBroadcast };
@@ -303,8 +315,10 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
 
   const createLobby = (difficulty: PrevisaoDifficulty): Promise<string> => {
     return new Promise((resolve, reject) => {
-        if (!user) { reject("User not logged in"); return; }
+        if (!user || !isPeerLoaded) { reject("User not logged in or PeerJS not loaded"); return; }
         if (peer) peer.destroy();
+
+        const Peer = peerJsRef.current!.Peer;
 
         const tryCreate = () => {
              const code = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -584,6 +598,9 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
   // --- INVITE SYSTEM ---
 
   const sendInvite = async (targetUid: string, lobbyCodeOverride?: string) => {
+      if (!isPeerLoaded) { addToast("Serviço de convite não está pronto.", "error"); return; }
+      const Peer = peerJsRef.current!.Peer;
+
       const code = lobbyCodeOverride || lobby?.code;
       if (!code || !user) {
           console.warn("Invite failed: No lobby code available");
@@ -710,7 +727,10 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
   // --- CLIENT LOGIC ---
 
   const joinLobby = async (code: string): Promise<boolean> => {
-      if (!user) return false;
+      if (!user || !isPeerLoaded) return false;
+      
+      const Peer = peerJsRef.current!.Peer;
+
       if (peer) { peer.destroy(); setPeer(null); await new Promise(r => setTimeout(r, 500)); }
 
       // Detect mobile: longer timeouts, more attempts (4G/LTE often slower to establish WebRTC)
@@ -949,7 +969,11 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
   };
 
   const startGame = async (eventId: string) => {
-      if (lobbyRef.current?.hostId !== user?.uid) return;
+    if (!db) {
+        addToast("Firestore não está configurado.", "error");
+        return;
+    }
+    if (lobbyRef.current?.hostId !== user?.uid) return;
       
       const allEvents = await mockStore.getEvents();
       const fullEvent = allEvents.find(e => e.id === eventId);

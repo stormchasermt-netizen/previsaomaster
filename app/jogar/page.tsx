@@ -370,21 +370,25 @@ export default function Game() {
     // CRITICAL: Always Save Score to Persistent DB (Ranking) if user is logged in
     // This now happens in Multiplayer too!
     if (user) {
-        await mockStore.addScore({
-            userId: user.uid,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-            eventId: currentEvent.id,
-            difficulty: difficulty,
-            forecastLat: forecast.lat,
-            forecastLng: forecast.lng,
-            distanceKm: computed.minDistance,
-            streakCount: nextStreak,
-            basePoints: computed.basePoints,
-            difficultyMultiplier: computed.difficultyMultiplier,
-            streakBonus: computed.streakBonus,
-            finalScore: computed.finalScore
-        });
+        try {
+            await mockStore.addScore({
+                userId: user.uid,
+                displayName: user.displayName,
+                photoURL: user.photoURL,
+                eventId: currentEvent.id,
+                difficulty: difficulty,
+                forecastLat: forecast.lat,
+                forecastLng: forecast.lng,
+                distanceKm: computed.minDistance,
+                streakCount: nextStreak,
+                basePoints: computed.basePoints,
+                difficultyMultiplier: computed.difficultyMultiplier,
+                streakBonus: computed.streakBonus,
+                finalScore: computed.finalScore
+            });
+        } catch (e: any) {
+            addToast(e.message || 'Erro ao salvar pontuação.', 'error');
+        }
     }
 
     if (isMultiplayer) {
@@ -416,21 +420,25 @@ export default function Game() {
 
           // Also save the "zero" score to history so they don't escape a bad game
            if (user && currentEvent) {
-                await mockStore.addScore({
-                    userId: user.uid,
-                    displayName: user.displayName,
-                    photoURL: user.photoURL,
-                    eventId: currentEvent.id,
-                    difficulty: difficulty,
-                    forecastLat: 0,
-                    forecastLng: 0,
-                    distanceKm: 99999,
-                    streakCount: 0,
-                    basePoints: 0,
-                    difficultyMultiplier: 0,
-                    streakBonus: 0,
-                    finalScore: 0
-                });
+                try {
+                    await mockStore.addScore({
+                        userId: user.uid,
+                        displayName: user.displayName,
+                        photoURL: user.photoURL,
+                        eventId: currentEvent.id,
+                        difficulty: difficulty,
+                        forecastLat: 0,
+                        forecastLng: 0,
+                        distanceKm: 99999,
+                        streakCount: 0,
+                        basePoints: 0,
+                        difficultyMultiplier: 0,
+                        streakBonus: 0,
+                        finalScore: 0
+                    });
+                } catch (e: any) {
+                    addToast(e.message || 'Erro ao salvar pontuação de falha.', 'error');
+                }
             }
 
           submitRoundScore(0, 99999, 0); // Zero points

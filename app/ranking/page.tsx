@@ -66,9 +66,13 @@ export default function Ranking() {
 
   const handleClear = async () => {
     if (confirm('Tem certeza que deseja apagar todo o ranking? Isso apagará o histórico de todos os jogadores.')) {
-        await mockStore.clearScores();
-        loadScores();
-        addToast('Ranking zerado com sucesso.', 'success');
+        try {
+            await mockStore.clearScores();
+            loadScores();
+            addToast('Ranking zerado com sucesso.', 'success');
+        } catch (e: any) {
+            addToast(e.message || 'Erro ao limpar ranking.', 'error');
+        }
     }
   };
 
