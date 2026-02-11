@@ -25,14 +25,18 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
     if (user) {
         mockStore.getScores().then(scores => {
             if (isMounted) {
-                setUserScores(scores.filter(s => s.userId === user.uid));
+                // Filter scores for the current user and sort by creation date descending
+                const filteredAndSorted = scores
+                    .filter(s => s.userId === user.uid)
+                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                setUserScores(filteredAndSorted);
             }
         });
     } else {
         setUserScores([]);
     }
     return () => { isMounted = false; };
-  }, [user, isAccountOpen]);
+  }, [user, isAccountOpen]); // Re-fetch when user or modal state changes
 
   const handleOpenAccount = () => {
       setIsSettingsOpen(false);
@@ -40,9 +44,11 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
       setIsAccountOpen(true);
   };
 
-  const handleSaveProfile = () => {
-      if(newUsername.trim()) {
-          updateUsername(newUsername);
+  const handleSaveProfile = async () => {
+      if(newUsername.trim() && newUsername.trim() !== user?.displayName) {
+          await updateUsername(newUsername.trim());
+          setIsAccountOpen(false);
+      } else {
           setIsAccountOpen(false);
       }
   };
@@ -54,7 +60,10 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
   const stats = userScores;
   const totalScore = stats.reduce((acc, curr) => acc + curr.finalScore, 0);
   const bestDistance = stats.length > 0 ? Math.min(...stats.map(s => s.distanceKm)) : 0;
-  const bestDistanceMi = (bestDistance * 0.621371).toFixed(0);
+  
+  // Only calculate best personal score from valid games (distance is not 99999)
+  const validGames = stats.filter(s => s.distanceKm < 99900);
+  const bestScore = validGames.length > 0 ? Math.max(...validGames.map(s => s.finalScore)) : 0;
 
   return (
     <div className="min-h-screen bg-[#0a0f1a] text-white font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
@@ -257,7 +266,7 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
                       </div>
 
                       <div className="space-y-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Estatísticas na Nuvem</label>
+                          <label className="text-xs font-bold text-slate-500 uppercase">Estatísticas (Nuvem)</label>
                           <div className="grid grid-cols-2 gap-2">
                               <div className="bg-black/50 p-3 rounded border border-white/5">
                                   <div className="text-xs text-slate-500">Pontuação Total</div>
@@ -269,11 +278,11 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
                               </div>
                                <div className="bg-black/50 p-3 rounded border border-white/5">
                                   <div className="text-xs text-slate-500">Melhor Distância</div>
-                                  <div className="text-lg font-mono font-bold">{bestDistanceMi} <span className="text-xs font-sans font-normal text-slate-600">mi</span></div>
+                                  <div className="text-lg font-mono font-bold">{bestDistance.toFixed(0)} <span className="text-xs font-sans font-normal text-slate-600">km</span></div>
                               </div>
                                <div className="bg-black/50 p-3 rounded border border-white/5">
                                   <div className="text-xs text-slate-500">Recorde Pessoal</div>
-                                  <div className="text-lg font-mono font-bold">{stats.length > 0 ? Math.max(...stats.map(s => s.finalScore)) : 0}</div>
+                                  <div className="text-lg font-mono font-bold">{bestScore.toLocaleString()}</div>
                               </div>
                           </div>
                       </div>

@@ -67,10 +67,6 @@ export const PREDEFINED_LAYERS = [
     },
   } as const;
   
-  // AUTH CONFIGURATION
-  // Configuração real do Google Cloud
-  export const GOOGLE_CLIENT_ID = "275898169040-cofl63h80h6rmbg1bjlso3p3vrsb4mv8.apps.googleusercontent.com";
-  
   // Lista de emails que têm permissão de ADMIN
   export const ADMIN_EMAILS = [
     'stormchasermt@gmail.com', // Criador do App
