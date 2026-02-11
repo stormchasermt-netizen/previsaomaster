@@ -40,8 +40,8 @@ export default function Admin() {
       try {
           const loaded = await mockStore.getEvents();
           setEvents(loaded);
-      } catch (e) {
-          addToast("Erro ao carregar eventos do banco de dados.", 'error');
+      } catch (e: any) {
+          addToast(`Erro ao carregar eventos: ${e.message}`, 'error');
       } finally {
           setLoading(false);
       }
@@ -84,12 +84,15 @@ export default function Admin() {
 
   const handleDeleteEvent = async (id: string) => {
       if (confirm('Tem certeza que deseja excluir este evento permanentemente?')) {
-          await mockStore.deleteEvent(id);
-          setEvents(prev => prev.filter(e => e.id !== id));
-          addToast('Evento excluído com sucesso.', 'success');
-          
-          if (editingEventId === id) {
-              handleCancelEdit();
+          try {
+              await mockStore.deleteEvent(id);
+              setEvents(prev => prev.filter(e => e.id !== id));
+              addToast('Evento excluído com sucesso.', 'success');
+              if (editingEventId === id) {
+                  handleCancelEdit();
+              }
+          } catch(e: any) {
+              addToast(`Erro ao excluir: ${e.message}`, 'error');
           }
       }
   };
@@ -128,7 +131,6 @@ export default function Admin() {
         if (editingEventId) {
             // Update existing
             const fullEvent: PrevisaoEvent = { ...eventData, id: editingEventId, createdAt: Date.now() }; 
-            // We need to preserve original createdAt usually, but simplistic here is fine
             await mockStore.updateEvent(fullEvent);
             addToast('Evento atualizado com sucesso!', 'success');
         } else {
@@ -353,7 +355,7 @@ export default function Admin() {
       {/* EVENT LIST */}
       <div className="bg-slate-900/50 border border-white/10 rounded-xl overflow-hidden">
          <div className="p-4 border-b border-white/10 bg-slate-900">
-            <h3 className="text-white font-bold">Eventos Existentes (IndexedDB - Armazenamento Ilimitado)</h3>
+            <h3 className="text-white font-bold">Eventos Existentes (Firestore - Nuvem)</h3>
          </div>
          <div className="p-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {events.map(ev => (
