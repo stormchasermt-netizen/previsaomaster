@@ -44,7 +44,7 @@ export const mockStore = {
         return [];
     }
     try {
-        const q = query(collection(db, 'events'), orderBy('createdAt', 'desc'));
+        const q = query(collection(db, 'weather_events'), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
         const events: PrevisaoEvent[] = [];
         querySnapshot.forEach((doc) => {
@@ -70,7 +70,7 @@ export const mockStore = {
         return undefined;
     }
     try {
-        const docRef = doc(db, 'events', id);
+        const docRef = doc(db, 'weather_events', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             const data = docSnap.data();
@@ -114,7 +114,7 @@ export const mockStore = {
         createdAt: serverTimestamp()
     };
 
-    const docRef = doc(db, 'events', eventId);
+    const docRef = doc(db, 'weather_events', eventId);
     await setDoc(docRef, docData);
     
     return { ...docData, id: eventId, createdAt: Date.now() } as PrevisaoEvent;
@@ -147,7 +147,7 @@ export const mockStore = {
         createdAt: serverTimestamp() // Update timestamp on every modification
     };
 
-    const docRef = doc(db, 'events', event.id);
+    const docRef = doc(db, 'weather_events', event.id);
     await setDoc(docRef, docData, { merge: true });
 
     return event;
@@ -159,7 +159,7 @@ export const mockStore = {
     }
     // Note: This does not delete associated images from Storage. 
     // This would require a more complex backend setup (e.g., Cloud Function).
-    await deleteDoc(doc(db, 'events', id));
+    await deleteDoc(doc(db, 'weather_events', id));
   },
 
   getScores: async (): Promise<PrevisaoScore[]> => {

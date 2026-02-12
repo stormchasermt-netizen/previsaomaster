@@ -57,6 +57,7 @@ export interface PrevisaoEvent {
   bounds: MapBounds;
   active: boolean;
   createdAt: number;
+  adminId: string;
 }
 
 export interface PrevisaoScore {

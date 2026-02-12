@@ -1,36 +1,139 @@
-
+/**
+ * Core Philosophy: This ruleset implements a Role-Based Access Control (RBAC) model.
+ * Users are categorized into two groups: standard authenticated users and administrators.
+ * Administrator status is granted by the existence of a document in the /roles_admin
+ * collection, where the document ID matches the user's UID. Administrators have full
+ * create, update, and delete permissions on weather events they own. All standard
+ * authenticated users have read-only access to all weather events.
+ *
+ * Data Structure: There are two top-level collections:
+ * - /weather_events/{weatherEventId}: Stores the main application data, which is publicly
+ *   readable by authenticated users.
+ * - /roles_admin/{adminId}: A private collection used as a lookup table to identify
+ *   administrators. Client-side access to this collection is completely blocked.
+ *
+ * Key Security Decisions:
+ * - Admin Role Management: The /roles_admin collection is not writable by any client.
+ *   This is a critical security measure to prevent users from escalating their own
+ *   privileges. Admins must be designated through the Firebase Console or a trusted
+ *   server-side process (e.g., Cloud Functions).
+ * - Read Access: Any user who is signed in (including via anonymous auth) can read
+ *   data from the /weather_events collection. This supports the core feature of users
+ *   viewing event models.
+ * - Write Access: Only administrators can write to the /weather_events collection.
+ *   Furthermore, an admin can only update or delete events that they themselves created,
+ *   enforcing an ownership model among admins.
+ *
+ * Denormalization for Authorization:
+ * Each document in /weather_events contains a denormalized `adminId` field. This allows
+ * security rules to perform fast and efficient ownership checks for update and delete
+ * operations without needing to perform any extra `get()` calls on other documents.
+ *
+ * Structural Segregation:
+ * The separation of application data (/weather_events) from authorization data
+ * (/roles_admin) provides a clean and secure architecture. It prevents sensitive
+ * role information from being queried by clients and simplifies the rules for each
+ * collection.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permite a leitura pública dos eventos do jogo
-    match /events/{eventId} {
-      allow read: if true;
-      // Permite a escrita apenas para usuários autenticados (idealmente, seria restrito a admins)
-      allow write: if request.auth != null;
+
+    // ------------------------------------------------------------------------
+    // Helper Functions
+    // ------------------------------------------------------------------------
+
+    /**
+     * Returns true if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
     }
-    // Permite que todos leiam o ranking
-    // Permite que um usuário crie sua própria pontuação
+
+    /**
+     * Returns true if the requesting user is an administrator.
+     * Admin status is determined by the existence of a document in the
+     * /roles_admin collection with the user's UID as the document ID.
+     */
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    /**
+     * Validates that the `adminId` field in a newly created weather event
+     * matches the UID of the authenticated user.
+     * This ensures creators correctly assign themselves as the owner.
+     */
+    function isEventCreator() {
+      return request.resource.data.adminId == request.auth.uid;
+    }
+
+    /**
+     * Validates that the `adminId` field of an existing document matches
+     * the UID of the authenticated user.
+     * This enforces ownership for updates and deletes.
+     */
+    function isExistingEventOwner() {
+      return resource != null && resource.data.adminId == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------------
+    // Collection Rules
+    // ------------------------------------------------------------------------
+
+    /**
+     * @description Defines access control for weather event documents.
+     * Any signed-in user can read events. Only admins can create, update, or
+     * delete events they own.
+     * @path /weather_events/{weatherEventId}
+     * @allow (get) Any authenticated user can read a specific weather event.
+     * @deny (create) A non-admin user attempts to create a weather event.
+     * @deny (update) An admin user attempts to update a weather event created by another admin.
+     * @principle Implements a "Public Read with Role-Based Writes" pattern, with an
+     * additional ownership check for admins on update and delete operations.
+     */
+    match /weather_events/{weatherEventId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && isEventCreator();
+      allow update: if isAdmin() && isExistingEventOwner() && request.resource.data.adminId == resource.data.adminId;
+      allow delete: if isAdmin() && isExistingEventOwner();
+    }
+
     match /scores/{scoreId} {
        allow read: if true;
-       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+       allow update, delete: if false;
     }
-    // Regras para Lobbies
-    match /lobbies/{lobbyId} {
-      // Qualquer usuário autenticado pode ler, criar, atualizar ou deletar um lobby
-      // Simplificado para desenvolvimento. Em produção, regras mais rígidas seriam necessárias.
-      allow read, write: if request.auth != null;
 
-      // Subcoleção de chat
+    match /lobbies/{lobbyId} {
+      allow read, write: if isSignedIn();
       match /messages/{messageId} {
-        allow read, create: if request.auth != null;
+        allow read, create: if isSignedIn();
       }
     }
-    // Regras para convites
+
     match /invites/{userId} {
-       // O usuário pode ler/deletar seu próprio convite
-       allow read, delete: if request.auth != null && request.auth.uid == userId;
-       // Outros usuários podem criar (enviar) um convite para ele
-       allow create: if request.auth != null;
+       allow read, delete: if isSignedIn() && request.auth.uid == userId;
+       allow create: if isSignedIn();
+    }
+
+    /**
+     * @description Defines access control for the admin roles collection.
+     * This collection is used as an internal lookup table for the `isAdmin()`
+     * function and must not be accessible to any client-side requests.
+     * @path /roles_admin/{adminId}
+     * @allow (none) All client requests are denied.
+     * @deny (get, list, create, update, delete) Any user attempts any operation.
+     * @principle Prevents privilege escalation by making role assignments a
+     * server-side or console-only operation.
+     */
+    match /roles_admin/{adminId} {
+      allow get: if false;
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
   }
 }

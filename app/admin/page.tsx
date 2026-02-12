@@ -98,6 +98,11 @@ export default function Admin() {
   };
 
   const handleSaveEvent = async () => {
+    if (!user) {
+        addToast('Você precisa estar logado para salvar um evento.', 'error');
+        return;
+    }
+
     // 1. Separate Bounds Validation
     let bounds: MapBounds;
     try {
@@ -125,7 +130,8 @@ export default function Admin() {
             riskPolygons,
             reportMapUrl,
             bounds,
-            active: true
+            active: true,
+            adminId: user.uid,
         };
 
         if (editingEventId) {
