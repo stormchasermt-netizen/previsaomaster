@@ -1,22 +1,19 @@
 /**
  * Core Philosophy: This ruleset implements a Role-Based Access Control (RBAC) model.
  * Users are categorized into two groups: standard authenticated users and administrators.
- * Administrator status is granted by the existence of a document in the /roles_admin
- * collection, where the document ID matches the user's UID. Administrators have full
- * create, update, and delete permissions on weather events they own. All standard
- * authenticated users have read-only access to all weather events.
+ * Administrator status is granted by checking the user's authenticated email against a
+ * predefined list, which mirrors the application's client-side logic.
  *
  * Data Structure: There are two top-level collections:
  * - /weather_events/{weatherEventId}: Stores the main application data, which is publicly
  *   readable by authenticated users.
- * - /roles_admin/{adminId}: A private collection used as a lookup table to identify
- *   administrators. Client-side access to this collection is completely blocked.
+ * - /roles_admin/{adminId}: This collection is no longer used for authorization in the rules
+ *   but is kept to show the original design intent. Access is fully blocked.
  *
  * Key Security Decisions:
- * - Admin Role Management: The /roles_admin collection is not writable by any client.
- *   This is a critical security measure to prevent users from escalating their own
- *   privileges. Admins must be designated through the Firebase Console or a trusted
- *   server-side process (e.g., Cloud Functions).
+ * - Admin Role Management: Admin status is now checked via the user's `request.auth.token.email`
+ *   inside the security rules. This is more secure as it relies on the verified identity token
+ *   from Firebase Auth.
  * - Read Access: Any user who is signed in (including via anonymous auth) can read
  *   data from the /weather_events collection. This supports the core feature of users
  *   viewing event models.
@@ -29,11 +26,6 @@
  * security rules to perform fast and efficient ownership checks for update and delete
  * operations without needing to perform any extra `get()` calls on other documents.
  *
- * Structural Segregation:
- * The separation of application data (/weather_events) from authorization data
- * (/roles_admin) provides a clean and secure architecture. It prevents sensitive
- * role information from being queried by clients and simplifies the rules for each
- * collection.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -52,11 +44,11 @@ service cloud.firestore {
 
     /**
      * Returns true if the requesting user is an administrator.
-     * Admin status is determined by the existence of a document in the
-     * /roles_admin collection with the user's UID as the document ID.
+     * Admin status is determined by checking the user's email from the auth token.
+     * This aligns server-side validation with the client-side logic.
      */
     function isAdmin() {
-      return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+      return request.auth.token.email in ['stormchasermt@gmail.com', 'admin@previsaomaster.com'];
     }
 
     /**
@@ -85,12 +77,6 @@ service cloud.firestore {
      * @description Defines access control for weather event documents.
      * Any signed-in user can read events. Only admins can create, update, or
      * delete events they own.
-     * @path /weather_events/{weatherEventId}
-     * @allow (get) Any authenticated user can read a specific weather event.
-     * @deny (create) A non-admin user attempts to create a weather event.
-     * @deny (update) An admin user attempts to update a weather event created by another admin.
-     * @principle Implements a "Public Read with Role-Based Writes" pattern, with an
-     * additional ownership check for admins on update and delete operations.
      */
     match /weather_events/{weatherEventId} {
       allow get: if isSignedIn();
@@ -117,23 +103,13 @@ service cloud.firestore {
        allow read, delete: if isSignedIn() && request.auth.uid == userId;
        allow create: if isSignedIn();
     }
-
+    
     /**
-     * @description Defines access control for the admin roles collection.
-     * This collection is used as an internal lookup table for the `isAdmin()`
-     * function and must not be accessible to any client-side requests.
-     * @path /roles_admin/{adminId}
-     * @allow (none) All client requests are denied.
-     * @deny (get, list, create, update, delete) Any user attempts any operation.
-     * @principle Prevents privilege escalation by making role assignments a
-     * server-side or console-only operation.
+     * @description This collection is no longer used for authorization logic in the rules.
+     * All client access is blocked.
      */
     match /roles_admin/{adminId} {
-      allow get: if false;
-      allow list: if false;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow read, write: if false;
     }
   }
 }
