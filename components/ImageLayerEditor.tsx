@@ -73,8 +73,7 @@ function centerDefaultCrop(mediaWidth: number, mediaHeight: number) {
 }
 
 type ImageLayerEditorProps = {
-  // We no longer pass bounds back, just the image
-  onSave: (imageUrl: string, bounds: MapBounds) => void; 
+  onSave: (imageUrl: string) => void; 
 };
 
 export function ImageLayerEditor({ onSave }: ImageLayerEditorProps) {
@@ -104,11 +103,7 @@ export function ImageLayerEditor({ onSave }: ImageLayerEditorProps) {
         setUploading(true);
         try {
             const base64 = await canvasPreview(imgRef.current, completedCrop);
-            // We pass a dummy bounds object because the Admin parent expects it, 
-            // but in the new logic, the image is just a static visual.
-            // The global event bounds handle the "Target Map".
-            const dummyBounds: MapBounds = { south: 0, north: 0, east: 0, west: 0 };
-            onSave(base64, dummyBounds);
+            onSave(base64);
             handleClear();
         } catch (e) {
             console.error(e);

@@ -150,7 +150,7 @@ export default function Admin() {
     }
   };
 
-  const handleLayerSave = (imageUrl: string, bounds: MapBounds) => {
+  const handleLayerSave = (imageUrl: string) => {
     if (!activeLayerId || !editingTimeSlot) return;
     
     const config = PREDEFINED_LAYERS.find(l => l.id === activeLayerId);
@@ -162,7 +162,6 @@ export default function Admin() {
         category: config.category,
         time: editingTimeSlot,
         imageUrl,
-        bounds: bounds,
         validDifficulties: ['iniciante', 'intermediario', 'especialista', 'mestre'],
         order: layers.length
     };

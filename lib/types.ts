@@ -25,7 +25,6 @@ export interface PrevisaoLayer {
   category?: string;
   time?: string;
   imageUrl: string;
-  bounds?: MapBounds;
   validDifficulties: PrevisaoDifficulty[];
   order: number;
 }
