@@ -772,51 +772,68 @@ export default function Game() {
             </div>
         </header>
 
-        {/* DESKTOP TIME SLIDER (Hidden on mobile) */}
-        <div className="hidden md:flex h-12 bg-[#05080f] border-b border-white/5 items-center justify-center px-8 relative z-40 shrink-0">
-            <div className="w-full max-w-3xl flex items-center gap-4">
-                <span className="text-xs font-mono text-slate-500">{LAYER_TIMES[0]}</span>
-                <input 
-                    type="range" min="0" max={LAYER_TIMES.length - 1} step="1" value={timeIndex}
-                    onChange={(e) => setTimeIndex(parseInt(e.target.value))}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500 hover:accent-cyan-400"
-                />
-                <span className="text-xs font-mono text-slate-500">{LAYER_TIMES[LAYER_TIMES.length - 1]}</span>
-                <div className="absolute left-1/2 -translate-x-1/2 -bottom-8 pointer-events-none">
-                     <div className="bg-slate-800 text-cyan-400 text-xs font-bold px-3 py-1 rounded-full border border-cyan-500/30 shadow-lg">
-                        {LAYER_TIMES[timeIndex]}
-                     </div>
-                </div>
+        {/* DESKTOP TIME SELECTOR (Buttons) */}
+        <div className="hidden md:flex h-16 bg-[#05080f] border-b border-white/5 items-center justify-center px-8 relative z-40 shrink-0">
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-white/10 shadow-md">
+                {LAYER_TIMES.map((time, index) => (
+                    <button
+                        key={index} // Use index as key for static list
+                        onClick={() => setTimeIndex(index)}
+                        disabled={difficulty === 'mestre' && index !== 4}
+                        className={clsx(
+                            "px-4 py-2 rounded text-xs font-bold transition-all",
+                            timeIndex === index
+                                ? "bg-cyan-600 text-white shadow"
+                                : "text-slate-400 hover:bg-slate-800/60",
+                            difficulty === 'mestre' && index !== 4 && "opacity-50 cursor-not-allowed"
+                        )}
+                    >
+                        {time}
+                    </button>
+                ))}
             </div>
         </div>
 
         {/* MOBILE CONTROL BAR (Hidden on desktop) */}
-        <div className="md:hidden h-14 bg-[#0a0f1a] border-b border-white/10 flex items-center justify-between px-4 z-40 relative">
-             <button 
-                onClick={() => setShowMobileParams(!showMobileParams)}
-                className={clsx(
-                    "flex items-center gap-2 px-3 py-2 rounded border text-xs font-bold transition-all",
-                    showMobileParams 
-                        ? "bg-cyan-900/50 text-cyan-400 border-cyan-500/50" 
-                        : "bg-slate-800 text-slate-300 border-white/10"
-                )}
-             >
-                 <Menu className="w-4 h-4" /> 
-                 Parâmetros
-                 <ChevronDown className={clsx("w-3 h-3 transition-transform", showMobileParams ? "rotate-180" : "")} />
-             </button>
-
-             <div className="flex-1 mx-4 flex flex-col justify-center">
-                 <div className="flex justify-between text-[10px] text-slate-500 font-mono mb-1 px-1">
-                     <span>{LAYER_TIMES[0]}</span>
-                     <span className="text-cyan-400 font-bold">{LAYER_TIMES[timeIndex]}</span>
-                     <span>{LAYER_TIMES[LAYER_TIMES.length-1]}</span>
+        <div className="md:hidden flex flex-col bg-[#0a0f1a] border-b border-white/10 p-2 z-40 relative">
+             <div className="flex items-center justify-between w-full mb-2">
+                 <button 
+                    onClick={() => setShowMobileParams(!showMobileParams)}
+                    className={clsx(
+                        "flex items-center gap-2 px-3 py-2 rounded border text-xs font-bold transition-all",
+                        showMobileParams 
+                            ? "bg-cyan-900/50 text-cyan-400 border-cyan-500/50" 
+                            : "bg-slate-800 text-slate-300 border-white/10"
+                    )}
+                 >
+                     <Menu className="w-4 h-4" /> 
+                     Parâmetros
+                     <ChevronDown className={clsx("w-3 h-3 transition-transform", showMobileParams ? "rotate-180" : "")} />
+                 </button>
+                 <div className="text-white font-bold text-lg bg-slate-900 px-3 py-1 rounded-lg border border-white/10">
+                    {LAYER_TIMES[timeIndex]}
                  </div>
-                 <input 
-                    type="range" min="0" max={LAYER_TIMES.length - 1} step="1" value={timeIndex}
-                    onChange={(e) => setTimeIndex(parseInt(e.target.value))}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
-                />
+             </div>
+
+             <div className="w-full overflow-x-auto custom-scrollbar pb-1">
+                 <div className="flex items-center gap-1 p-1 w-max">
+                     {LAYER_TIMES.map((time, index) => (
+                         <button
+                             key={index}
+                             onClick={() => setTimeIndex(index)}
+                             disabled={difficulty === 'mestre' && index !== 4}
+                             className={clsx(
+                                 "px-4 py-2 rounded text-xs font-bold transition-colors shrink-0",
+                                 timeIndex === index
+                                     ? "bg-cyan-600 text-white"
+                                     : "text-slate-400 bg-slate-800/50 hover:bg-slate-700",
+                                 difficulty === 'mestre' && index !== 4 && "opacity-50 cursor-not-allowed"
+                             )}
+                         >
+                             {time}
+                         </button>
+                     ))}
+                 </div>
              </div>
         </div>
 
