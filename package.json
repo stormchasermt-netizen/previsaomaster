@@ -15,7 +15,6 @@
     "react-image-crop": "^11.0.10",
     "lucide-react": "^0.563.0",
     "clsx": "^2.1.1",
-    "peerjs": "1.5.2",
     "tailwindcss-animate": "1.0.7",
     "firebase": "^10.12.2"
   },

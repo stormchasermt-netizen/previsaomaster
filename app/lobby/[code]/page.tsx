@@ -14,7 +14,7 @@ import { useWakeLock } from '@/hooks/useWakeLock';
 export default function LobbyPage() {
     const params = useParams();
     const code = params.code as string;
-    const { lobby, joinLobby, leaveLobby, startGame, recentPlayers, sendInvite, forceStartGame, playerPings, myPing, isHost } = useMultiplayer();
+    const { lobby, joinLobby, leaveLobby, startGame, recentPlayers, sendInvite, forceStartGame, isHost } = useMultiplayer();
     
     // Stability Hooks
     useWakeLock();
@@ -34,7 +34,7 @@ export default function LobbyPage() {
     const { addToast } = useToast();
     const router = useRouter();
 
-    const [isJoining, setIsJoining] = useState(false);
+    const [isJoining, setIsJoining] = useState(true);
     const [joinError, setJoinError] = useState(false);
     
     // Social Sidebar State
@@ -91,23 +91,24 @@ export default function LobbyPage() {
     useEffect(() => {
         const initJoin = async () => {
             if (code && user && (!lobby || lobby.code !== code)) {
-                if (isJoining || joinError) return;
                 setIsJoining(true);
                 setJoinError(false);
                 const success = await joinLobby(code);
                 setIsJoining(false);
                 if (!success) setJoinError(true);
+            } else if (lobby && lobby.code === code) {
+                setIsJoining(false);
             }
         };
         initJoin();
-    }, [code, user, lobby, isJoining, joinLobby, joinError]); 
+    }, [code, user, lobby]); 
 
-    // Redirect ONLY if playing
+    // Redirect on lobby status change
     useEffect(() => {
-        if (lobby?.status === 'playing') {
+        if (lobby?.status === 'playing' || lobby?.status === 'loading') {
             router.push('/jogar');
         }
-    }, [lobby, router]);
+    }, [lobby?.status, router]);
 
     if (!user) {
         return (
@@ -118,16 +119,16 @@ export default function LobbyPage() {
         );
     }
 
-    if (joinError && !lobby) {
+    if (joinError) {
         return (
             <div className="min-h-[60vh] flex flex-col items-center justify-center gap-6 animate-in fade-in">
                 <div className="bg-red-500/10 border border-red-500/50 p-6 rounded-2xl text-center max-w-sm">
                     <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
                     <h2 className="text-xl font-bold text-white mb-2">Falha na Conexão</h2>
                     <p className="text-slate-400 text-sm mb-2">Não foi possível conectar à sala <span className="text-white font-mono font-bold">{code}</span>.</p>
-                    <p className="text-slate-500 text-xs mb-6">Possíveis causas: sala encerrada, host offline, ou rede instável. Tente novamente ou peça um novo código ao host.</p>
+                    <p className="text-slate-500 text-xs mb-6">A sala pode não existir ou a partida já começou.</p>
                     <div className="flex flex-col gap-3">
-                        <button onClick={() => { setJoinError(false); setIsJoining(false); }} className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                         <button onClick={() => { setJoinError(false); joinLobby(code); }} className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
                             <RefreshCw className="w-4 h-4" /> Tentar Novamente
                         </button>
                         <button onClick={() => router.push('/')} className="bg-slate-800 text-slate-300 px-6 py-3 rounded-xl font-bold">Voltar ao Menu</button>
@@ -137,18 +138,17 @@ export default function LobbyPage() {
         );
     }
 
-    if (!lobby) {
+    if (isJoining || !lobby) {
         return (
             <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
                 <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
-                <p className="text-slate-400 animate-pulse">{isJoining ? 'Conectando à sala...' : 'Sincronizando...'}</p>
+                <p className="text-slate-400 animate-pulse">Conectando à sala...</p>
             </div>
         );
     }
 
-    const isAdmin = user.type === 'admin' || user.type === 'superadmin';
     const playerCount = lobby.players.length;
-    const canStart = playerCount >= 2;
+    const canStart = playerCount >= 1; // Can start solo in a lobby now
     const isLoading = lobby.status === 'loading';
 
     const handleCopyInvite = () => {
@@ -158,12 +158,12 @@ export default function LobbyPage() {
     };
 
     const handleStart = async () => {
-        if (!canStart) { addToast("Mínimo de 2 jogadores.", 'error'); return; }
+        if (!canStart && isHost) { addToast("Mínimo de 1 jogador.", 'error'); return; }
         const allEvents = await mockStore.getEvents();
         const activeEvents = allEvents.filter(e => e.active);
-        if (activeEvents.length === 0) { addToast("Nenhum evento.", 'error'); return; }
+        if (activeEvents.length === 0) { addToast("Nenhum evento ativo no sistema.", 'error'); return; }
         const picked = pickRandomEvent(activeEvents, lobby?.currentEventId);
-        if (!picked) { addToast("Nenhum evento disponível.", 'error'); return; }
+        if (!picked) { addToast("Nenhum evento disponível para jogar.", 'error'); return; }
         startGame(picked.id);
     };
 
@@ -186,32 +186,11 @@ export default function LobbyPage() {
                         {player.isHost && <div className="absolute top-2 right-2 text-amber-400"><Shield className="w-4 h-4" /></div>}
                         <div className="w-16 h-16 rounded-full bg-slate-800 mb-3 overflow-hidden border-2 border-slate-700 relative">
                             {player.photoURL ? <img src={player.photoURL} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl font-bold text-slate-500">{player.displayName[0]}</div>}
-                            
-                            {isLoading && (
-                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                    {(player.loadProgress || 0) >= 100 ? 
-                                        <CheckCircle className="text-emerald-400 w-8 h-8" /> : 
-                                        <span className="text-white text-xs font-bold">{player.loadProgress || 0}%</span>
-                                    }
-                                </div>
-                            )}
                         </div>
                         <div className="font-bold text-white text-center truncate w-full">{player.displayName}</div>
-                        <div className={clsx("text-xs font-bold mt-1", isLoading && (player.loadProgress || 0) < 100 ? "text-amber-400" : "text-emerald-400")}>
-                            {isLoading ? ((player.loadProgress || 0) >= 100 ? 'Pronto!' : 'Carregando...') : 'Pronto'}
+                        <div className="text-xs font-bold mt-1 text-emerald-400">
+                           Pronto
                         </div>
-                        {player.isHost ? (
-                            <div className="text-[10px] text-slate-500 mt-0.5">—</div>
-                        ) : isHost ? (
-                            <div className="text-[10px] text-slate-400 mt-0.5">{playerPings[player.uid] != null ? `${playerPings[player.uid]} ms` : '...'}</div>
-                        ) : player.uid === user?.uid && myPing != null ? (
-                            <div className="text-[10px] text-cyan-400 mt-0.5">{myPing} ms</div>
-                        ) : null}
-                        {isLoading && (
-                             <div className="w-full h-1 bg-slate-800 mt-2 rounded-full overflow-hidden">
-                                 <div className="h-full bg-cyan-500 transition-all duration-300" style={{ width: `${player.loadProgress || 0}%` }}></div>
-                             </div>
-                        )}
                     </div>
                 ))}
             </div>
@@ -282,13 +261,13 @@ export default function LobbyPage() {
                         {isLoading ? (
                             <div className="flex items-center gap-2">
                                 <div className="bg-slate-800 text-white px-4 md:px-8 py-3 rounded-xl font-bold flex items-center gap-2 border border-white/10 animate-pulse">
-                                    <Loader2 className="w-5 h-5 animate-spin" /> <span>Sincronizando... (máx. 20s)</span>
+                                    <Loader2 className="w-5 h-5 animate-spin" /> <span>Carregando...</span>
                                 </div>
                                 {isHost && (
                                     <button 
                                         onClick={forceStartGame}
                                         className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg animate-in fade-in"
-                                        title="Ignorar jogadores travados e iniciar a partida agora"
+                                        title="Forçar início da partida"
                                     >
                                         <Play className="w-5 h-5" /> <span>Forçar Início</span>
                                     </button>

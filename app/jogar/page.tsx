@@ -44,12 +44,11 @@ type GamePhase = 'setup' | 'loading' | 'playing' | 'result';
 export default function Game() {
   const { user } = useAuth();
   const { addToast } = useToast();
-  const { lobby, currentEventData, downloadProgress, submitRoundScore, triggerForceFinish, forceEndRound, requestEventData, playerPings, myPing } = useMultiplayer();
+  const { lobby, currentEventData, submitRoundScore, triggerForceFinish, forceEndRound, isHost } = useMultiplayer();
   const router = useRouter();
   
-  // Derived values (MUST be before useState that uses them)
-  const isMultiplayer = !!lobby && (lobby.status === 'playing' || lobby.status === 'round_results' || lobby.status === 'loading');
-  const isHost = lobby?.hostId === user?.uid;
+  // Derived values
+  const isMultiplayer = !!lobby;
 
   // Data
   const [events, setEvents] = useState<PrevisaoEvent[]>([]);
@@ -99,10 +98,8 @@ export default function Game() {
   const [result, setResult] = useState<any>(null);
 
   // Multiplayer Specific
-  const [hasSubmittedMP, setHasSubmittedMP] = useState(false);
   const [roundTimer, setRoundTimer] = useState<number | null>(null);
   const [loadingTimeLeft, setLoadingTimeLeft] = useState<number | null>(null);
-  const [dataRetryCount, setDataRetryCount] = useState(0);
   const [lastRoundsPlayed, setLastRoundsPlayed] = useState(0); // Track round changes
 
   // Load events initially (Only for Solo mode fallback)
@@ -115,33 +112,28 @@ export default function Game() {
         fetchEvents();
     }
   }, [isMultiplayer]);
+  
+  const myPlayer = useMemo(() => lobby?.players.find(p => p.uid === user?.uid), [lobby, user]);
+  const hasSubmittedMP = myPlayer?.hasSubmitted || false;
 
-  // SELF-HEALING: Request Data if stuck in loading for too long
-  useEffect(() => {
-      let timeout: any;
-      if (isMultiplayer && phase === 'loading' && !currentEventData) {
-          timeout = setTimeout(() => {
-              console.log("Stuck in loading... requesting event data again. Retry:", dataRetryCount + 1);
-              requestEventData();
-              setDataRetryCount(c => c + 1);
-          }, 2000); // Retry every 2s (faster)
-      }
-      return () => clearTimeout(timeout);
-  }, [isMultiplayer, phase, currentEventData, dataRetryCount]);
-
-  // MULTIPLAYER: Sync Loading Timer
+  // MULTIPLAYER: Sync Loading Timer & Auto-start game
   useEffect(() => {
       if (isMultiplayer && lobby?.status === 'loading' && lobby.loadingStartTime) {
           const timer = setInterval(() => {
-              const elapsed = Date.now() - lobby.loadingStartTime!;
+              // loadingStartTime can be a server timestamp object
+              const startTime = (lobby.loadingStartTime as any)?.toMillis?.() || lobby.loadingStartTime;
+              const elapsed = Date.now() - startTime;
               const left = Math.max(0, 10 - Math.floor(elapsed / 1000));
               setLoadingTimeLeft(left);
+              if (left <= 0 && phase !== 'playing') {
+                  setPhase('playing');
+              }
           }, 200);
           return () => clearInterval(timer);
       } else {
           setLoadingTimeLeft(null);
       }
-  }, [isMultiplayer, lobby?.status, lobby?.loadingStartTime]);
+  }, [isMultiplayer, lobby?.status, lobby?.loadingStartTime, phase]);
 
   // MULTIPLAYER: Sync with Lobby Status & Event ID
   useEffect(() => {
@@ -152,11 +144,10 @@ export default function Game() {
     }
 
     // 1. GAME START SYNC
-    if (lobby && lobby.status === 'playing') {
+    if (lobby && (lobby.status === 'playing' || lobby.status === 'loading')) {
         setDifficulty(lobby.difficulty);
         
         if (currentEventData) {
-            // Detect NEW round: either different event or roundsPlayed changed
             const isNewRound = currentEvent?.id !== currentEventData.id || 
                                (lobby.roundsPlayed || 0) > lastRoundsPlayed;
             
@@ -168,7 +159,6 @@ export default function Game() {
                 // Reset Local State
                 setForecast(null);
                 setTempForecast(null);
-                setHasSubmittedMP(false);
                 setShowConfirmationDialog(false);
                 setResult(null);
                 setShowYear(false);
@@ -177,51 +167,38 @@ export default function Game() {
                 setSelectedParamId('spc_temperature');
                 setShowMobileParams(false);
                 setIsReferenceImageZoomed(false);
-                setDataRetryCount(0);
-                
-                setTimeout(() => setPhase('playing'), 500);
             }
         } else {
-            // Lobby says playing, but we have no data. Stay in loading.
             if (phase !== 'loading') setPhase('loading');
         }
-    } else if (lobby && lobby.status === 'loading') {
-        // FORCE LOADING SCREEN if lobby is loading
-        if (phase !== 'loading') {
-            setPhase('loading');
-            setDataRetryCount(0); // Reset retry counter for new round
-        }
-    } 
+    }
 
     // 2. ROUND END SYNC
-    // Instead of navigating away immediately, we show the Result screen locally
     if (lobby && lobby.status === 'round_results') {
         if (phase !== 'result') {
             setPhase('result');
-            setHasSubmittedMP(false); // Reset submit flag so we don't show "Waiting" overlay on result screen
-            setShowPlayerList(false); // Auto close sidebar on result
-
-            // SAFETY: If we transitioned to result but don't have a result object locally
-            // (e.g. Host forced end before we submitted), generate a dummy result so the screen renders.
-            if (!result) {
-                 setResult({
-                      finalScore: 0,
-                      precisionScore: 0,
-                      clusterScore: 0,
-                      reportsCaught: 0,
-                      distanceKm: 99999,
-                      streakCount: 0,
-                      minDistance: 99999
-                 });
+            setShowPlayerList(false);
+            
+            if (!result && user) {
+                 const me = lobby.players.find(p => p.uid === user.uid);
+                 if (me) {
+                      setResult({
+                          finalScore: me.lastRoundScore,
+                          distanceKm: me.lastRoundDistance,
+                          streakCount: me.streakCount,
+                          precisionScore: 0, // Not tracked in lobby, can be approximated
+                          clusterScore: 0,
+                          reportsCaught: 0,
+                      });
+                 }
             }
         }
     }
 
-  }, [lobby, router, currentEvent, currentEventData, phase, result, lastRoundsPlayed]);
+  }, [lobby, router, currentEvent, currentEventData, phase, result, lastRoundsPlayed, user]);
 
   // MULTIPLAYER: Handle Round Timer (15s finish)
   useEffect(() => {
-      // Only run timer if playing
       if (!isMultiplayer || !lobby?.roundEndTime || lobby.status !== 'playing') {
           setRoundTimer(null);
           return;
@@ -233,16 +210,14 @@ export default function Game() {
               setRoundTimer(0);
               clearInterval(interval);
               
-              // 1. Submit for self if not already done
               if (!hasSubmittedMP) {
                   handleForceSubmitFailure();
               }
 
-              // 2. IF HOST: Force the round to end for everyone after a brief buffer
               if (isHost) {
                   setTimeout(() => {
                       forceEndRound();
-                  }, 1500); // 1.5s buffer to allow P2P messages to arrive
+                  }, 1500); 
               }
           } else {
               setRoundTimer(left);
@@ -287,7 +262,6 @@ export default function Game() {
   const handleStartGame = () => {
     if (events.length === 0) return;
     
-    // RANDOM SELECTION LOGIC — avoids repeating recent events
     const eventToPlay = pickRandomEvent(events, currentEvent?.id);
     
     if (!eventToPlay) {
@@ -325,7 +299,7 @@ export default function Game() {
     if (tempForecast) {
         setForecast(tempForecast);
         setShowConfirmationDialog(false);
-        setIsTargetModalOpen(false); // Close modal on confirm
+        setIsTargetModalOpen(false);
         addToast('Alvo definido. Clique em "Enviar" para confirmar.', 'success');
     }
   };
@@ -346,7 +320,6 @@ export default function Game() {
         return;
     }
     
-    // New Score Logic
     const computed = computeScore(
         forecast.lat, 
         forecast.lng, 
@@ -364,11 +337,8 @@ export default function Game() {
         streakCount: nextStreak,
     };
     
-    // Always set result locally so we can show it later
     setResult(resultData);
 
-    // CRITICAL: Always Save Score to Persistent DB (Ranking) if user is logged in
-    // This now happens in Multiplayer too!
     if (user) {
         try {
             await mockStore.addScore({
@@ -393,8 +363,7 @@ export default function Game() {
 
     if (isMultiplayer) {
         submitRoundScore(computed.finalScore, computed.minDistance, nextStreak);
-        setHasSubmittedMP(true);
-        addToast('Previsão enviada! Pontos salvos no ranking.', 'info');
+        addToast('Previsão enviada! Aguardando outros jogadores.', 'info');
     } else {
         setSessionStreak(nextStreak);
         setCurrentScore(prev => prev + computed.finalScore);
@@ -403,22 +372,16 @@ export default function Game() {
   };
 
   const handleForceSubmitFailure = async () => {
-      // Called when timer runs out and user hasn't submitted
       if (isMultiplayer && !hasSubmittedMP) {
-          setHasSubmittedMP(true); // IMMEDIATE UPDATE to prevent glitches
-          
-          // Create dummy result to prevent crash
           setResult({
               finalScore: 0,
-              precisionScore: 0,
-              clusterScore: 0,
-              reportsCaught: 0,
               distanceKm: 99999,
               streakCount: 0,
-              minDistance: 99999
+              precisionScore: 0,
+              clusterScore: 0,
+              reportsCaught: 0
           });
 
-          // Also save the "zero" score to history so they don't escape a bad game
            if (user && currentEvent) {
                 try {
                     await mockStore.addScore({
@@ -451,8 +414,6 @@ export default function Game() {
           triggerForceFinish();
       }
   };
-
-  // --- UI RENDER ---
 
   if (phase === 'setup') {
       return (
@@ -490,7 +451,7 @@ export default function Game() {
       );
   }
 
-  if (phase === 'loading') {
+  if (phase === 'loading' || !currentEvent) {
       return (
         <div className="fixed inset-0 bg-[#0a0f1a] z-50 flex flex-col items-center justify-center animate-in fade-in duration-500">
              <div className="bg-slate-800/50 p-8 rounded-2xl border border-white/5 flex flex-col items-center max-w-sm w-full">
@@ -499,45 +460,24 @@ export default function Game() {
                     {isMultiplayer ? 'Sincronizando...' : 'Gerando Dia...'}
                 </h2>
                 <p className="text-slate-500 text-sm mb-4">
-                    {isMultiplayer ? (dataRetryCount > 0 ? `Recuperando dados (${dataRetryCount})...` : 'Baixando mapa do host...') : 'Carregando dados do modelo'}
+                    {isMultiplayer ? 'Carregando dados da rodada...' : 'Carregando dados do modelo'}
                 </p>
                 
-                {/* PROGRESS BAR FOR MULTIPLAYER */}
-                {isMultiplayer && (
-                    <div className="w-full mt-2 space-y-4">
-                        {/* Time Progress */}
-                         {loadingTimeLeft !== null && (
-                             <div className="text-center">
-                                 <div className="text-3xl font-black text-white mb-1 tracking-tighter">{loadingTimeLeft}s</div>
-                                 <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-white/10">
-                                    <div className="bg-emerald-500 h-full transition-all duration-200 ease-linear" style={{ width: `${Math.min(100, ((10 - loadingTimeLeft) / 10) * 100)}%` }}></div>
-                                 </div>
-                                 <p className="text-xs text-emerald-400 mt-1 uppercase tracking-wider font-bold">Iniciando Rodada</p>
-                             </div>
-                         )}
-
-                        {/* Download Progress - Only show if not complete */}
-                         {(downloadProgress < 100) && (
-                            <div className="space-y-1">
-                                <div className="flex justify-between text-[10px] text-slate-400 uppercase font-bold">
-                                    <span>Download</span>
-                                    <span>{downloadProgress}%</span>
-                                </div>
-                                <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-white/5">
-                                    <div className="bg-cyan-500 h-full transition-all duration-300" style={{ width: `${downloadProgress}%` }}></div>
-                                </div>
-                            </div>
-                         )}
-                    </div>
-                )}
+                {isMultiplayer && loadingTimeLeft !== null && (
+                     <div className="text-center">
+                         <div className="text-3xl font-black text-white mb-1 tracking-tighter">{loadingTimeLeft}s</div>
+                         <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-white/10">
+                            <div className="bg-emerald-500 h-full transition-all duration-200 ease-linear" style={{ width: `${Math.min(100, ((10 - loadingTimeLeft) / 10) * 100)}%` }}></div>
+                         </div>
+                         <p className="text-xs text-emerald-400 mt-1 uppercase tracking-wider font-bold">Iniciando Rodada</p>
+                     </div>
+                 )}
              </div>
         </div>
       );
   }
 
-  // ... rest of the file remains same ...
-  // --- RESULT VIEW (SOLO & MULTIPLAYER) ---
-  if (phase === 'result' && currentEvent && result) {
+  if (phase === 'result' && result) {
       return (
         <div className="fixed inset-0 top-16 bg-[#0a0f1a] overflow-y-auto animate-in fade-in slide-in-from-bottom-4 duration-500 z-10 pb-24">
             <div className="max-w-7xl mx-auto p-4 md:p-8 h-full">
@@ -558,7 +498,7 @@ export default function Game() {
                                 layerImageUrl={null}
                                 forecastMarker={forecast}
                                 stormReports={currentEvent.stormReports}
-                                riskPolygons={currentEvent.riskPolygons} // Pass polygons to map
+                                riskPolygons={currentEvent.riskPolygons}
                                 allowPlaceMarker={false}
                             />
                         </div>
@@ -707,8 +647,8 @@ export default function Game() {
             </div>
         )}
 
-        {/* WAITING OVERLAY (Multiplayer Submitted) - HIDDEN FOR HOST */}
-        {isMultiplayer && hasSubmittedMP && roundTimer === null && phase !== 'result' && !isHost && (
+        {/* WAITING OVERLAY (Multiplayer Submitted) */}
+        {isMultiplayer && hasSubmittedMP && lobby?.status === 'playing' && (
              <div className="absolute inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center animate-in fade-in">
                  <div className="bg-slate-900 border border-white/10 p-8 rounded-2xl flex flex-col items-center shadow-2xl">
                      <Loader2 className="w-10 h-10 text-cyan-400 animate-spin mb-4" />
@@ -805,10 +745,10 @@ export default function Game() {
                 {/* Submit Button - Active only when forecast is set */}
                 <button 
                     onClick={handleSubmit}
-                    disabled={!forecast || (isMultiplayer && hasSubmittedMP)}
+                    disabled={!forecast || hasSubmittedMP}
                     className={clsx(
                         "px-3 md:px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all border",
-                        (!forecast || (isMultiplayer && hasSubmittedMP))
+                        (!forecast || hasSubmittedMP)
                             ? "bg-slate-800 text-slate-600 border-white/5 cursor-not-allowed"
                             : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] animate-pulse"
                     )}
@@ -934,7 +874,7 @@ export default function Game() {
                     </div>
                     
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
-                        {lobby.players.sort((a,b) => (a.hasSubmitted === b.hasSubmitted) ? 0 : a.hasSubmitted ? -1 : 1).map(player => (
+                        {lobby.players.sort((a,b) => (a.hasSubmitted === b.hasSubmitted) ? 0 : a.hasSubmitted ? 1 : -1).map(player => (
                             <div key={player.uid} className={clsx("flex items-center gap-3 p-3 rounded-lg border transition-all", 
                                 player.hasSubmitted 
                                     ? "bg-emerald-900/20 border-emerald-500/30" 
@@ -951,13 +891,6 @@ export default function Game() {
                                     <div className={clsx("text-xs font-medium", player.hasSubmitted ? "text-emerald-400" : "text-slate-500")}>
                                         {player.hasSubmitted ? 'Previsão Enviada' : 'Analisando...'}
                                     </div>
-                                    {player.isHost ? (
-                                        <div className="text-[10px] text-slate-500">—</div>
-                                    ) : isHost ? (
-                                        <div className="text-[10px] text-slate-400">{playerPings[player.uid] != null ? `${playerPings[player.uid]} ms` : '...'}</div>
-                                    ) : player.uid === user?.uid && myPing != null ? (
-                                        <div className="text-[10px] text-cyan-400">{myPing} ms</div>
-                                    ) : null}
                                 </div>
                                 <div className="shrink-0">
                                     {player.hasSubmitted ? (

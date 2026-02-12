@@ -14,5 +14,23 @@ service cloud.firestore {
        allow read: if true;
        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
     }
+    // Regras para Lobbies
+    match /lobbies/{lobbyId} {
+      // Qualquer usuário autenticado pode ler, criar, atualizar ou deletar um lobby
+      // Simplificado para desenvolvimento. Em produção, regras mais rígidas seriam necessárias.
+      allow read, write: if request.auth != null;
+
+      // Subcoleção de chat
+      match /messages/{messageId} {
+        allow read, create: if request.auth != null;
+      }
+    }
+    // Regras para convites
+    match /invites/{userId} {
+       // O usuário pode ler/deletar seu próprio convite
+       allow read, delete: if request.auth != null && request.auth.uid == userId;
+       // Outros usuários podem criar (enviar) um convite para ele
+       allow create: if request.auth != null;
+    }
   }
 }

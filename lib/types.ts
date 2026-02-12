@@ -87,13 +87,11 @@ export interface LobbyPlayer {
   displayName: string;
   photoURL?: string;
   isHost: boolean;
-  isReady: boolean;
   hasSubmitted: boolean;
   totalScore: number;
   lastRoundScore: number;
   lastRoundDistance: number;
   streakCount: number;
-  loadProgress?: number; // 0-100% loading status
 }
 
 export interface ChatMessage {
@@ -112,7 +110,7 @@ export interface Lobby {
   players: LobbyPlayer[];
   currentEventId: string | null;
   difficulty: PrevisaoDifficulty;
-  loadingStartTime?: number; // Shared loading timer start
+  loadingStartTime?: any; // Can be a server timestamp
   roundEndTime: number | null; // Timestamp for forced finish
   roundsPlayed: number;
   createdAt: number;
