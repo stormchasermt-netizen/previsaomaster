@@ -227,6 +227,19 @@ export default function Game() {
       return () => clearInterval(interval);
   }, [lobby?.roundEndTime, lobby?.status, isMultiplayer, hasSubmittedMP, isHost]);
 
+  // MULTIPLAYER: Host automatically ends round when all players have submitted
+  useEffect(() => {
+    if (isHost && lobby?.status === 'playing') {
+        const allSubmitted = lobby.players.every(p => p.hasSubmitted);
+        if (allSubmitted) {
+            const timer = setTimeout(() => {
+                forceEndRound();
+            }, 1500); 
+            return () => clearTimeout(timer);
+        }
+    }
+  }, [lobby, isHost, forceEndRound]);
+
 
   const activeLayer = useMemo(() => {
     if (!currentEvent || !selectedParamId) return null;
@@ -1080,6 +1093,13 @@ export default function Game() {
                 </div>
             </div>
         )}
+
+        {/* IMAGE PRELOADING */}
+        <div style={{ display: 'none' }}>
+            {currentEvent?.layers.map(layer => (
+                <img key={layer.imageUrl} src={layer.imageUrl} alt="preloaded" />
+            ))}
+        </div>
 
         {/* IN-GAME CHAT (MULTIPLAYER ONLY) */}
         {isMultiplayer && <GameChat />}
