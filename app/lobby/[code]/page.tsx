@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMultiplayer } from '@/contexts/MultiplayerContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,6 +36,7 @@ export default function LobbyPage() {
 
     const [isJoining, setIsJoining] = useState(true);
     const [joinError, setJoinError] = useState(false);
+    const hasJoinedRef = useRef(false); // Ref to prevent re-joining loop
     
     // Social Sidebar State
     const [showSocial, setShowSocial] = useState(false);
@@ -90,18 +91,24 @@ export default function LobbyPage() {
     // Auto-join if url param exists and not in lobby
     useEffect(() => {
         const initJoin = async () => {
-            if (code && user && (!lobby || lobby.code !== code)) {
+            // Only attempt to join if the code/user are present and we haven't tried yet.
+            if (code && user && !hasJoinedRef.current) {
+                hasJoinedRef.current = true; // Set flag immediately to prevent re-runs
                 setIsJoining(true);
                 setJoinError(false);
                 const success = await joinLobby(code);
                 setIsJoining(false);
-                if (!success) setJoinError(true);
+                if (!success) {
+                    setJoinError(true);
+                    hasJoinedRef.current = false; // Allow retry on failure
+                }
             } else if (lobby && lobby.code === code) {
+                // If we are already in the correct lobby, just make sure joining state is false.
                 setIsJoining(false);
             }
         };
         initJoin();
-    }, [code, user, lobby]); 
+    }, [code, user, joinLobby]); 
 
     // Redirect on lobby status change
     useEffect(() => {
@@ -128,7 +135,7 @@ export default function LobbyPage() {
                     <p className="text-slate-400 text-sm mb-2">Não foi possível conectar à sala <span className="text-white font-mono font-bold">{code}</span>.</p>
                     <p className="text-slate-500 text-xs mb-6">A sala pode não existir ou a partida já começou.</p>
                     <div className="flex flex-col gap-3">
-                         <button onClick={() => { setJoinError(false); joinLobby(code); }} className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                         <button onClick={() => { hasJoinedRef.current = false; setJoinError(false); }} className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
                             <RefreshCw className="w-4 h-4" /> Tentar Novamente
                         </button>
                         <button onClick={() => router.push('/')} className="bg-slate-800 text-slate-300 px-6 py-3 rounded-xl font-bold">Voltar ao Menu</button>
