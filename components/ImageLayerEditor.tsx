@@ -1,7 +1,8 @@
-import React, { useRef, useState } from 'react';
-import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
-import { Trash2, Save, Crop as CropIcon, Upload, Image as ImageIcon } from 'lucide-react';
-import type { MapBounds } from '@/lib/types';
+import React, { useRef, useState, useEffect } from 'react';
+import ReactCrop, { Crop, PixelCrop, PercentCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import { Trash2, Save, Crop as CropIcon, Upload, Image as ImageIcon, Bookmark, BookmarkCheck } from 'lucide-react';
+import clsx from 'clsx';
+const PRESET_STORAGE_KEY = 'crop_preset_default';
 
 // Helper to generate canvas preview and return base64
 async function canvasPreview(image: HTMLImageElement, crop: PixelCrop) {
@@ -73,15 +74,43 @@ function centerDefaultCrop(mediaWidth: number, mediaHeight: number) {
 }
 
 type ImageLayerEditorProps = {
-  onSave: (imageUrl: string) => void; 
+  onSave: (imageUrl: string) => void;
+  /** Chave para preset (ex: "layerId_timeSlot"). Se não informada, usa preset global. */
+  presetKey?: string;
 };
 
-export function ImageLayerEditor({ onSave }: ImageLayerEditorProps) {
+function loadPreset(key: string): PercentCrop | null {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (parsed && typeof parsed.x === 'number' && typeof parsed.width === 'number') {
+      return { ...parsed, unit: '%' as const };
+    }
+  } catch {}
+  return null;
+}
+
+function savePreset(key: string, crop: PercentCrop) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ x: crop.x, y: crop.y, width: crop.width, height: crop.height }));
+  } catch (e) {
+    console.error('Erro ao salvar preset:', e);
+  }
+}
+
+export function ImageLayerEditor({ onSave, presetKey }: ImageLayerEditorProps) {
   const [originalImageSrc, setOriginalImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const imgRef = useRef<HTMLImageElement>(null);
   const [uploading, setUploading] = useState(false);
+  const storageKey = presetKey ? `crop_preset_${presetKey}` : PRESET_STORAGE_KEY;
+  const [hasPreset, setHasPreset] = useState(false);
+
+  useEffect(() => {
+    setHasPreset(!!localStorage.getItem(storageKey));
+  }, [storageKey]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -95,7 +124,35 @@ export function ImageLayerEditor({ onSave }: ImageLayerEditorProps) {
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
-    setCrop(centerDefaultCrop(width, height));
+    const saved = loadPreset(storageKey);
+    if (saved) {
+      setCrop(saved);
+    } else {
+      setCrop(centerDefaultCrop(width, height));
+    }
+  };
+
+  const handleSavePreset = () => {
+    if (crop && crop.unit === '%') {
+      savePreset(storageKey, crop as PercentCrop);
+      setHasPreset(true);
+    } else if (completedCrop && imgRef.current) {
+      const { width, height } = imgRef.current;
+      const percentCrop: PercentCrop = {
+        unit: '%',
+        x: (completedCrop.x / width) * 100,
+        y: (completedCrop.y / height) * 100,
+        width: (completedCrop.width / width) * 100,
+        height: (completedCrop.height / height) * 100,
+      };
+      savePreset(storageKey, percentCrop);
+      setHasPreset(true);
+    }
+  };
+
+  const handleApplyPreset = () => {
+    const saved = loadPreset(storageKey);
+    if (saved) setCrop(saved);
   };
 
   const handleSaveFinal = async () => {
@@ -140,16 +197,47 @@ export function ImageLayerEditor({ onSave }: ImageLayerEditorProps) {
       ) : (
         <div className="w-full flex flex-col items-center gap-6">
             <div className="bg-slate-950 p-4 rounded-lg border border-white/10 w-full max-w-3xl flex flex-col items-center">
-                <div className="flex justify-between w-full mb-4">
+                <div className="flex justify-between items-center w-full mb-4 flex-wrap gap-2">
                     <h3 className="text-white font-medium flex items-center gap-2">
                         <CropIcon size={16} className="text-cyan-400"/> Ajustar Recorte (Livre)
                     </h3>
-                    <button 
-                        onClick={handleClear}
-                        className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
-                    >
-                        <Trash2 size={12} /> Descartar
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {crop && (
+                            <div className="text-xs font-mono text-slate-400 bg-slate-900/80 px-2 py-1 rounded border border-white/5" title="Coordenadas do recorte (percentual da imagem)">
+                                {crop.unit === '%' ? (
+                                    <>X: {crop.x.toFixed(1)}% · Y: {crop.y.toFixed(1)}% · L: {crop.width.toFixed(1)}% · A: {crop.height.toFixed(1)}%</>
+                                ) : (
+                                    <>X: {Math.round(crop.x)}px · Y: {Math.round(crop.y)}px · L: {Math.round(crop.width)}px · A: {Math.round(crop.height)}px</>
+                                )}
+                            </div>
+                        )}
+                        <button 
+                            onClick={handleSavePreset}
+                            className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 border border-cyan-500/30 px-2 py-1 rounded hover:bg-cyan-500/10"
+                            title="Salvar posição atual como padrão. Toda nova edição virá com este recorte."
+                        >
+                            <Bookmark size={12} /> Salvar como padrão
+                        </button>
+                        <button 
+                            onClick={handleApplyPreset}
+                            disabled={!hasPreset}
+                            className={clsx(
+                                "text-xs flex items-center gap-1 border px-2 py-1 rounded",
+                                hasPreset 
+                                    ? "text-emerald-400 hover:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10"
+                                    : "text-slate-500 border-slate-600/50 cursor-not-allowed"
+                            )}
+                            title={hasPreset ? "Aplicar recorte padrão salvo" : "Salve um padrão primeiro com 'Salvar como padrão'"}
+                        >
+                            <BookmarkCheck size={12} /> Usar padrão
+                        </button>
+                        <button 
+                            onClick={handleClear}
+                            className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+                        >
+                            <Trash2 size={12} /> Descartar
+                        </button>
+                    </div>
                 </div>
 
                 <div className="relative border border-white/5 shadow-2xl bg-black">

@@ -173,7 +173,7 @@ export default function Game() {
         }
     }
 
-    // 2. ROUND END SYNC
+    // 2. ROUND END SYNC - mostra página de resultado (mapa + alvo) até usuário clicar Avançar
     if (lobby && lobby.status === 'round_results') {
         if (phase !== 'result') {
             setPhase('result');
@@ -192,6 +192,7 @@ export default function Game() {
                       });
                  }
             }
+            // Usuário permanece na página de resultado até clicar "Avançar"
         }
     }
 
@@ -375,8 +376,12 @@ export default function Game() {
     }
 
     if (isMultiplayer) {
-        submitRoundScore(computed.finalScore, computed.minDistance, nextStreak);
-        addToast('Previsão enviada! Aguardando outros jogadores.', 'info');
+        try {
+            await submitRoundScore(computed.finalScore, computed.minDistance, nextStreak);
+            addToast('Previsão enviada! Aguardando outros jogadores.', 'info');
+        } catch (e) {
+            addToast('Erro ao enviar. Tente novamente.', 'error');
+        }
     } else {
         setSessionStreak(nextStreak);
         setCurrentScore(prev => prev + computed.finalScore);
@@ -422,9 +427,15 @@ export default function Game() {
       }
   };
 
-  const handleHostForceFinish = () => {
+  const handleHostForceFinish = async () => {
       if (isMultiplayer && isHost) {
-          triggerForceFinish();
+          await triggerForceFinish();
+      }
+  };
+
+  const handleHostForceEndNow = async () => {
+      if (isMultiplayer && isHost) {
+          await forceEndRound();
       }
   };
 
@@ -588,7 +599,7 @@ export default function Game() {
                                     onClick={() => router.push('/lobby-leaderboard')}
                                     className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-cyan-900/40 flex items-center justify-center gap-2 transition-all hover:scale-105 animate-pulse"
                                 >
-                                    <ListOrdered className="w-5 h-5" /> Ver Placar da Sala
+                                    <ArrowRight className="w-5 h-5" /> Avançar para Placar da Sala
                                 </button>
                             ) : (
                                 <>
@@ -653,10 +664,11 @@ export default function Game() {
     // Top-16 to sit BELOW the Layout header
     <div className="fixed inset-0 top-16 bg-[#0a0f1a] flex flex-col z-0">
         
-        {/* TIMER OVERLAY (Multiplayer) */}
+        {/* TIMER OVERLAY (Multiplayer) - visível para todos os jogadores */}
         {roundTimer !== null && (
-            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[100] bg-red-600/90 text-white px-6 py-2 rounded-full font-black text-2xl shadow-xl animate-pulse flex items-center gap-2 border border-red-400">
-                <Clock className="w-6 h-6" /> {roundTimer}s
+            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[100] bg-red-600/90 text-white px-6 py-3 rounded-full font-black text-2xl shadow-xl animate-pulse flex items-center gap-2 border-2 border-red-400">
+                <Clock className="w-6 h-6" />
+                <span>Finalizando em: {roundTimer}s</span>
             </div>
         )}
 
@@ -708,16 +720,28 @@ export default function Game() {
             </div>
 
             <div className="flex items-center gap-2">
-                {/* HOST FORCE FINISH BUTTON */}
-                {isMultiplayer && isHost && !lobby?.roundEndTime && (
-                     <button 
-                        onClick={handleHostForceFinish}
-                        className="bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white border border-red-500/30 px-3 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all"
-                        title="Forçar fim da rodada (15s)"
-                     >
-                        <Clock className="w-4 h-4" /> 
-                        <span className="hidden md:inline">Finalizar Rodada</span>
-                     </button>
+                {/* HOST FORCE FINISH BUTTONS */}
+                {isMultiplayer && isHost && lobby?.status === 'playing' && (
+                     <div className="flex items-center gap-2">
+                        {!lobby?.roundEndTime ? (
+                            <button 
+                                onClick={handleHostForceFinish}
+                                className="bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white border border-red-500/30 px-3 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all"
+                                title="Iniciar timer de 15s para finalizar rodada"
+                            >
+                                <Clock className="w-4 h-4" /> 
+                                <span className="hidden md:inline">Finalizar em 15s</span>
+                            </button>
+                        ) : null}
+                        <button 
+                            onClick={handleHostForceEndNow}
+                            className="bg-rose-700/80 hover:bg-rose-600 text-white border border-rose-500/50 px-3 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all"
+                            title="Encerrar rodada imediatamente"
+                        >
+                            <span className="hidden md:inline">Finalizar Agora</span>
+                            <span className="md:hidden">Agora</span>
+                        </button>
+                     </div>
                 )}
 
                 {/* MULTIPLAYER PLAYER LIST TOGGLE */}
@@ -785,29 +809,32 @@ export default function Game() {
             </div>
         </header>
 
-        {/* DESKTOP TIME SELECTOR (Buttons) */}
-        <div className="hidden md:flex h-16 bg-[#05080f] border-b border-white/5 items-center justify-center px-8 relative z-40 shrink-0">
-            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-white/10 shadow-md">
-                {LAYER_TIMES.map((time, index) => (
-                    <button
-                        key={index} // Use index as key for static list
-                        onClick={() => setTimeIndex(index)}
-                        disabled={difficulty === 'mestre' && index !== 4}
-                        className={clsx(
-                            "px-4 py-2 rounded text-xs font-bold transition-all",
-                            timeIndex === index
-                                ? "bg-cyan-600 text-white shadow"
-                                : "text-slate-400 hover:bg-slate-800/60",
-                            difficulty === 'mestre' && index !== 4 && "opacity-50 cursor-not-allowed"
-                        )}
-                    >
-                        {time}
-                    </button>
-                ))}
+        {/* DESKTOP TIME SELECTOR (Slider) */}
+        <div className="hidden md:flex h-16 bg-[#05080f] border-b border-white/5 items-center justify-center px-8 relative z-40 shrink-0 gap-4">
+            <span className="text-slate-500 text-xs font-bold shrink-0">{LAYER_TIMES[0]}</span>
+            <div className="flex-1 max-w-md flex items-center gap-2">
+                <input
+                    type="range"
+                    min={0}
+                    max={LAYER_TIMES.length - 1}
+                    value={timeIndex}
+                    onChange={(e) => setTimeIndex(Number(e.target.value))}
+                    disabled={difficulty === 'mestre'}
+                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(34,211,238,0.6)] [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:border-0"
+                />
             </div>
+            <span className="text-slate-500 text-xs font-bold shrink-0">{LAYER_TIMES[LAYER_TIMES.length - 1]}</span>
+            <div className="bg-slate-900 px-4 py-2 rounded-lg border border-white/10 font-bold text-cyan-400 shrink-0 min-w-[80px] text-center">
+                {LAYER_TIMES[timeIndex]}
+            </div>
+            {roundTimer !== null && (
+                <div className="flex items-center gap-2 bg-red-600/90 text-white px-4 py-2 rounded-full font-black text-sm shrink-0 border border-red-400">
+                    <Clock className="w-4 h-4" /> {roundTimer}s
+                </div>
+            )}
         </div>
 
-        {/* MOBILE CONTROL BAR (Hidden on desktop) */}
+        {/* MOBILE CONTROL BAR (Slider) */}
         <div className="md:hidden flex flex-col bg-[#0a0f1a] border-b border-white/10 p-2 z-40 relative">
              <div className="flex items-center justify-between w-full mb-2">
                  <button 
@@ -823,30 +850,30 @@ export default function Game() {
                      Parâmetros
                      <ChevronDown className={clsx("w-3 h-3 transition-transform", showMobileParams ? "rotate-180" : "")} />
                  </button>
-                 <div className="text-white font-bold text-lg bg-slate-900 px-3 py-1 rounded-lg border border-white/10">
-                    {LAYER_TIMES[timeIndex]}
+                 <div className="flex items-center gap-2">
+                    <div className="text-white font-bold text-lg bg-slate-900 px-3 py-1 rounded-lg border border-white/10">
+                        {LAYER_TIMES[timeIndex]}
+                    </div>
+                    {roundTimer !== null && (
+                        <div className="flex items-center gap-1 bg-red-600/90 text-white px-3 py-1 rounded-full font-black text-sm border border-red-400">
+                            <Clock className="w-4 h-4" /> {roundTimer}s
+                        </div>
+                    )}
                  </div>
              </div>
 
-             <div className="w-full overflow-x-auto custom-scrollbar pb-1">
-                 <div className="flex items-center gap-1 p-1 w-max">
-                     {LAYER_TIMES.map((time, index) => (
-                         <button
-                             key={index}
-                             onClick={() => setTimeIndex(index)}
-                             disabled={difficulty === 'mestre' && index !== 4}
-                             className={clsx(
-                                 "px-4 py-2 rounded text-xs font-bold transition-colors shrink-0",
-                                 timeIndex === index
-                                     ? "bg-cyan-600 text-white"
-                                     : "text-slate-400 bg-slate-800/50 hover:bg-slate-700",
-                                 difficulty === 'mestre' && index !== 4 && "opacity-50 cursor-not-allowed"
-                             )}
-                         >
-                             {time}
-                         </button>
-                     ))}
-                 </div>
+             <div className="flex items-center gap-2">
+                 <span className="text-slate-500 text-[10px] font-bold shrink-0">{LAYER_TIMES[0]}</span>
+                 <input
+                     type="range"
+                     min={0}
+                     max={LAYER_TIMES.length - 1}
+                     value={timeIndex}
+                     onChange={(e) => setTimeIndex(Number(e.target.value))}
+                     disabled={difficulty === 'mestre'}
+                     className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:border-0"
+                 />
+                 <span className="text-slate-500 text-[10px] font-bold shrink-0">{LAYER_TIMES[LAYER_TIMES.length - 1]}</span>
              </div>
         </div>
 

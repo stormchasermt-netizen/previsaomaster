@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Lobby, LobbyPlayer, PrevisaoDifficulty, PrevisaoEvent, ChatMessage } from '@/lib/types';
 import { useAuth } from './AuthContext';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,7 @@ import {
   deleteDoc,
   serverTimestamp,
   getDoc,
+  runTransaction,
 } from 'firebase/firestore';
 
 // Define Message Protocol (simplified for Firestore)
@@ -48,8 +49,6 @@ interface MultiplayerContextType {
   chatMessages: ChatMessage[];
   sendChatMessage: (text: string) => void;
   forceStartGame: () => void;
-  // REMOVED P2P SPECIFIC PROPS
-  // downloadProgress, requestEventData, playerPings, myPing
 }
 
 const MultiplayerContext = createContext<MultiplayerContextType | undefined>(undefined);
@@ -69,6 +68,12 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
   const lobbyUnsubscribe = useRef<() => void | undefined>();
   const chatUnsubscribe = useRef<() => void | undefined>();
   const inviteUnsubscribe = useRef<() => void | undefined>();
+  
+  // Create a ref to hold the latest lobby state to avoid stale closures in callbacks.
+  const lobbyStateRef = useRef(lobby);
+  useEffect(() => {
+    lobbyStateRef.current = lobby;
+  }, [lobby]);
 
   // Load recent players from local storage
   useEffect(() => {
@@ -124,7 +129,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
     setRecentPlayers(updated);
   };
   
-  const createLobby = async (difficulty: PrevisaoDifficulty): Promise<string> => {
+  const createLobby = useCallback(async (difficulty: PrevisaoDifficulty): Promise<string> => {
       if (!user || !db) throw new Error("Usuário não logado ou DB não inicializado.");
 
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -155,9 +160,9 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
       await setDoc(lobbyRef, newLobby);
       router.push(`/lobby/${code}`);
       return code;
-  };
+  }, [user, db, router]);
 
-  const joinLobby = async (code: string): Promise<boolean> => {
+  const joinLobby = useCallback(async (code: string): Promise<boolean> => {
       if (!user || !db) return false;
 
       // Clean up any previous listeners before joining a new lobby
@@ -228,25 +233,23 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
 
       router.push(`/lobby/${code}`);
       return true;
-  };
+  }, [user, db, router, addToast]);
   
-  const leaveLobby = async () => {
-    if (!user || !lobby || !db) return;
+  const leaveLobby = useCallback(async () => {
+    const currentLobby = lobbyStateRef.current;
+    if (!user || !currentLobby || !db) return;
 
-    const lobbyRef = doc(db, 'lobbies', lobby.code);
+    const lobbyRef = doc(db, 'lobbies', currentLobby.code);
     
-    // Stop listening to updates
     lobbyUnsubscribe.current?.();
     chatUnsubscribe.current?.();
     setLobby(null);
     setChatMessages([]);
     
-    if (lobby.hostId === user.uid) {
-      // Host leaves, delete the lobby for everyone
+    if (currentLobby.hostId === user.uid) {
       await deleteDoc(lobbyRef);
     } else {
-      // Player leaves, remove them from the players array
-      const playerToRemove = lobby.players.find(p => p.uid === user.uid);
+      const playerToRemove = currentLobby.players.find(p => p.uid === user.uid);
       if (playerToRemove) {
         await updateDoc(lobbyRef, {
           players: arrayRemove(playerToRemove)
@@ -254,87 +257,108 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
       }
     }
     router.push('/');
-  };
+  }, [user, db, router]);
 
-  const startGame = async (eventId: string) => {
-      if (!lobby || !db || lobby.hostId !== user?.uid) return;
+  const startGame = useCallback(async (eventId: string) => {
+      const currentLobby = lobbyStateRef.current;
+      if (!currentLobby || !db || currentLobby.hostId !== user?.uid) return;
       
-      const lobbyRef = doc(db, 'lobbies', lobby.code);
+      const lobbyRef = doc(db, 'lobbies', currentLobby.code);
       await updateDoc(lobbyRef, {
           status: 'loading',
           currentEventId: eventId,
           loadingStartTime: serverTimestamp(),
           roundEndTime: null,
-          roundsPlayed: (lobby.roundsPlayed || 0) + 1,
-          // Reset players for new round
-          players: lobby.players.map(p => ({
+          roundsPlayed: (currentLobby.roundsPlayed || 0) + 1,
+          players: currentLobby.players.map(p => ({
               ...p,
               hasSubmitted: false,
               lastRoundScore: 0,
               lastRoundDistance: 0,
           }))
       });
-  };
+  }, [user, db]);
 
-  const submitRoundScore = async (score: number, distance: number, streak: number) => {
-      if (!user || !lobby || !db) return;
-      const lobbyRef = doc(db, 'lobbies', lobby.code);
-      const playerIndex = lobby.players.findIndex(p => p.uid === user.uid);
-      if (playerIndex === -1) return;
+  const submitRoundScore = useCallback(async (score: number, distance: number, streak: number) => {
+      const currentLobby = lobbyStateRef.current;
+      if (!user || !currentLobby || !db) return;
+      const lobbyRef = doc(db, 'lobbies', currentLobby.code);
 
-      const updatedPlayers = [...lobby.players];
-      const player = { ...updatedPlayers[playerIndex] };
+      try {
+          await runTransaction(db, async (transaction) => {
+              const lobbySnap = await transaction.get(lobbyRef);
+              if (!lobbySnap.exists()) return;
+              const lobbyData = lobbySnap.data() as Lobby;
+              const playerIndex = lobbyData.players.findIndex(p => p.uid === user!.uid);
+              if (playerIndex === -1) return;
 
-      player.hasSubmitted = true;
-      player.lastRoundScore = score;
-      player.lastRoundDistance = distance;
-      player.totalScore += score;
-      player.streakCount = streak;
-      
-      updatedPlayers[playerIndex] = player;
+              const updatedPlayers = [...lobbyData.players];
+              const player = { ...updatedPlayers[playerIndex] };
+              player.hasSubmitted = true;
+              player.lastRoundScore = score;
+              player.lastRoundDistance = distance;
+              player.totalScore = (player.totalScore || 0) + score;
+              player.streakCount = streak;
+              updatedPlayers[playerIndex] = player;
 
-      await updateDoc(lobbyRef, { players: updatedPlayers });
-
-      // If all players submitted, auto-advance to results for host
-      if (updatedPlayers.every(p => p.hasSubmitted) && lobby.hostId === user.uid) {
-           setTimeout(async () => {
-                const currentLobbyState = await getDoc(lobbyRef);
-                if(currentLobbyState.exists() && (currentLobbyState.data() as Lobby).status === 'playing') {
-                     await updateDoc(lobbyRef, { status: 'round_results' });
-                }
-           }, 1000); // 1 sec delay
+              const allSubmitted = updatedPlayers.every(p => p.hasSubmitted);
+              if (allSubmitted) {
+                  transaction.update(lobbyRef, { players: updatedPlayers, status: 'round_results' });
+              } else {
+                  transaction.update(lobbyRef, { players: updatedPlayers });
+              }
+          });
+      } catch (e: any) {
+          console.error('submitRoundScore error:', e);
+          addToast(e?.message || 'Erro ao enviar pontuação.', 'error');
       }
-  };
+  }, [user, db, addToast]);
 
-  const nextRound = async (eventId: string) => { await startGame(eventId); };
+  const nextRound = useCallback(async (eventId: string) => { 
+      await startGame(eventId); 
+  }, [startGame]);
 
-  const triggerForceFinish = async () => {
-      if (!lobby || !db || lobby.hostId !== user?.uid) return;
-      const lobbyRef = doc(db, 'lobbies', lobby.code);
-      await updateDoc(lobbyRef, { roundEndTime: Date.now() + 15000 });
-  };
+  const triggerForceFinish = useCallback(async () => {
+      const currentLobby = lobbyStateRef.current;
+      if (!currentLobby || !db || currentLobby.hostId !== user?.uid) return;
+      try {
+          const lobbyRef = doc(db, 'lobbies', currentLobby.code);
+          await updateDoc(lobbyRef, { roundEndTime: Date.now() + 15000 });
+      } catch (e: any) {
+          console.error('triggerForceFinish error:', e);
+          addToast(e?.message || 'Erro ao iniciar timer. Tente "Finalizar Agora".', 'error');
+      }
+  }, [user, db, addToast]);
   
-  const forceEndRound = async () => {
-      if (!lobby || !db || lobby.hostId !== user?.uid) return;
-      const lobbyRef = doc(db, 'lobbies', lobby.code);
-      const playersWithZeroScore = lobby.players.map(p => {
-          if (!p.hasSubmitted) {
-              return { ...p, hasSubmitted: true, lastRoundScore: 0, lastRoundDistance: 99999 };
-          }
-          return p;
-      });
-      await updateDoc(lobbyRef, { players: playersWithZeroScore, status: 'round_results' });
-  };
+  const forceEndRound = useCallback(async () => {
+      const currentLobby = lobbyStateRef.current;
+      if (!currentLobby || !db || currentLobby.hostId !== user?.uid) return;
+      try {
+          const lobbyRef = doc(db, 'lobbies', currentLobby.code);
+          const playersWithZeroScore = currentLobby.players.map((p: LobbyPlayer) => {
+              if (!p.hasSubmitted) {
+                  return { ...p, hasSubmitted: true, lastRoundScore: 0, lastRoundDistance: 99999 };
+              }
+              return p;
+          });
+          await updateDoc(lobbyRef, { players: playersWithZeroScore, status: 'round_results', roundEndTime: null });
+      } catch (e: any) {
+          console.error('forceEndRound error:', e);
+          addToast(e?.message || 'Erro ao finalizar rodada.', 'error');
+      }
+  }, [user, db, addToast]);
 
-  const endMatch = async () => {
-      if (!lobby || !db || lobby.hostId !== user?.uid) return;
-      const lobbyRef = doc(db, 'lobbies', lobby.code);
+  const endMatch = useCallback(async () => {
+      const currentLobby = lobbyStateRef.current;
+      if (!currentLobby || !db || currentLobby.hostId !== user?.uid) return;
+      const lobbyRef = doc(db, 'lobbies', currentLobby.code);
       await updateDoc(lobbyRef, { status: 'finished' });
-  };
+  }, [user, db]);
 
-  const sendInvite = async (targetUid: string, lobbyCodeOverride?: string) => {
+  const sendInvite = useCallback(async (targetUid: string, lobbyCodeOverride?: string) => {
+      const currentLobby = lobbyStateRef.current;
       if (!user || !db) return;
-      const code = lobbyCodeOverride || lobby?.code;
+      const code = lobbyCodeOverride || currentLobby?.code;
       if (!code) {
           addToast('Crie ou entre em uma sala para poder convidar.', 'error');
           return;
@@ -346,25 +370,26 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           createdAt: serverTimestamp()
       });
       addToast('Convite enviado!', 'success');
-  };
+  }, [user, db, addToast]);
 
-  const acceptInvite = async () => {
+  const acceptInvite = useCallback(async () => {
       if (!incomingInvite || !user || !db) return;
       const code = incomingInvite.lobbyCode;
       setIncomingInvite(null);
       await deleteDoc(doc(db, 'invites', user.uid));
       await joinLobby(code);
-  };
+  }, [incomingInvite, user, db, joinLobby]);
   
-  const declineInvite = async () => {
+  const declineInvite = useCallback(async () => {
       if (!user || !db) return;
       setIncomingInvite(null);
       await deleteDoc(doc(db, 'invites', user.uid));
-  };
+  }, [user, db]);
 
-  const sendChatMessage = async (text: string) => {
-      if (!user || !lobby || !text.trim() || !db) return;
-      const chatRef = collection(db, 'lobbies', lobby.code, 'messages');
+  const sendChatMessage = useCallback(async (text: string) => {
+      const currentLobby = lobbyStateRef.current;
+      if (!user || !currentLobby || !text.trim() || !db) return;
+      const chatRef = collection(db, 'lobbies', currentLobby.code, 'messages');
       const message: Omit<ChatMessage, 'id'> = {
           senderId: user.uid,
           senderName: user.displayName,
@@ -372,14 +397,15 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           timestamp: Date.now()
       };
       await addDoc(chatRef, message);
-  };
+  }, [user, db]);
 
-  const forceStartGame = async () => {
-      if (lobby?.hostId === user?.uid && lobby?.status === 'loading' && db) {
-          const lobbyRef = doc(db, 'lobbies', lobby.code);
+  const forceStartGame = useCallback(async () => {
+      const currentLobby = lobbyStateRef.current;
+      if (currentLobby?.hostId === user?.uid && currentLobby?.status === 'loading' && db) {
+          const lobbyRef = doc(db, 'lobbies', currentLobby.code);
           await updateDoc(lobbyRef, { status: 'playing' });
       }
-  };
+  }, [user, db]);
 
   return (
     <MultiplayerContext.Provider value={{

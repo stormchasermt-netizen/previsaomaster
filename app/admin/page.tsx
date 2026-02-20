@@ -351,7 +351,10 @@ export default function Admin() {
                     <button onClick={() => setShowLayerEditor(false)} className="text-slate-400 hover:text-white"><X/></button>
                 </div>
                 <div className="p-4 overflow-y-auto">
-                    <ImageLayerEditor onSave={handleLayerSave} />
+                    <ImageLayerEditor 
+                        onSave={handleLayerSave} 
+                        presetKey={undefined}
+                    />
                 </div>
             </div>
         </div>
