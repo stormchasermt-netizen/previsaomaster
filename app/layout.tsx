@@ -33,7 +33,7 @@ export default function RootLayout({
         </Providers>
         <Script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js" />
         <Script
-          src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&v=weekly&libraries=drawing,geometry`}
+          src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&v=weekly&libraries=drawing,geometry&loading=async`}
           strategy="afterInteractive"
         />
       </body>

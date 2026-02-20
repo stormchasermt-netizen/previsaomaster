@@ -1,6 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async redirects() {
+    return [
+      { source: '/bswc', destination: '/previsao', permanent: true },
+      { source: '/bswc/ranking', destination: '/previsao/ranking', permanent: true },
+      { source: '/bswc/relatos', destination: '/previsao/relatos', permanent: true },
+    ];
+  },
   swcMinify: true,
   typescript: {
     ignoreBuildErrors: true,

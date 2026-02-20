@@ -115,3 +115,62 @@ export interface Lobby {
   roundsPlayed: number;
   createdAt: number;
 }
+
+// BSWC Previsão & Sondagens (modo paralelo)
+
+export type BswcHazard = 'granizo' | 'vento' | 'tornado';
+export type BswcSeverity = 'NOR' | 'SS';
+
+export interface BswcForecastFeature {
+  type: 'Feature';
+  geometry: { type: 'Polygon'; coordinates: number[][][] };
+  properties: { dia: string; type: BswcHazard; level: number };
+}
+
+export interface BswcForecast {
+  id?: string;
+  userId: string;
+  displayName: string;
+  dateISO: string;
+  dayType: string;
+  geojson: { type: 'FeatureCollection'; features: BswcForecastFeature[] };
+  submitTime: string;
+  createdAt: number;
+}
+
+export interface BswcReport {
+  id?: string;
+  dateISO: string;
+  hazard: BswcHazard;
+  sev: BswcSeverity;
+  lat: number;
+  lon: number;
+  hora: string;
+  autor?: string;
+  createdAt: number;
+}
+
+export interface BswcScoreStats {
+  hit: number;
+  miss: number;
+  pct: number;
+  pts: number;
+}
+
+export interface BswcScoreboard {
+  granizo: BswcScoreStats;
+  vento: BswcScoreStats;
+  tornado: BswcScoreStats;
+  totalPts: number;
+}
+
+export interface BswcRankingRow {
+  pos: number;
+  playerName: string;
+  userId: string;
+  daysCount: number;
+  hailPoints: number;
+  windPoints: number;
+  tornadoPoints: number;
+  totalPoints: number;
+}

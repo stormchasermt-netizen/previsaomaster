@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CloudLightning, User, Users, Radio, BookOpen, HelpCircle, X, Shield, Zap, TrendingUp, Medal, Hash, Gamepad2, ChevronLeft, ArrowRight, UserPlus, Send, Check, MessageSquare } from 'lucide-react';
+import { CloudLightning, User, Users, Radio, BookOpen, HelpCircle, X, Shield, Zap, TrendingUp, Medal, Hash, Gamepad2, ChevronLeft, ArrowRight, UserPlus, Send, Check, MessageSquare, MapPin } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMultiplayer } from '@/contexts/MultiplayerContext';
 import { mockStore } from '@/lib/store';
@@ -142,6 +142,18 @@ export default function Home() {
                   <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider group-hover:text-slate-400">Criar ou Entrar</p>
               </div>
           </div>
+
+          {/* Previsão & Sondagens (BSWC) */}
+          <Link href="/previsao" className="group block">
+              <div className="w-64 h-40 bg-[#161b22] border border-white/10 rounded-lg flex flex-col items-center justify-center hover:border-amber-500/50 hover:bg-[#1c2128] transition-all shadow-lg relative overflow-hidden">
+                   <div className="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                   <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center mb-3 group-hover:bg-amber-500/20 group-hover:text-amber-400 transition-colors">
+                      <MapPin className="w-5 h-5 text-slate-300 group-hover:text-amber-400" />
+                  </div>
+                  <h3 className="text-white font-bold group-hover:text-amber-400 transition-colors">Previsão & Sondagens</h3>
+                  <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider group-hover:text-slate-400">Desenhe polígonos, ganhe pontos</p>
+              </div>
+          </Link>
 
           {/* Live Mode (Disabled) */}
           <div className="relative w-64 h-40 bg-[#161b22] border border-white/5 rounded-lg flex flex-col items-center justify-center opacity-60 cursor-not-allowed">
