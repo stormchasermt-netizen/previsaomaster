@@ -44,7 +44,7 @@ type GamePhase = 'setup' | 'loading' | 'playing' | 'result';
 export default function Game() {
   const { user } = useAuth();
   const { addToast } = useToast();
-  const { lobby, currentEventData, submitRoundScore, triggerForceFinish, forceEndRound, isHost } = useMultiplayer();
+  const { lobby, currentEventData, submitRoundScore, triggerForceFinish, forceEndRound, isHost, forceStartGame } = useMultiplayer();
   const router = useRouter();
   
   // Derived values
@@ -120,20 +120,22 @@ export default function Game() {
   useEffect(() => {
       if (isMultiplayer && lobby?.status === 'loading' && lobby.loadingStartTime) {
           const timer = setInterval(() => {
-              // loadingStartTime can be a server timestamp object
               const startTime = (lobby.loadingStartTime as any)?.toMillis?.() || lobby.loadingStartTime;
               const elapsed = Date.now() - startTime;
               const left = Math.max(0, 10 - Math.floor(elapsed / 1000));
               setLoadingTimeLeft(left);
               if (left <= 0 && phase !== 'playing') {
                   setPhase('playing');
+                  if (isHost) {
+                      forceStartGame();
+                  }
               }
           }, 200);
           return () => clearInterval(timer);
       } else {
           setLoadingTimeLeft(null);
       }
-  }, [isMultiplayer, lobby?.status, lobby?.loadingStartTime, phase]);
+  }, [isMultiplayer, lobby?.status, lobby?.loadingStartTime, phase, isHost, forceStartGame]);
 
   // MULTIPLAYER: Sync with Lobby Status & Event ID
   useEffect(() => {
@@ -809,32 +811,29 @@ export default function Game() {
             </div>
         </header>
 
-        {/* DESKTOP TIME SELECTOR (Slider) */}
-        <div className="hidden md:flex h-16 bg-[#05080f] border-b border-white/5 items-center justify-center px-8 relative z-40 shrink-0 gap-4">
-            <span className="text-slate-500 text-xs font-bold shrink-0">{LAYER_TIMES[0]}</span>
-            <div className="flex-1 max-w-md flex items-center gap-2">
-                <input
-                    type="range"
-                    min={0}
-                    max={LAYER_TIMES.length - 1}
-                    value={timeIndex}
-                    onChange={(e) => setTimeIndex(Number(e.target.value))}
-                    disabled={difficulty === 'mestre'}
-                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(34,211,238,0.6)] [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:border-0"
-                />
+        {/* TIME SELECTOR (Buttons) */}
+        <div className="bg-[#05080f] border-b border-white/5 p-2 z-40 shrink-0">
+            <div className="flex items-center justify-center gap-1 overflow-x-auto custom-scrollbar">
+                {LAYER_TIMES.map((time, index) => (
+                    <button
+                        key={time}
+                        onClick={() => setTimeIndex(index)}
+                        disabled={difficulty === 'mestre' && index !== 4}
+                        className={clsx(
+                            "px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap",
+                            timeIndex === index 
+                                ? "bg-cyan-600 text-white shadow-lg" 
+                                : "text-slate-400 hover:bg-slate-800",
+                            difficulty === 'mestre' && index !== 4 && "opacity-50 cursor-not-allowed"
+                        )}
+                    >
+                        {time}
+                    </button>
+                ))}
             </div>
-            <span className="text-slate-500 text-xs font-bold shrink-0">{LAYER_TIMES[LAYER_TIMES.length - 1]}</span>
-            <div className="bg-slate-900 px-4 py-2 rounded-lg border border-white/10 font-bold text-cyan-400 shrink-0 min-w-[80px] text-center">
-                {LAYER_TIMES[timeIndex]}
-            </div>
-            {roundTimer !== null && (
-                <div className="flex items-center gap-2 bg-red-600/90 text-white px-4 py-2 rounded-full font-black text-sm shrink-0 border border-red-400">
-                    <Clock className="w-4 h-4" /> {roundTimer}s
-                </div>
-            )}
         </div>
 
-        {/* MOBILE CONTROL BAR (Slider) */}
+        {/* MOBILE CONTROL BAR - REMOVED, 통합됨 */}
         <div className="md:hidden flex flex-col bg-[#0a0f1a] border-b border-white/10 p-2 z-40 relative">
              <div className="flex items-center justify-between w-full mb-2">
                  <button 
@@ -851,9 +850,6 @@ export default function Game() {
                      <ChevronDown className={clsx("w-3 h-3 transition-transform", showMobileParams ? "rotate-180" : "")} />
                  </button>
                  <div className="flex items-center gap-2">
-                    <div className="text-white font-bold text-lg bg-slate-900 px-3 py-1 rounded-lg border border-white/10">
-                        {LAYER_TIMES[timeIndex]}
-                    </div>
                     {roundTimer !== null && (
                         <div className="flex items-center gap-1 bg-red-600/90 text-white px-3 py-1 rounded-full font-black text-sm border border-red-400">
                             <Clock className="w-4 h-4" /> {roundTimer}s
@@ -861,21 +857,8 @@ export default function Game() {
                     )}
                  </div>
              </div>
-
-             <div className="flex items-center gap-2">
-                 <span className="text-slate-500 text-[10px] font-bold shrink-0">{LAYER_TIMES[0]}</span>
-                 <input
-                     type="range"
-                     min={0}
-                     max={LAYER_TIMES.length - 1}
-                     value={timeIndex}
-                     onChange={(e) => setTimeIndex(Number(e.target.value))}
-                     disabled={difficulty === 'mestre'}
-                     className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:border-0"
-                 />
-                 <span className="text-slate-500 text-[10px] font-bold shrink-0">{LAYER_TIMES[LAYER_TIMES.length - 1]}</span>
-             </div>
         </div>
+
 
         {/* MAIN CONTENT AREA */}
         <div className="flex-1 flex overflow-hidden relative">
