@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Lobby, LobbyPlayer, PrevisaoDifficulty, PrevisaoEvent, ChatMessage } from '@/lib/types';
 import { useAuth } from './AuthContext';
 import { useRouter } from 'next/navigation';
@@ -22,11 +22,6 @@ import {
   getDoc,
   runTransaction,
 } from 'firebase/firestore';
-
-// Define Message Protocol (simplified for Firestore)
-type MPMessage =
-  | { type: 'CHAT_MESSAGE'; message: ChatMessage }
-  | { type: 'INVITE'; lobbyCode: string; hostName: string };
 
 interface MultiplayerContextType {
   lobby: Lobby | null;
@@ -64,30 +59,27 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
   const [incomingInvite, setIncomingInvite] = useState<{ lobbyCode: string; hostName: string } | null>(null);
   const [recentPlayers, setRecentPlayers] = useState<any[]>([]);
 
-  // Refs
-  const lobbyUnsubscribe = useRef<() => void | undefined>();
-  const chatUnsubscribe = useRef<() => void | undefined>();
-  const inviteUnsubscribe = useRef<() => void | undefined>();
+  // Refs for cleanup
+  const lobbyUnsubscribe = useRef<() => void>();
+  const chatUnsubscribe = useRef<() => void>();
+  const inviteUnsubscribe = useRef<() => void>();
   
-  // Create a ref to hold the latest lobby state to avoid stale closures in callbacks.
+  // Ref for latest lobby state to use in stable callbacks
   const lobbyStateRef = useRef(lobby);
   useEffect(() => {
     lobbyStateRef.current = lobby;
   }, [lobby]);
 
-  // Load recent players from local storage
+  // Load recent players from local storage once
   useEffect(() => {
     const stored = localStorage.getItem('previsao_recent_players');
-    if (stored) setRecentPlayers(JSON.parse(stored));
-  }, []);
-
-  // Teardown listeners on unmount or user logout
-  useEffect(() => {
-    return () => {
-      lobbyUnsubscribe.current?.();
-      chatUnsubscribe.current?.();
-      inviteUnsubscribe.current?.();
-    };
+    if (stored) {
+        try {
+            setRecentPlayers(JSON.parse(stored));
+        } catch (e) {
+            console.error("Failed to parse recent players", e);
+        }
+    }
   }, []);
 
   // Listen for invites for the current user
@@ -105,6 +97,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
     } else {
       inviteUnsubscribe.current?.();
     }
+    return () => inviteUnsubscribe.current?.();
   }, [user]);
 
   // Sync current event data when lobby points to a new event
@@ -116,18 +109,18 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
         });
       }
     } else {
-      setCurrentEventData(null);
+      if (currentEventData) setCurrentEventData(null);
     }
-  }, [lobby?.currentEventId]);
+  }, [lobby?.currentEventId, currentEventData?.id]);
 
-  // Add a player to the 'recent players' list in local storage
-  const addToRecentPlayers = (player: { uid: string; displayName: string; photoURL?: string }) => {
-    const current = JSON.parse(localStorage.getItem('previsao_recent_players') || '[]');
-    const filtered = current.filter((p: any) => p.uid !== player.uid);
-    const updated = [{ ...player, lastSeen: Date.now() }, ...filtered].slice(0, 10);
-    localStorage.setItem('previsao_recent_players', JSON.stringify(updated));
-    setRecentPlayers(updated);
-  };
+  const addToRecentPlayers = useCallback((player: { uid: string; displayName: string; photoURL?: string }) => {
+    setRecentPlayers(prev => {
+        const filtered = prev.filter((p: any) => p.uid !== player.uid);
+        const updated = [{ ...player, lastSeen: Date.now() }, ...filtered].slice(0, 10);
+        localStorage.setItem('previsao_recent_players', JSON.stringify(updated));
+        return updated;
+    });
+  }, []);
   
   const createLobby = useCallback(async (difficulty: PrevisaoDifficulty): Promise<string> => {
       if (!user || !db) throw new Error("Usuário não logado ou DB não inicializado.");
@@ -160,12 +153,12 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
       await setDoc(lobbyRef, newLobby);
       router.push(`/lobby/${code}`);
       return code;
-  }, [user, db, router]);
+  }, [user, router]);
 
   const joinLobby = useCallback(async (code: string): Promise<boolean> => {
       if (!user || !db) return false;
 
-      // Clean up any previous listeners before joining a new lobby
+      // Clean up previous listeners
       lobbyUnsubscribe.current?.();
       chatUnsubscribe.current?.();
       
@@ -194,9 +187,6 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           if (snapshot.exists()) {
               const data = snapshot.data() as Lobby;
               setLobby(data);
-              // Also add host to recent players when joining
-              const host = data.players.find(p => p.isHost);
-              if (host) addToRecentPlayers(host);
           } else {
               addToast('A sala foi encerrada pelo host.', 'info');
               setLobby(null);
@@ -204,11 +194,11 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           }
       });
       
-      // Attach listener to chat subcollection
+      // Attach listener to chat
       const chatRef = collection(db, 'lobbies', code, 'messages');
       const q = query(chatRef, orderBy('timestamp', 'asc'));
       chatUnsubscribe.current = onSnapshot(q, (snapshot) => {
-          const messages = snapshot.docs.map(doc => doc.data() as ChatMessage);
+          const messages = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ChatMessage));
           setChatMessages(messages);
       });
       
@@ -228,12 +218,16 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           await updateDoc(lobbyRef, {
               players: arrayUnion(newPlayer)
           });
+          
+          // Only add to recent players once on join
+          const host = lobbyData.players.find(p => p.isHost);
+          if (host) addToRecentPlayers(host);
+          
           addToast('Você entrou na sala!', 'success');
       }
 
-      router.push(`/lobby/${code}`);
       return true;
-  }, [user, db, router, addToast]);
+  }, [user, addToast, addToRecentPlayers, router]);
   
   const leaveLobby = useCallback(async () => {
     const currentLobby = lobbyStateRef.current;
@@ -257,7 +251,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
       }
     }
     router.push('/');
-  }, [user, db, router]);
+  }, [user, router]);
 
   const startGame = useCallback(async (eventId: string) => {
       const currentLobby = lobbyStateRef.current;
@@ -277,7 +271,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
               lastRoundDistance: 0,
           }))
       });
-  }, [user, db]);
+  }, [user]);
 
   const submitRoundScore = useCallback(async (score: number, distance: number, streak: number) => {
       const currentLobby = lobbyStateRef.current;
@@ -312,7 +306,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           console.error('submitRoundScore error:', e);
           addToast(e?.message || 'Erro ao enviar pontuação.', 'error');
       }
-  }, [user, db, addToast]);
+  }, [user, addToast]);
 
   const nextRound = useCallback(async (eventId: string) => { 
       await startGame(eventId); 
@@ -326,9 +320,9 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           await updateDoc(lobbyRef, { roundEndTime: Date.now() + 15000 });
       } catch (e: any) {
           console.error('triggerForceFinish error:', e);
-          addToast(e?.message || 'Erro ao iniciar timer. Tente "Finalizar Agora".', 'error');
+          addToast(e?.message || 'Erro ao iniciar timer.', 'error');
       }
-  }, [user, db, addToast]);
+  }, [user, addToast]);
   
   const forceEndRound = useCallback(async () => {
       const currentLobby = lobbyStateRef.current;
@@ -346,21 +340,21 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           console.error('forceEndRound error:', e);
           addToast(e?.message || 'Erro ao finalizar rodada.', 'error');
       }
-  }, [user, db, addToast]);
+  }, [user, addToast]);
 
   const endMatch = useCallback(async () => {
       const currentLobby = lobbyStateRef.current;
       if (!currentLobby || !db || currentLobby.hostId !== user?.uid) return;
       const lobbyRef = doc(db, 'lobbies', currentLobby.code);
       await updateDoc(lobbyRef, { status: 'finished' });
-  }, [user, db]);
+  }, [user]);
 
   const sendInvite = useCallback(async (targetUid: string, lobbyCodeOverride?: string) => {
       const currentLobby = lobbyStateRef.current;
       if (!user || !db) return;
       const code = lobbyCodeOverride || currentLobby?.code;
       if (!code) {
-          addToast('Crie ou entre em uma sala para poder convidar.', 'error');
+          addToast('Crie ou entre em uma sala para convidar.', 'error');
           return;
       }
       const inviteRef = doc(db, 'invites', targetUid);
@@ -370,7 +364,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           createdAt: serverTimestamp()
       });
       addToast('Convite enviado!', 'success');
-  }, [user, db, addToast]);
+  }, [user, addToast]);
 
   const acceptInvite = useCallback(async () => {
       if (!incomingInvite || !user || !db) return;
@@ -378,13 +372,13 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
       setIncomingInvite(null);
       await deleteDoc(doc(db, 'invites', user.uid));
       await joinLobby(code);
-  }, [incomingInvite, user, db, joinLobby]);
+  }, [incomingInvite, user, joinLobby]);
   
   const declineInvite = useCallback(async () => {
       if (!user || !db) return;
       setIncomingInvite(null);
       await deleteDoc(doc(db, 'invites', user.uid));
-  }, [user, db]);
+  }, [user]);
 
   const sendChatMessage = useCallback(async (text: string) => {
       const currentLobby = lobbyStateRef.current;
@@ -397,7 +391,7 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           timestamp: Date.now()
       };
       await addDoc(chatRef, message);
-  }, [user, db]);
+  }, [user]);
 
   const forceStartGame = useCallback(async () => {
       const currentLobby = lobbyStateRef.current;
@@ -405,16 +399,24 @@ export function MultiplayerProvider({ children }: { children?: React.ReactNode }
           const lobbyRef = doc(db, 'lobbies', currentLobby.code);
           await updateDoc(lobbyRef, { status: 'playing' });
       }
-  }, [user, db]);
+  }, [user]);
+
+  // Memoized context value to prevent unnecessary re-renders of consuming components
+  const contextValue = useMemo(() => ({
+    lobby, currentEventData, isHost: lobby?.hostId === user?.uid,
+    createLobby, joinLobby, leaveLobby, startGame, submitRoundScore,
+    triggerForceFinish, forceEndRound, nextRound, endMatch,
+    sendInvite, incomingInvite, acceptInvite, declineInvite, recentPlayers,
+    chatMessages, sendChatMessage, forceStartGame
+  }), [
+    lobby, currentEventData, user?.uid, recentPlayers, chatMessages, incomingInvite,
+    createLobby, joinLobby, leaveLobby, startGame, submitRoundScore,
+    triggerForceFinish, forceEndRound, nextRound, endMatch,
+    sendInvite, acceptInvite, declineInvite, sendChatMessage, forceStartGame
+  ]);
 
   return (
-    <MultiplayerContext.Provider value={{
-      lobby, currentEventData, isHost: lobby?.hostId === user?.uid,
-      createLobby, joinLobby, leaveLobby, startGame, submitRoundScore,
-      triggerForceFinish, forceEndRound, nextRound, endMatch,
-      sendInvite, incomingInvite, acceptInvite, declineInvite, recentPlayers,
-      chatMessages, sendChatMessage, forceStartGame
-    }}>
+    <MultiplayerContext.Provider value={contextValue}>
       {children}
     </MultiplayerContext.Provider>
   );

@@ -1,6 +1,12 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  webpack: (config) => {
+    config.resolve.alias['@'] = path.resolve(__dirname);
+    return config;
+  },
   async redirects() {
     return [
       { source: '/bswc', destination: '/previsao', permanent: true },

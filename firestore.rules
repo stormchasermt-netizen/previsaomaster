@@ -103,6 +103,18 @@ service cloud.firestore {
        allow read, delete: if isSignedIn() && request.auth.uid == userId;
        allow create: if isSignedIn();
     }
+
+    // BSWC Previsão & Sondagens
+    match /bswc_forecasts/{forecastId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /bswc_reports/{reportId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
     
     /**
      * @description This collection is no longer used for authorization logic in the rules.

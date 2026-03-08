@@ -181,7 +181,7 @@ export default function PrevisaoPage() {
         <div className="text-sm text-amber-400">{deadlineText}</div>
       </header>
 
-      <div className="flex flex-wrap gap-3 p-4 bg-slate-900/60 border-b border-slate-700">
+      <div className="flex flex-wrap gap-3 p-4 bg-slate-900/60 border-b border-slate-700 overflow-x-auto">
         <label className="flex items-center gap-2">
           Data:
           <input
@@ -255,7 +255,8 @@ export default function PrevisaoPage() {
         <button
           onClick={handleSubmit}
           disabled={loading || !canEditNow() || polygons.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium"
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded font-medium flex-shrink-0"
+          title={!canEditNow() ? 'Aguarde o próximo prazo para enviar' : polygons.length === 0 ? 'Desenhe ao menos um polígono' : 'Enviar sua previsão'}
         >
           {loading ? 'Enviando…' : <><Send size={16} /> Enviar previsão</>}
         </button>
@@ -268,6 +269,19 @@ export default function PrevisaoPage() {
               <span>{validationError}</span>
               <button onClick={() => setValidationError(null)} className="text-red-200 hover:text-white">
                 ✕
+              </button>
+            </div>
+          )}
+          {/* Botão Enviar previsão ao lado do mapa (sempre visível) */}
+          {canEditNow() && !viewMyForecast && (
+            <div className="absolute top-2 right-2 z-10">
+              <button
+                onClick={handleSubmit}
+                disabled={loading || polygons.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:opacity-60 rounded font-medium shadow-lg text-sm"
+                title={polygons.length === 0 ? 'Desenhe ao menos um polígono' : 'Enviar sua previsão'}
+              >
+                {loading ? 'Enviando…' : <><Send size={14} /> Enviar previsão</>}
               </button>
             </div>
           )}

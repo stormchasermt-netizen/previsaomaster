@@ -1,9 +1,8 @@
-// This is a placeholder file. The original content from pages/Home.tsx will be moved here.
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CloudLightning, User, Users, Radio, BookOpen, HelpCircle, X, Shield, Zap, TrendingUp, Medal, Hash, Gamepad2, ChevronLeft, ArrowRight, UserPlus, Send, Check, MessageSquare, MapPin } from 'lucide-react';
+import { CloudLightning, User, Users, Radio, BookOpen, HelpCircle, X, Shield, Zap, TrendingUp, Medal, Hash, Gamepad2, ChevronLeft, ArrowRight, UserPlus, Send, Check, MessageSquare, MapPin, Wind } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMultiplayer } from '@/contexts/MultiplayerContext';
 import { mockStore } from '@/lib/store';
@@ -26,42 +25,49 @@ export default function Home() {
   const [inviteSentTo, setInviteSentTo] = useState<string | null>(null);
   const [allKnownPlayers, setAllKnownPlayers] = useState<any[]>([]);
 
-  // Load Players for Social Sidebar
+  // Load Players for Social Sidebar - Fixed loop by removing recentPlayers from dependencies
   useEffect(() => {
+    let isMounted = true;
     if (showSocial) {
       const loadPlayers = async () => {
-         const scores = await mockStore.getScores();
-         const playersMap = new Map();
-         
-         // 1. Process Recent Players (Potential Online)
-         recentPlayers.forEach(p => {
-             const isOnline = (Date.now() - (p.lastSeen || 0)) < 1000 * 60 * 15; // 15 min threshold
-             playersMap.set(p.uid, { ...p, isOnline });
-         });
-         
-         // 2. Process Historical Players from Scores (Offline usually)
-         scores.forEach(s => {
-             if (!playersMap.has(s.userId)) {
-                 playersMap.set(s.userId, {
-                     uid: s.userId,
-                     displayName: s.displayName,
-                     photoURL: s.photoURL,
-                     isOnline: false
-                 });
-             }
-         });
-         
-         // Convert to Array and Sort: Online first, then by Name
-         const list = Array.from(playersMap.values()).sort((a, b) => {
-             if (a.isOnline === b.isOnline) return a.displayName.localeCompare(b.displayName);
-             return a.isOnline ? -1 : 1;
-         });
+         try {
+             const scores = await mockStore.getScores();
+             if (!isMounted) return;
+             
+             const playersMap = new Map();
+             
+             // 1. Process Recent Players
+             recentPlayers.forEach(p => {
+                 const isOnline = (Date.now() - (p.lastSeen || 0)) < 1000 * 60 * 15;
+                 playersMap.set(p.uid, { ...p, isOnline });
+             });
+             
+             // 2. Process Historical Players from Scores
+             scores.forEach(s => {
+                 if (!playersMap.has(s.userId)) {
+                     playersMap.set(s.userId, {
+                         uid: s.userId,
+                         displayName: s.displayName,
+                         photoURL: s.photoURL,
+                         isOnline: false
+                     });
+                 }
+             });
+             
+             const list = Array.from(playersMap.values()).sort((a, b) => {
+                 if (a.isOnline === b.isOnline) return a.displayName.localeCompare(b.displayName);
+                 return a.isOnline ? -1 : 1;
+             });
 
-         setAllKnownPlayers(list);
+             setAllKnownPlayers(list);
+         } catch (e) {
+             console.error("Home: Failed to load players", e);
+         }
       };
       loadPlayers();
     }
-  }, [showSocial, recentPlayers]);
+    return () => { isMounted = false; };
+  }, [showSocial]); // Only refresh when sidebar is toggled open
 
   const handleMultiplayerClick = () => {
       if (!user) { router.push('/login'); return; }
@@ -73,21 +79,17 @@ export default function Home() {
 
   const handleSendInvite = async (uid: string) => {
       setInviteSentTo(uid);
-      
       let code = lobby?.code;
       if (!code) {
-          // If not in a lobby, create one first (default difficulty)
           try {
               code = await createLobby('iniciante');
           } catch(e) {
               console.error("Failed to auto-create lobby for invite", e);
           }
       }
-      
       if (code) {
           await sendInvite(uid, code);
       }
-      
       setTimeout(() => setInviteSentTo(null), 3000);
   };
 
@@ -100,8 +102,6 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700 relative">
-      
-      {/* Central Logo Area */}
       <div className="text-center mb-16">
           <div className="mx-auto mb-6 relative">
              <CloudLightning className="w-20 h-20 text-white mx-auto" strokeWidth={1.5} />
@@ -109,19 +109,13 @@ export default function Home() {
                 <div className="w-4 h-4 bg-slate-500 rounded-full blur-sm"></div>
              </div>
           </div>
-          
           <h1 className="text-5xl md:text-6xl font-black text-white tracking-widest uppercase mb-2" style={{ fontFamily: 'Impact, sans-serif', letterSpacing: '0.05em' }}>
               Previsão Master
           </h1>
-          <p className="text-slate-400 text-lg">
-              Teste suas habilidades de previsão de tempestades severas
-          </p>
+          <p className="text-slate-400 text-lg">Teste suas habilidades de previsão de tempestades severas</p>
       </div>
 
-      {/* Game Mode Cards */}
       <div className="flex flex-col md:flex-row gap-6 mb-12">
-          
-          {/* Single Player - DISABLED */}
           <div className="relative w-64 h-40 bg-[#161b22] border border-white/5 rounded-lg flex flex-col items-center justify-center opacity-60 cursor-not-allowed shadow-none grayscale-[0.5]">
               <div className="absolute top-2 right-2 bg-slate-800 text-[9px] font-bold px-1.5 py-0.5 rounded text-slate-400">EM BREVE</div>
               <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center mb-3 transition-colors">
@@ -131,7 +125,6 @@ export default function Home() {
               <p className="text-[10px] text-slate-600 mt-1 uppercase tracking-wider">Pratique sozinho</p>
           </div>
 
-          {/* Multiplayer (Create/Join) */}
           <div onClick={handleMultiplayerClick} className="group cursor-pointer">
               <div className="w-64 h-40 bg-[#161b22] border border-white/10 rounded-lg flex flex-col items-center justify-center hover:border-cyan-500/50 hover:bg-[#1c2128] transition-all shadow-lg relative overflow-hidden">
                    <div className="absolute inset-0 bg-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -143,7 +136,6 @@ export default function Home() {
               </div>
           </div>
 
-          {/* Previsão & Sondagens (BSWC) */}
           <Link href="/previsao" className="group block">
               <div className="w-64 h-40 bg-[#161b22] border border-white/10 rounded-lg flex flex-col items-center justify-center hover:border-amber-500/50 hover:bg-[#1c2128] transition-all shadow-lg relative overflow-hidden">
                    <div className="absolute inset-0 bg-amber-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -155,7 +147,17 @@ export default function Home() {
               </div>
           </Link>
 
-          {/* Live Mode (Disabled) */}
+          <Link href="/rastros-tornados" className="group block">
+              <div className="w-64 h-40 bg-[#161b22] border border-white/10 rounded-lg flex flex-col items-center justify-center hover:border-red-500/50 hover:bg-[#1c2128] transition-all shadow-lg relative overflow-hidden">
+                   <div className="absolute inset-0 bg-red-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                   <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center mb-3 group-hover:bg-red-500/20 group-hover:text-red-400 transition-colors">
+                      <Wind className="w-5 h-5 text-slate-300 group-hover:text-red-400" />
+                  </div>
+                  <h3 className="text-white font-bold group-hover:text-red-400 transition-colors">Rastros de Tornados</h3>
+                  <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider group-hover:text-slate-400">Mapa de eventos no Brasil</p>
+              </div>
+          </Link>
+
           <div className="relative w-64 h-40 bg-[#161b22] border border-white/5 rounded-lg flex flex-col items-center justify-center opacity-60 cursor-not-allowed">
                <div className="absolute top-2 right-2 bg-slate-800 text-[9px] font-bold px-1.5 py-0.5 rounded text-slate-400">EM BREVE</div>
                <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center mb-3">
@@ -164,10 +166,8 @@ export default function Home() {
               <h3 className="text-slate-400 font-bold">Modo Ao Vivo</h3>
               <p className="text-[10px] text-slate-600 mt-1 uppercase tracking-wider">Previsão em tempo real</p>
           </div>
-
       </div>
 
-      {/* Footer Links */}
       <div className="flex gap-4">
           <Link href="/regras">
              <button className="flex items-center gap-2 px-6 py-2 rounded-full border border-white/10 bg-[#161b22] hover:bg-[#1c2128] text-sm text-slate-300 transition-colors">
@@ -179,7 +179,6 @@ export default function Home() {
              </a>
       </div>
 
-      {/* SOCIAL SIDEBAR TOGGLE */}
       {user && (
           <button 
              onClick={() => setShowSocial(true)}
@@ -190,7 +189,6 @@ export default function Home() {
           </button>
       )}
 
-      {/* SOCIAL SIDEBAR */}
       {showSocial && (
           <div className="fixed inset-y-0 right-0 w-80 bg-[#0a0f1a] border-l border-white/10 z-[100] shadow-2xl animate-in slide-in-from-right flex flex-col">
               <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -201,14 +199,13 @@ export default function Home() {
                   {allKnownPlayers.length === 0 && (
                       <div className="text-center p-8 text-slate-500 text-sm">
                           <Users className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                          Nenhum jogador encontrado no histórico.
+                          Carregando jogadores...
                       </div>
                   )}
                   {allKnownPlayers.map(p => (
                       <div key={p.uid} className="bg-slate-900 border border-white/5 p-3 rounded-lg flex items-center gap-3 group hover:border-white/20 transition-all">
                            <div className="w-8 h-8 rounded-full bg-slate-800 overflow-hidden shrink-0 relative">
                                {p.photoURL ? <img src={p.photoURL} className="w-full h-full object-cover"/> : <div className="flex items-center justify-center h-full font-bold text-slate-500">{p.displayName[0]}</div>}
-                               {/* Status Indicator */}
                                <div className={clsx("absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-slate-900", p.isOnline ? "bg-emerald-500" : "bg-slate-500")}></div>
                            </div>
                            <div className="flex-1 min-w-0">
@@ -235,7 +232,6 @@ export default function Home() {
           </div>
       )}
 
-      {/* INVITE RECEIVED MODAL */}
       {incomingInvite && (
           <div className="fixed top-4 right-4 z-[200] w-80 bg-slate-900 border border-cyan-500/50 rounded-xl shadow-2xl p-4 animate-in slide-in-from-right">
               <div className="flex items-start gap-3">
@@ -248,25 +244,14 @@ export default function Home() {
                           <span className="text-white font-bold">{incomingInvite.hostName}</span> convidou você para uma partida.
                       </p>
                       <div className="flex gap-2 mt-3">
-                          <button 
-                              onClick={acceptInvite}
-                              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded text-xs font-bold transition-colors"
-                          >
-                              Aceitar
-                          </button>
-                          <button 
-                              onClick={declineInvite}
-                              className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 rounded text-xs font-bold transition-colors"
-                          >
-                              Recusar
-                          </button>
+                          <button onClick={acceptInvite} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded text-xs font-bold transition-colors">Aceitar</button>
+                          <button onClick={declineInvite} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-1.5 rounded text-xs font-bold transition-colors">Recusar</button>
                       </div>
                   </div>
               </div>
           </div>
       )}
 
-      {/* MULTIPLAYER SETUP MODAL (Existing Code) */}
       {isSetupOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
             <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl relative overflow-hidden">
@@ -290,7 +275,6 @@ export default function Home() {
                         </div>
                     </div>
                 )}
-                {/* ... existing Create/Join views ... */}
                 {multiplayerView === 'create' && (
                      <div className="animate-in slide-in-from-right duration-300">
                         <button onClick={() => setMultiplayerView('menu')} className="absolute top-4 left-4 text-slate-500 hover:text-white flex items-center gap-1 text-xs font-bold uppercase tracking-wider"><ChevronLeft className="w-4 h-4" /> Voltar</button>
