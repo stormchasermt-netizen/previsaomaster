@@ -1,8 +1,9 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { CloudLightning, Settings, BarChart2, User, X, LogOut, Save, Volume2, Music, Shield } from 'lucide-react';
+import { CloudLightning, Settings, BarChart2, User, X, LogOut, Save, Volume2, Music, Shield, Film } from 'lucide-react';
 import clsx from 'clsx';
 import { mockStore } from '@/lib/store';
 import { PrevisaoScore } from '@/lib/types';
@@ -61,32 +62,40 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
   const totalScore = stats.reduce((acc, curr) => acc + curr.finalScore, 0);
   const bestDistance = stats.length > 0 ? Math.min(...stats.map(s => s.distanceKm)) : 0;
   
+  const pathname = usePathname();
+  const isFullScreenPage = pathname === '/rastros-tornados' || pathname === '/ao-vivo' || pathname?.startsWith('/jogar') || pathname?.startsWith('/admin');
+  
   // Only calculate best personal score from valid games (distance is not 99999)
   const validGames = stats.filter(s => s.distanceKm < 99900);
   const bestScore = validGames.length > 0 ? Math.max(...validGames.map(s => s.finalScore)) : 0;
 
   return (
-    <div className="min-h-screen bg-[#0a0f1a] text-white font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#0B0F19] text-white font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
       
       {/* BACKGROUND IMAGE WITH BLUR */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+          {/* Ambient Glow Effects */}
+          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
+          <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
+
           {/* Image Layer - Custom User Image */}
           <div 
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat blur-[6px] scale-105 opacity-80"
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat blur-[6px] scale-105 opacity-60 mix-blend-luminosity"
             style={{ 
                 backgroundImage: "url('https://raw.githubusercontent.com/stormchasermt-netizen/App-de-previs-o/650647f85f02f514b2864389435d07746a07038a/WhatsApp%20Image%202026-02-10%20at%2009.48.58.jpeg')" 
             }}
           ></div>
 
           {/* Dark Overlay for Text Readability */}
-          <div className="absolute inset-0 bg-[#0a0f1a]/85 backdrop-blur-[2px]"></div>
+          <div className="absolute inset-0 bg-[#0B0F19]/80 backdrop-blur-[2px]"></div>
           
           {/* Lightning Flash Layer (Kept for effect) */}
           <div className="absolute inset-0 z-0 bg-white opacity-0 animate-lightning pointer-events-none mix-blend-overlay"></div>
       </div>
 
-      {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-[#0a0f1a]/70 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5 shadow-lg shadow-black/20">
+      {/* HEADER — oculto em páginas de tela cheia (rastros-tornados, jogar) para não sobrepor o mapa */}
+      {!isFullScreenPage && (
+      <header className="sticky top-0 z-40 bg-[#0B0F19]/80 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5 shadow-lg shadow-black/20">
          <div className="flex items-center gap-4">
              <Link href="/" className="text-xs font-bold tracking-widest text-slate-300 hover:text-white uppercase flex items-center gap-2 transition-colors">
                 <CloudLightning className="h-5 w-5 text-cyan-400" /> 
@@ -115,6 +124,10 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
                         <BarChart2 className="w-5 h-5" />
                     </Link>
 
+                    <Link href="/streaming" className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors" title="Documentários 4K">
+                        <Film className="w-5 h-5" />
+                    </Link>
+
                     <button 
                         onClick={() => setIsSettingsOpen(true)}
                         className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
@@ -134,16 +147,19 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
             )}
          </div>
       </header>
+      )}
 
       <main className="w-full relative z-10">
         {children}
       </main>
 
+      {!isFullScreenPage && (
       <footer className="fixed bottom-0 w-full py-4 text-center text-[10px] text-slate-500 border-t border-white/5 bg-[#0a0f1a]/90 backdrop-blur z-30">
           <div className="flex items-center justify-center gap-2">
             <CloudLightning className="h-3 w-3" /> © 2025 Previsão Master
           </div>
       </footer>
+      )}
 
       {/* SETTINGS MODAL */}
       {isSettingsOpen && (
