@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import { CloudLightning, Radio, HelpCircle, BookOpen, Wind, Gamepad2 } from 'lucide-react';
+import { CloudLightning, Radio, HelpCircle, BookOpen, Wind, Gamepad2, Mail } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function Home() {
@@ -22,6 +22,16 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] relative overflow-hidden">
+      
+      {/* Envelope: Projeto & Dados (transparência) */}
+      <Link
+        href="/projeto"
+        className="absolute top-6 right-6 z-20 flex items-center gap-2 px-3 py-2 rounded-full bg-white/5 border border-white/10 hover:border-cyan-500/40 hover:bg-cyan-500/10 text-slate-400 hover:text-cyan-400 transition-all group"
+        title="Projeto e fontes de dados"
+      >
+        <Mail className="w-4 h-4" />
+        <span className="text-xs font-medium hidden sm:inline">Projeto & Dados</span>
+      </Link>
       
       {/* Ambient Glow Effects */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] pointer-events-none" />
@@ -107,7 +117,7 @@ export default function Home() {
       </motion.div>
 
       <motion.div 
-        className="flex gap-4 relative z-10"
+        className="flex flex-wrap gap-3 justify-center relative z-10"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8, duration: 0.5 }}
@@ -129,6 +139,15 @@ export default function Home() {
         >
           <BookOpen className="w-4 h-4" /> Material de Estudo
         </motion.a>
+        <Link href="/projeto">
+          <motion.button 
+            whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.1)' }}
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-full border border-cyan-500/30 bg-cyan-500/5 backdrop-blur-sm text-sm text-cyan-400 font-medium transition-colors"
+          >
+            <Mail className="w-4 h-4" /> Projeto & Dados
+          </motion.button>
+        </Link>
       </motion.div>
     </div>
   );

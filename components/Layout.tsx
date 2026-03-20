@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { CloudLightning, Settings, BarChart2, User, X, LogOut, Save, Volume2, Music, Shield, Film } from 'lucide-react';
+import { CloudLightning, Settings, BarChart2, User, X, LogOut, Save, Volume2, Music, Shield, Film, Mail } from 'lucide-react';
 import clsx from 'clsx';
 import { mockStore } from '@/lib/store';
 import { PrevisaoScore } from '@/lib/types';
@@ -97,13 +97,16 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
       {!isFullScreenPage && (
       <header className="sticky top-0 z-40 bg-[#0B0F19]/80 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5 shadow-lg shadow-black/20">
          <div className="flex items-center gap-4">
-             <Link href="/" className="text-xs font-bold tracking-widest text-slate-300 hover:text-white uppercase flex items-center gap-2 transition-colors">
+             <Link href="/" prefetch={false} className="text-xs font-bold tracking-widest text-slate-300 hover:text-white uppercase flex items-center gap-2 transition-colors">
                 <CloudLightning className="h-5 w-5 text-cyan-400" /> 
                 <span className="hidden sm:inline">Previsão Master</span>
              </Link>
          </div>
 
          <div className="flex items-center gap-2">
+            <Link href="/projeto" prefetch={false} className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors" title="Projeto e fontes de dados">
+              <Mail className="w-5 h-5" />
+            </Link>
             {!user ? (
                  <button 
                     onClick={handleGoogleLogin}
@@ -115,16 +118,16 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
             ) : (
                 <>
                     {(user.type === 'admin' || user.type === 'superadmin') && (
-                        <Link href="/admin" className="p-2 text-amber-400 hover:bg-white/5 rounded-lg transition-colors" title="Painel Admin">
+                        <Link href="/admin" prefetch={false} className="p-2 text-amber-400 hover:bg-white/5 rounded-lg transition-colors" title="Painel Admin">
                             <Shield className="w-5 h-5" />
                         </Link>
                     )}
 
-                    <Link href="/ranking" className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                    <Link href="/ranking" prefetch={false} className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
                         <BarChart2 className="w-5 h-5" />
                     </Link>
 
-                    <Link href="/streaming" className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors" title="Documentários 4K">
+                    <Link href="/streaming" prefetch={false} className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors" title="Documentários 4K">
                         <Film className="w-5 h-5" />
                     </Link>
 
@@ -225,10 +228,10 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
                        <div className="border-t border-white/5 my-4"></div>
                        
                        <div className="grid grid-cols-2 gap-2">
-                           <Link href="/regras" onClick={() => setIsSettingsOpen(false)} className="bg-slate-800 hover:bg-slate-700 text-xs font-bold text-center py-3 rounded border border-white/5">
+                           <Link href="/regras" prefetch={false} onClick={() => setIsSettingsOpen(false)} className="bg-slate-800 hover:bg-slate-700 text-xs font-bold text-center py-3 rounded border border-white/5">
                                ? Regras
                            </Link>
-                           <Link href="/ranking" onClick={() => setIsSettingsOpen(false)} className="bg-slate-800 hover:bg-slate-700 text-xs font-bold text-center py-3 rounded border border-white/5">
+                           <Link href="/ranking" prefetch={false} onClick={() => setIsSettingsOpen(false)} className="bg-slate-800 hover:bg-slate-700 text-xs font-bold text-center py-3 rounded border border-white/5">
                                Ranking
                            </Link>
                        </div>

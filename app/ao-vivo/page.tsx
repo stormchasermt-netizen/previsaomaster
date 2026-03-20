@@ -2,16 +2,21 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { updatePresence, removePresence, subscribeToPresence, type PresenceData } from '@/lib/presence';
-import { subscribeToTodayReports, saveStormReport, type StormReport } from '@/lib/stormReportStore';
-import { MAP_STYLE_DARK } from '@/lib/constants';
+import { subscribeToTodayReports, saveStormReport, recordReportView, type StormReport } from '@/lib/stormReportStore';
+import { MAP_STYLE_DARK, LOCATION_REQUEST_EXCLUDED_UIDS } from '@/lib/constants';
 import {
   CPTEC_RADAR_STATIONS,
   getRadarImageBounds,
+  calculateRadarBounds,
+  IPMET_FIXED_BOUNDS,
+  USP_STARNET_FIXED_BOUNDS,
+  GET_RADAR_IPMET_URL,
+  GET_RADAR_USP_URL,
   buildNowcastingPngUrl,
   getNearestRadarTimestamp,
   getNowMinusMinutesTimestamp12UTC,
@@ -27,7 +32,11 @@ import {
   getArgentinaRadarBounds,
   type ArgentinaRadarStation,
 } from '@/lib/argentinaRadarStations';
-import { fetchRadarConfigs, type RadarConfig } from '@/lib/radarConfigStore';
+import { fetchRadarConfigs, saveRadarConfig, type RadarConfig } from '@/lib/radarConfigStore';
+import { groupRadarsByLocation } from '@/lib/radarGrouping';
+import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
+import { Room, RoomEvent, Track } from 'livekit-client';
+import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
 
 type DisplayRadar = { type: 'cptec'; station: CptecRadarStation } | { type: 'argentina'; station: ArgentinaRadarStation };
 
@@ -66,6 +75,64 @@ function getProxiedRadarUrl(url: string): string {
   return `/api/radar-proxy?url=${encodeURIComponent(url)}`;
 }
 
+/** Filtra minutos atrás para manter apenas os que têm imagem disponível (slider sem repetições, modo único). */
+async function filterValidSliderMinutesAgo(
+  dr: DisplayRadar,
+  productType: 'reflectividade' | 'velocidade',
+  maxMinutes: number,
+  signal?: AbortSignal
+): Promise<number[]> {
+  const step = 5;
+  const candidates: number[] = [];
+  for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
+  if (candidates.length === 0) return [0];
+  const BATCH = 12;
+  const result: number[] = [];
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    if (signal?.aborted) return candidates;
+    const batch = candidates.slice(i, i + BATCH);
+    const checks = await Promise.all(
+      batch.map(async (minutesAgo) => {
+        let url: string;
+        if (dr.type === 'cptec') {
+          const ts12 = getNowMinusMinutesTimestamp12UTC(3 + minutesAgo);
+          url = buildNowcastingPngUrl(dr.station, ts12, productType);
+        } else {
+          const d = new Date(Date.now() - (3 + minutesAgo) * 60_000);
+          const ts = getArgentinaRadarTimestamp(d, dr.station);
+          url = buildArgentinaRadarPngUrl(dr.station, ts, productType);
+        }
+        try {
+          const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
+          const data = await res.json().catch(() => ({}));
+          return data.exists === true;
+        } catch {
+          return false;
+        }
+      })
+    );
+    batch.forEach((m, j) => { if (checks[j]) result.push(m); });
+  }
+  return result.length > 0 ? result : [0];
+}
+
+/** Ícone radar disponível: verde forte com símbolo de antena (modelo imagem 1). */
+const RADAR_ICON_AVAILABLE = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">' +
+  '<circle cx="16" cy="16" r="14" fill="#22c55e" stroke="#15803d" stroke-width="1.5"/>' +
+  '<path d="M16 8 L16 24 M10 14 L22 18 L10 22 Z" fill="white" stroke="white" stroke-width="0.8" stroke-linejoin="round"/>' +
+  '</svg>'
+);
+
+/** Ícone radar indisponível: verde apagado com barra diagonal (sem imagem no horário). */
+const RADAR_ICON_UNAVAILABLE = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">' +
+  '<circle cx="16" cy="16" r="14" fill="#166534" fill-opacity="0.6" stroke="#14532d" stroke-width="1" stroke-opacity="0.7"/>' +
+  '<path d="M16 9 L16 23 M11 14 L21 18 L11 22 Z" fill="white" fill-opacity="0.5" stroke="white" stroke-opacity="0.5" stroke-width="0.6"/>' +
+  '<line x1="8" y1="8" x2="24" y2="24" stroke="#ef4444" stroke-width="2" stroke-linecap="round" opacity="0.9"/>' +
+  '</svg>'
+);
+
 export default function AoVivoPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -75,10 +142,16 @@ export default function AoVivoPage() {
 
   const [mapReady, setMapReady] = useState(false);
   const [locationPermission, setLocationPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  /** Tipo de erro para mensagem mais específica: denied | timeout | unavailable */
+  const [locationErrorType, setLocationErrorType] = useState<'denied' | 'timeout' | 'unavailable' | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [radarProductType, setRadarProductType] = useState<'reflectividade' | 'velocidade'>('reflectividade');
   const [radarMode, setRadarMode] = useState<'mosaico' | 'unico'>('mosaico');
-  const [selectedRadar, setSelectedRadar] = useState<DisplayRadar | null>(null);
+  /** Modo individual: Set de IDs ativados (cptec:slug | argentina:id) */
+  const [selectedIndividualRadars, setSelectedIndividualRadars] = useState<Set<string>>(new Set());
+  /** Quando setado, filtra para mostrar apenas esse radar (clicou no ícone do mapa). null = mosaico/lista */
+  const [focusedRadarKey, setFocusedRadarKey] = useState<string | null>(null);
   const [radarOpacity, setRadarOpacity] = useState(0.75);
   const [showOnlinePanel, setShowOnlinePanel] = useState(false);
   const [showBaseMapGallery, setShowBaseMapGallery] = useState(false);
@@ -89,12 +162,22 @@ export default function AoVivoPage() {
   const [radarTimestamp, setRadarTimestamp] = useState<string>(() => getNowMinusMinutesTimestamp12UTC(3));
   /** Minutos atrás no slider (0 = agora, até meia-noite de hoje). Usado para controle manual do tempo. */
   const [sliderMinutesAgo, setSliderMinutesAgo] = useState(0);
-  /** Permite acessar a página sem localização (útil para celulares com problema de geo) */
-  const [locationSkipped, setLocationSkipped] = useState(false);
+  /** Modo único: só horários com imagem (slider discreto). null = mosaico ou não carregado. */
+  const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
+  const [sliderValidVerifying, setSliderValidVerifying] = useState(false);
+  /** Localização obrigatória para ao-vivo (presença em tempo real e posicionamento no mapa) */
   /** Radares cuja imagem mais recente não foi encontrada (ex: 404) */
   const [failedRadars, setFailedRadars] = useState<Set<string>>(new Set());
   /** Timestamp efetivo carregado por radar (quando usa fallback, difere do nominal) — para legenda */
   const [radarEffectiveTimestamps, setRadarEffectiveTimestamps] = useState<Record<string, string>>({});
+  /** Fonte da imagem por radar: CPTEC ou REDEMET (quando usou fallback) */
+  const [radarEffectiveSource, setRadarEffectiveSource] = useState<Record<string, 'cptec' | 'redemet'>>({});
+  /** Toggle HD (REDEMET) / Super Res (CPTEC) */
+  const [radarSourceMode, setRadarSourceMode] = useState<'superres' | 'hd'>('superres');
+  /** Radar keys que têm imagem REDEMET disponível */
+  const [redemetAvailableKeys, setRedemetAvailableKeys] = useState<Set<string>>(new Set());
+  /** URLs REDEMET encontradas por radarKey */
+  const [redemetFoundUrls, setRedemetFoundUrls] = useState<Record<string, string>>({});
   /** Menu lateral aberto (hambúrguer) */
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   /** Split: 1 = painel único, 2 = Refletividade|Doppler lado a lado, 4 = grade 2x2 (simplificado por ora) */
@@ -116,13 +199,37 @@ export default function AoVivoPage() {
   });
   const prevotsPolygonsRef = useRef<any[]>([]);
 
+  /** Imagens anteriores: data/hora selecionada. null = modo ao vivo. */
+  const [historicalTimestampOverride, setHistoricalTimestampOverride] = useState<string | null>(null);
+  const [showHistoricalPicker, setShowHistoricalPicker] = useState(false);
+  const [historicalDate, setHistoricalDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [historicalTime, setHistoricalTime] = useState('12:00');
+
+  /** Modo edição de radar: posicionar, rotacionar, raio. null = não editando. */
+  const [editingRadar, setEditingRadar] = useState<DisplayRadar | null>(null);
+  const [editMinutesAgo, setEditMinutesAgo] = useState(0);
+  const [editCenterLat, setEditCenterLat] = useState(0);
+  const [editCenterLng, setEditCenterLng] = useState(0);
+  const [editRangeKm, setEditRangeKm] = useState(250);
+  const [editRotationDegrees, setEditRotationDegrees] = useState(0);
+  const [editLiveCenter, setEditLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const editOverlayRef = useRef<any>(null);
+  const lastEditDragRef = useRef<{ lat: number; lng: number } | null>(null);
+
   /** Desktop detection para split vertical */
   const [isDesktop, setIsDesktop] = useState(false);
 
   /** Storm Reports */
   const [stormReports, setStormReports] = useState<StormReport[]>([]);
+  const [todayVisitCount, setTodayVisitCount] = useState(0);
   const stormReportMarkersRef = useRef<any[]>([]);
   const stormReportInfoWindowRef = useRef<any>(null);
+  const radarMarkersRef = useRef<any[]>([]);
+  const radarKeyToMarkerRef = useRef<Map<string, { marker: any; isDisplayed: boolean }>>(new Map());
   const [showReportsOnMap, setShowReportsOnMap] = useState(true);
 
   /** Report popup flow */
@@ -148,6 +255,26 @@ export default function AoVivoPage() {
   const onlineUserMarkersRef = useRef<any[]>([]);
   const presenceUnsubRef = useRef<(() => void) | null>(null);
 
+  /** Transmissão ao vivo: preview local, estado, stream */
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [streamLoading, setStreamLoading] = useState(false);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const liveRoomNameRef = useRef<string | null>(null);
+  const liveKitRoomRef = useRef<Room | null>(null);
+  const isStreamingRef = useRef(false);
+  const localPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const liveViewerVideoRef = useRef<HTMLVideoElement | null>(null);
+  const liveViewerRoomRef = useRef<Room | null>(null);
+  const [liveViewerLoading, setLiveViewerLoading] = useState(false);
+  const [liveViewerError, setLiveViewerError] = useState<string | null>(null);
+  isStreamingRef.current = isStreaming;
+
+  /** Modal de visualização: usuário transmitindo ao vivo */
+  const [liveViewerUser, setLiveViewerUser] = useState<PresenceData | null>(null);
+  const [liveViewerOpen, setLiveViewerOpen] = useState(false);
+  const [liveViewerFullscreen, setLiveViewerFullscreen] = useState(false);
+
   const BRAZIL_CENTER = { lat: -14.235, lng: -51.925 };
 
   /** Todos os radares disponíveis (CPTEC + Argentina), ordenados por distância quando há localização */
@@ -167,8 +294,9 @@ export default function AoVivoPage() {
     return list;
   }, [myLocation]);
 
-  /** Máximo de minutos atrás: quando UTC já é dia seguinte (imagem mais recente) vs horário local, usar 24h; senão meia-noite até agora */
+  /** Máximo de minutos atrás: histórico = 4h, live = meia-noite até agora */
   const maxSliderMinutesAgo = useMemo(() => {
+    if (historicalTimestampOverride) return 240;
     const now = new Date();
     const utcDateStr = now.toISOString().slice(0, 10);
     const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -178,22 +306,34 @@ export default function AoVivoPage() {
     }
     const startOfDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
     return Math.max(60, Math.floor((now.getTime() - startOfDayUTC.getTime()) / 60_000));
-  }, [radarTimestamp]);
+  }, [radarTimestamp, historicalTimestampOverride]);
 
   const displayRadars = useMemo(() => {
+    if (focusedRadarKey) {
+      const dr = allRadars.find((r) => (r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`) === focusedRadarKey);
+      return dr ? [dr] : [];
+    }
     if (radarMode === 'mosaico') return allRadars;
-    if (selectedRadar) return [selectedRadar];
-    return allRadars.length > 0 ? [allRadars[0]] : [];
-  }, [radarMode, selectedRadar, allRadars]);
+    if (selectedIndividualRadars.size === 0) return [];
+    return allRadars.filter((r) => {
+      const id = r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`;
+      return selectedIndividualRadars.has(id);
+    });
+  }, [focusedRadarKey, radarMode, selectedIndividualRadars, allRadars]);
 
   /** Legendas: nome do radar + horário local (ou efetivo após fallback) ou "sem imagem" */
+  /** Timestamp efetivo: histórico (picker ajustado pelo slider) ou ao vivo */
+  const effectiveRadarTimestamp = historicalTimestampOverride
+    ? (sliderMinutesAgo > 0 ? subtractMinutesFromTimestamp12UTC(historicalTimestampOverride, sliderMinutesAgo) : historicalTimestampOverride)
+    : radarTimestamp;
+
   const radarTimeLegends = useMemo(() => {
     const nominalDate = new Date(Date.UTC(
-      parseInt(radarTimestamp.slice(0, 4), 10),
-      parseInt(radarTimestamp.slice(4, 6), 10) - 1,
-      parseInt(radarTimestamp.slice(6, 8), 10),
-      parseInt(radarTimestamp.slice(8, 10), 10),
-      parseInt(radarTimestamp.slice(10, 12), 10)
+      parseInt(effectiveRadarTimestamp.slice(0, 4), 10),
+      parseInt(effectiveRadarTimestamp.slice(4, 6), 10) - 1,
+      parseInt(effectiveRadarTimestamp.slice(6, 8), 10),
+      parseInt(effectiveRadarTimestamp.slice(8, 10), 10),
+      parseInt(effectiveRadarTimestamp.slice(10, 12), 10)
     ));
     const formatLocal = (d: Date) =>
       `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -207,24 +347,27 @@ export default function AoVivoPage() {
     };
     return displayRadars.map((dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
+      const source = radarEffectiveSource[radarKey];
       if (failedRadars.has(radarKey)) {
-        return { name: dr.station.name, hhmm: 'sem imagem' };
+        return { name: dr.station.name, hhmm: 'sem imagem', source: undefined as 'cptec' | 'redemet' | undefined };
       }
       const effectiveTs = radarEffectiveTimestamps[radarKey];
       if (effectiveTs) {
-        return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(effectiveTs)) };
+        return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(effectiveTs)), source };
       }
       let ts: string;
       if (dr.type === 'cptec') {
-        ts = getNearestRadarTimestamp(radarTimestamp, dr.station);
+        ts = getNearestRadarTimestamp(effectiveRadarTimestamp, dr.station);
       } else {
         ts = getArgentinaRadarTimestamp(nominalDate, dr.station);
       }
-      return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(ts)) };
+      return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(ts)), source: undefined as 'cptec' | 'redemet' | undefined };
     });
-  }, [displayRadars, radarTimestamp, failedRadars, radarEffectiveTimestamps]);
+  }, [displayRadars, effectiveRadarTimestamp, failedRadars, radarEffectiveTimestamps, radarEffectiveSource]);
 
-  /** Título central do header: nome do radar + horário da última imagem (local) */
+  /** Título central do header: nome do radar + horário da última imagem (local).
+   * Em LIVE mosaico: cada radar tem seu próprio horário → mostra "Ao vivo"; detalhe no menu lateral.
+   */
   const headerTitle = useMemo(() => {
     const formatLocal = (d: Date) =>
       `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -236,26 +379,144 @@ export default function AoVivoPage() {
       const min = ts.includes('T') ? parseInt(ts.slice(11, 13), 10) : parseInt(ts.slice(10, 12), 10);
       return new Date(Date.UTC(y, m, d, h, min));
     };
-    if (displayRadars.length === 0) return { name: 'Modo Ao Vivo', time: '' };
+    if (displayRadars.length === 0) return { name: radarMode === 'unico' ? 'Radar Individual (selecione)' : 'Modo Ao Vivo', time: '' };
     if (radarMode === 'mosaico') {
-      const leg = radarTimeLegends[0];
+      if (sliderMinutesAgo === 0 && !historicalTimestampOverride) {
+        return { name: 'Mosaico (todos)', time: 'Ao vivo' };
+      }
       const times = radarTimeLegends.map((l) => l.hhmm).filter((h) => h !== 'sem imagem');
       const timeStr = times.length > 0 ? times[0] : 'sem imagem';
       return { name: 'Mosaico (todos)', time: timeStr };
     }
     const dr = displayRadars[0];
-    const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
     const leg = radarTimeLegends.find((l) => l.name === dr.station.name);
     const timeStr = leg?.hhmm ?? '';
-    return { name: dr.station.name, time: timeStr };
-  }, [displayRadars, radarMode, radarTimeLegends]);
+    const nameStr = displayRadars.length > 1 ? `${displayRadars.length} radares` : dr.station.name;
+    return { name: nameStr, time: timeStr };
+  }, [displayRadars, radarMode, radarTimeLegends, sliderMinutesAgo, historicalTimestampOverride]);
+
+  /** Monta URL da imagem para o radar em edição (baseado em editMinutesAgo) */
+  const getEditRadarImageUrl = useCallback(
+    (dr: DisplayRadar): string => {
+      const ts = getNowMinusMinutesTimestamp12UTC(3 + editMinutesAgo);
+      const nominalDate = new Date(Date.UTC(
+        parseInt(ts.slice(0, 4), 10),
+        parseInt(ts.slice(4, 6), 10) - 1,
+        parseInt(ts.slice(6, 8), 10),
+        parseInt(ts.slice(8, 10), 10),
+        parseInt(ts.slice(10, 12), 10)
+      ));
+      if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
+        return GET_RADAR_IPMET_URL + `?t=${Date.now()}`;
+      }
+      if (dr.type === 'cptec' && dr.station.slug === 'usp-starnet') {
+        return GET_RADAR_USP_URL + `?t=${Date.now()}`;
+      }
+      if (dr.type === 'cptec') {
+        const ts12 = getNearestRadarTimestamp(ts, dr.station);
+        return getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, radarProductType));
+      }
+      const tsArg = getArgentinaRadarTimestamp(nominalDate, dr.station);
+      return getProxiedRadarUrl(buildArgentinaRadarPngUrl(dr.station, tsArg, radarProductType));
+    },
+    [editMinutesAgo, radarProductType]
+  );
+
+  /** Template URL padrão para salvar (quando não há config) */
+  const getDefaultUrlTemplate = useCallback((dr: DisplayRadar): string => {
+    if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
+      return GET_RADAR_IPMET_URL;
+    }
+    if (dr.type === 'cptec' && dr.station.slug === 'usp-starnet') {
+      return GET_RADAR_USP_URL;
+    }
+    if (dr.type === 'cptec') {
+      const ts12 = getNowMinusMinutesTimestamp12UTC(3);
+      const url = buildNowcastingPngUrl(dr.station, ts12, 'reflectividade');
+      return url.replace(/\d{4}\/\d{2}\//, '{year}/{month}/').replace(/_\d{12}(\.png)/, '_{ts12}$1');
+    }
+    const tsArg = `${getNowMinusMinutesTimestamp12UTC(3).slice(0, 8)}T${getNowMinusMinutesTimestamp12UTC(3).slice(8, 10)}${getNowMinusMinutesTimestamp12UTC(3).slice(10, 12)}00Z`;
+    const url = buildArgentinaRadarPngUrl(dr.station, tsArg, 'reflectividade');
+    return url.replace(/(\d{4})\/(\d{2})\/(\d{2})\//, '{year}/{month}/{day}/').replace(/_\d{8}T\d{6}Z/, '_{tsArgentina}');
+  }, []);
+
+  const handleOpenEditRadar = useCallback((dr: DisplayRadar) => {
+    const cfg = radarConfigs.find((c) => c.stationSlug === (dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`));
+    setEditingRadar(dr);
+    setEditMinutesAgo(0);
+    setEditCenterLat(cfg?.lat ?? dr.station.lat);
+    setEditCenterLng(cfg?.lng ?? dr.station.lng);
+    setEditRangeKm(cfg?.rangeKm ?? dr.station.rangeKm ?? 250);
+    setEditRotationDegrees(cfg?.rotationDegrees ?? 0);
+    setEditLiveCenter(null);
+  }, [radarConfigs]);
+
+  const handleCloseEditRadar = useCallback(() => {
+    setEditingRadar(null);
+    setEditLiveCenter(null);
+  }, []);
+
+  const saveEditConfig = useCallback(async (overrideLat?: number, overrideLng?: number) => {
+    if (!editingRadar) return;
+    const lat = overrideLat ?? (editLiveCenter ? editLiveCenter.lat : editCenterLat);
+    const lng = overrideLng ?? (editLiveCenter ? editLiveCenter.lng : editCenterLng);
+    const slug = editingRadar.type === 'cptec' ? editingRadar.station.slug : `argentina:${editingRadar.station.id}`;
+    const cfg = radarConfigs.find((c) => c.stationSlug === slug);
+    const urlTemplate = cfg?.urlTemplate ?? getDefaultUrlTemplate(editingRadar);
+    const isFixedBounds = editingRadar.type === 'cptec' && (editingRadar.station.slug === 'ipmet-bauru' || editingRadar.station.slug === 'usp-starnet');
+    const computedBounds = isFixedBounds
+      ? (editingRadar.station.slug === 'ipmet-bauru' ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw } : { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw })
+      : calculateRadarBounds(lat, lng, editRangeKm);
+    setEditSaving(true);
+    try {
+      await saveRadarConfig({
+        id: cfg?.id ?? slug,
+        stationSlug: slug,
+        name: editingRadar.station.name,
+        urlTemplate,
+        bounds: computedBounds,
+        lat,
+        lng,
+        rangeKm: editRangeKm,
+        updateIntervalMinutes: editingRadar.station.updateIntervalMinutes ?? 6,
+        rotationDegrees: editRotationDegrees,
+      });
+      addToast('Configuração salva.', 'success');
+      setEditCenterLat(lat);
+      setEditCenterLng(lng);
+      await fetchRadarConfigs().then(setRadarConfigs);
+    } catch (e: any) {
+      addToast(`Erro ao salvar: ${e.message}`, 'error');
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editingRadar, radarConfigs, editCenterLat, editCenterLng, editLiveCenter, editRangeKm, editRotationDegrees, getDefaultUrlTemplate, addToast]);
+
+  const handleSaveEditPosition = useCallback(async (lat: number, lng: number) => {
+    if (!editingRadar) return;
+    setEditCenterLat(lat);
+    setEditCenterLng(lng);
+    await saveEditConfig(lat, lng);
+    addToast('Posição salva automaticamente.', 'success');
+  }, [editingRadar, saveEditConfig, addToast]);
 
   const getBoundsForDisplayRadar = useCallback(
     (dr: DisplayRadar) => {
       if (dr.type === 'cptec') {
+        const isIpmet = dr.station.slug === 'ipmet-bauru';
+        const isUspStarnet = dr.station.slug === 'usp-starnet';
+        if (isIpmet) {
+          return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
+        }
+        if (isUspStarnet) {
+          return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
+        }
         const cfg = radarConfigs.find((c) => c.stationSlug === dr.station.slug);
-        if (cfg)
-          return { north: cfg.bounds.ne.lat, south: cfg.bounds.sw.lat, east: cfg.bounds.ne.lng, west: cfg.bounds.sw.lng };
+        if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
+          const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
+          const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
+          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+        }
         const b = getRadarImageBounds(dr.station);
         return { north: b.north, south: b.south, east: b.east, west: b.west };
       }
@@ -266,26 +527,60 @@ export default function AoVivoPage() {
   );
 
   const requestLocation = useCallback(() => {
+    if (user && LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid)) return;
     if (!navigator.geolocation) {
       setLocationPermission('denied');
+      setLocationErrorType('unavailable');
       return;
     }
+    setLocationLoading(true);
+    setLocationErrorType(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setMyLocation({ lat, lng });
         setLocationPermission('granted');
+        setLocationErrorType(null);
+        setLocationLoading(false);
       },
-      () => setLocationPermission('denied'),
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }
+      (err) => {
+        setLocationLoading(false);
+        setLocationPermission('denied');
+        // GeolocationPositionError: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+        if (err.code === 1) setLocationErrorType('denied');
+        else if (err.code === 3) setLocationErrorType('timeout');
+        else setLocationErrorType('unavailable');
+      },
+      // Primeira tentativa: alta precisão. Se falhar, o usuário pode tentar novamente (com fallback mais tolerante)
+      { enableHighAccuracy: true, timeout: 30_000, maximumAge: 120_000 }
     );
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
+    if (LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid)) return;
     requestLocation();
   }, [user, requestLocation]);
+
+  /** Permissions API: detecta quando o usuário altera permissão nas configurações do navegador */
+  useEffect(() => {
+    if (!navigator.permissions?.query) return;
+    let result: PermissionStatus | null = null;
+    let listener: (() => void) | null = null;
+    navigator.permissions.query({ name: 'geolocation' }).then((r) => {
+      result = r;
+      listener = () => {
+        if (r.state === 'granted') requestLocation();
+        else if (r.state === 'denied') setLocationPermission('denied');
+      };
+      r.addEventListener('change', listener);
+      if (r.state === 'granted') requestLocation();
+    }).catch(() => {});
+    return () => {
+      if (result && listener) result.removeEventListener('change', listener);
+    };
+  }, [requestLocation]);
 
   useEffect(() => {
     if (!user) return;
@@ -296,6 +591,13 @@ export default function AoVivoPage() {
     };
   }, [user]);
 
+  /** Visitas do dia: registrar e assinar contador */
+  useEffect(() => {
+    if (user) recordVisit();
+    const unsub = subscribeToTodayVisitCount(setTodayVisitCount);
+    return unsub;
+  }, [user]);
+
   useEffect(() => {
     fetchRadarConfigs().then(setRadarConfigs).catch(() => {});
   }, []);
@@ -304,8 +606,10 @@ export default function AoVivoPage() {
     fetchPrevotsForecasts().then(setPrevotsForecasts).catch(() => setPrevotsForecasts([]));
   }, []);
 
+  /** Presença com localização (usuários que compartilham) */
   useEffect(() => {
     if (!user || !mapInstanceRef.current || locationPermission !== 'granted' || !myLocation) return;
+    if (LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid)) return; // Excluídos usam o useEffect abaixo
     const heartbeat = setInterval(() => {
       updatePresence(user.uid, {
         displayName: user.displayName || 'Usuário',
@@ -315,8 +619,10 @@ export default function AoVivoPage() {
         lat: myLocation.lat,
         lng: myLocation.lng,
         page: 'ao-vivo',
+        isLiveStreaming: isStreamingRef.current,
+        liveRoomName: liveRoomNameRef.current,
       });
-    }, 55_000);
+    }, 90_000);
     updatePresence(user.uid, {
       displayName: user.displayName || 'Usuário',
       photoURL: user.photoURL,
@@ -325,6 +631,8 @@ export default function AoVivoPage() {
       lat: myLocation.lat,
       lng: myLocation.lng,
       page: 'ao-vivo',
+      isLiveStreaming: isStreamingRef.current,
+      liveRoomName: liveRoomNameRef.current,
     });
     return () => {
       clearInterval(heartbeat);
@@ -332,21 +640,218 @@ export default function AoVivoPage() {
     };
   }, [user, myLocation, locationPermission]);
 
+  /** Presença sem localização (usuários excluídos da requisição de localização) */
+  useEffect(() => {
+    if (!user || !LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid)) return;
+    const heartbeat = setInterval(() => {
+      updatePresence(user.uid, {
+        displayName: user.displayName || 'Usuário',
+        photoURL: user.photoURL,
+        userType: null,
+        locationShared: false,
+        lat: null,
+        lng: null,
+        page: 'ao-vivo',
+        isLiveStreaming: isStreamingRef.current,
+        liveRoomName: liveRoomNameRef.current,
+      });
+    }, 90_000);
+    updatePresence(user.uid, {
+      displayName: user.displayName || 'Usuário',
+      photoURL: user.photoURL,
+      userType: null,
+      locationShared: false,
+      lat: null,
+      lng: null,
+      page: 'ao-vivo',
+      isLiveStreaming: isStreamingRef.current,
+      liveRoomName: liveRoomNameRef.current,
+    });
+    return () => {
+      clearInterval(heartbeat);
+      removePresence(user.uid);
+    };
+  }, [user]);
+
   useEffect(() => {
     setSliderMinutesAgo((prev) => Math.min(prev, maxSliderMinutesAgo));
   }, [maxSliderMinutesAgo]);
 
-  /** Timestamp efetivo em UTC: base (3 min) + offset do slider. CPTEC usa UTC. */
+  /** Modo único: verifica quais minutos têm imagem e filtra o slider. */
   useEffect(() => {
+    if (radarMode !== 'unico' || displayRadars.length === 0) {
+      setValidSliderMinutesAgo(null);
+      setSliderValidVerifying(false);
+      return;
+    }
+    const dr = displayRadars[0];
+    const maxMin = Math.min(maxSliderMinutesAgo, 120);
+    if (maxMin <= 0) {
+      setValidSliderMinutesAgo([0]);
+      setSliderValidVerifying(false);
+      return;
+    }
+    setSliderValidVerifying(true);
+    const ac = new AbortController();
+    (async () => {
+      const valid = await filterValidSliderMinutesAgo(dr, radarProductType, maxMin, ac.signal);
+      if (!ac.signal.aborted) {
+        setValidSliderMinutesAgo(valid);
+        setSliderMinutesAgo((prev) => {
+          const nearest = valid.reduce((a, b) => Math.abs(b - prev) < Math.abs(a - prev) ? b : a);
+          return nearest;
+        });
+        setSliderValidVerifying(false);
+      }
+    })();
+    return () => ac.abort();
+  }, [radarMode, displayRadars, radarProductType, maxSliderMinutesAgo]);
+
+  /** Setas do teclado: controlam o slider de tempo do radar (evita mover o mapa). Captura no capture phase para ter prioridade sobre o mapa. */
+  useEffect(() => {
+    const step = 5;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const el = e.target as HTMLElement;
+      const tag = el?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (validSliderMinutesAgo && validSliderMinutesAgo.length > 1) {
+        const idx = validSliderMinutesAgo.indexOf(sliderMinutesAgo);
+        const i = idx < 0 ? 0 : idx;
+        if (e.key === 'ArrowLeft') {
+          setSliderMinutesAgo(validSliderMinutesAgo[Math.min(i + 1, validSliderMinutesAgo.length - 1)] ?? 0);
+        } else if (e.key === 'ArrowRight') {
+          setSliderMinutesAgo(validSliderMinutesAgo[Math.max(i - 1, 0)] ?? 0);
+        }
+      } else {
+        if (e.key === 'ArrowLeft') {
+          setSliderMinutesAgo((prev) => Math.min(maxSliderMinutesAgo, prev + step));
+        } else if (e.key === 'ArrowRight') {
+          setSliderMinutesAgo((prev) => Math.max(0, prev - step));
+        }
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [maxSliderMinutesAgo, validSliderMinutesAgo, sliderMinutesAgo]);
+
+  /** Anexa o stream local ao vídeo de preview quando transmitindo */
+  useEffect(() => {
+    const video = localPreviewVideoRef.current;
+    const stream = localStreamRef.current;
+    if (video && stream) {
+      video.srcObject = stream;
+    }
+    return () => {
+      if (video) video.srcObject = null;
+    };
+  }, [isStreaming]);
+
+  /** Cleanup: para o stream ao sair da página */
+  useEffect(() => {
+    return () => {
+      liveKitRoomRef.current?.disconnect(true);
+      liveKitRoomRef.current = null;
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+      liveViewerRoomRef.current?.disconnect(true);
+      liveViewerRoomRef.current = null;
+    };
+  }, []);
+
+  /** Conecta ao LiveKit e exibe o stream do usuário transmitindo */
+  useEffect(() => {
+    if (!liveViewerOpen || !liveViewerUser?.liveRoomName || liveViewerUser.uid === user?.uid) {
+      if (!liveViewerOpen) {
+        liveViewerRoomRef.current?.disconnect(true);
+        liveViewerRoomRef.current = null;
+        if (liveViewerVideoRef.current) liveViewerVideoRef.current.srcObject = null;
+      }
+      return;
+    }
+    const roomName = liveViewerUser.liveRoomName;
+    setLiveViewerError(null);
+    setLiveViewerLoading(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const tokenRes = await fetch('/api/livekit-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomName,
+            participantName: user?.displayName || 'Visualizador',
+            participantIdentity: `viewer-${user?.uid ?? Date.now()}`,
+          }),
+        });
+        if (!tokenRes.ok) {
+          const errData = await tokenRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Falha ao obter token');
+        }
+        const { token, url } = await tokenRes.json();
+        if (cancelled) return;
+        const room = new Room();
+        liveViewerRoomRef.current = room;
+        room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+          const videoEl = liveViewerVideoRef.current;
+          if (videoEl && track.kind === Track.Kind.Video) {
+            track.attach(videoEl);
+          }
+        });
+        await room.connect(url, token);
+        if (cancelled) { room.disconnect(true); return; }
+        setLiveViewerLoading(false);
+        const participants = Array.from(room.remoteParticipants.values());
+        if (participants.length === 0) {
+          room.on(RoomEvent.ParticipantConnected, (participant) => {
+            participant.trackPublications.forEach((pub) => {
+              if (pub.track && pub.kind === Track.Kind.Video) {
+                const videoEl = liveViewerVideoRef.current;
+                if (videoEl) pub.track.attach(videoEl);
+              }
+            });
+          });
+        } else {
+          for (const p of participants) {
+            const pubs = Array.from(p.trackPublications.values());
+            for (const pub of pubs) {
+              if (pub.track && pub.kind === Track.Kind.Video) {
+                const videoEl = liveViewerVideoRef.current;
+                if (videoEl) pub.track.attach(videoEl);
+                break;
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setLiveViewerError(err?.message || 'Erro ao conectar');
+          setLiveViewerLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      liveViewerRoomRef.current?.disconnect(true);
+      liveViewerRoomRef.current = null;
+      if (liveViewerVideoRef.current) liveViewerVideoRef.current.srcObject = null;
+    };
+  }, [liveViewerOpen, liveViewerUser?.uid, liveViewerUser?.liveRoomName, user?.uid, user?.displayName]);
+
+  /** Timestamp efetivo em UTC: modo live = agora - (3 + slider); modo histórico = derivado do effectiveRadarTimestamp */
+  useEffect(() => {
+    if (historicalTimestampOverride) return;
     const base = 3 + sliderMinutesAgo;
     setRadarTimestamp(getNowMinusMinutesTimestamp12UTC(base));
-  }, [sliderMinutesAgo]);
+  }, [sliderMinutesAgo, historicalTimestampOverride]);
 
   useEffect(() => {
-    if (sliderMinutesAgo !== 0) return;
+    if (historicalTimestampOverride || sliderMinutesAgo !== 0) return;
     const i = setInterval(() => setRadarTimestamp(getNowMinusMinutesTimestamp12UTC(3)), 30_000);
     return () => clearInterval(i);
-  }, [sliderMinutesAgo]);
+  }, [sliderMinutesAgo, historicalTimestampOverride]);
 
   /** Animação: avança slider para trás no tempo (6 min a cada ~2s; 60 min ≈ 20s, 4h ≈ 80s) */
   useEffect(() => {
@@ -366,8 +871,9 @@ export default function AoVivoPage() {
     return () => clearInterval(i);
   }, [animationPlaying, animationDuration]);
 
-  /** Inicializa mapa quando localização concedida OU quando usuário acessa sem localização (ex: celular com problema) */
-  const canShowMap = locationPermission === 'granted' || locationSkipped;
+  /** Inicializa mapa quando localização é concedida ou quando usuário está excluído da requisição */
+  const locationExcluded = user ? LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid) : false;
+  const canShowMap = locationPermission === 'granted' || locationExcluded;
   useEffect(() => {
     if (!canShowMap) return;
     let isMounted = true;
@@ -522,12 +1028,12 @@ export default function AoVivoPage() {
   useEffect(() => {
     onlineUserMarkersRef.current.forEach((m) => m.setMap(null));
     onlineUserMarkersRef.current = [];
-    if (!mapInstanceRef.current) return;
+    if (!mapInstanceRef.current || !google?.maps?.OverlayView) return;
     const map = mapInstanceRef.current;
     let usersToShow = onlineUsers.filter((u) => u.locationShared && u.lat != null && u.lng != null);
     if (user && myLocation && !usersToShow.some((u) => u.uid === user.uid)) {
       usersToShow = [
-        { uid: user.uid, displayName: user.displayName || 'Você', photoURL: user.photoURL, locationShared: true, lat: myLocation.lat, lng: myLocation.lng, lastSeen: null },
+        { uid: user.uid, displayName: user.displayName || 'Você', photoURL: user.photoURL, locationShared: true, lat: myLocation.lat, lng: myLocation.lng, lastSeen: null, isLiveStreaming: isStreamingRef.current, liveRoomName: liveRoomNameRef.current },
         ...usersToShow,
       ];
     }
@@ -536,38 +1042,80 @@ export default function AoVivoPage() {
       const isMe = u.uid === user?.uid;
       const initial = (u.displayName?.[0] ?? '?').toUpperCase();
       const color = isMe ? '#0ea5e9' : '#38bdf8';
-      const svgContent = isMe
-        ? `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
-          <circle cx="20" cy="20" r="6" fill="${color}" stroke="white" stroke-width="2"/>
-          <circle cx="20" cy="20" r="12" fill="none" stroke="${color}" stroke-width="2"/>
-          <line x1="20" y1="2" x2="20" y2="8" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="20" y1="32" x2="20" y2="38" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="2" y1="20" x2="8" y2="20" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="32" y1="20" x2="38" y2="20" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-        </svg>`
-        : `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44">
-          <circle cx="18" cy="18" r="17" fill="${color}" stroke="white" stroke-width="2"/>
-          <text x="18" y="23" text-anchor="middle" fill="white" font-size="14" font-family="sans-serif" font-weight="bold">${initial}</text>
-          <polygon points="11,33 25,33 18,43" fill="${color}"/>
-        </svg>`;
-      const marker = new google.maps.Marker({
-        position: { lat: u.lat, lng: u.lng },
-        map,
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svgContent)}`,
-          scaledSize: new google.maps.Size(isMe ? 40 : 36, isMe ? 40 : 44),
-          anchor: new google.maps.Point(isMe ? 20 : 18, isMe ? 20 : 43),
-        },
-        title: u.displayName,
-        zIndex: isMe ? 999 : 100,
-      });
-      onlineUserMarkersRef.current.push(marker);
+      const isLive = !!u.isLiveStreaming;
+      const size = isMe ? 40 : 32;
+      const height = 40;
+
+      const displayName = u.displayName;
+      class UserMarkerOverlay extends google.maps.OverlayView {
+        div: HTMLDivElement | null = null;
+        constructor(
+          private position: { lat: number; lng: number },
+          private opts: { color: string; size: number; height: number; initial: string; isMe: boolean; isLive: boolean; photoURL: string | null },
+          private onClick: () => void
+        ) {
+          super();
+        }
+        onAdd() {
+          const { color, size, height, initial, isMe, isLive, photoURL } = this.opts;
+          const div = document.createElement('div');
+          div.style.cssText = `position:absolute;cursor:pointer;transform:translate(-50%,-100%);pointer-events:auto;z-index:${isMe ? 999 : isLive ? 200 : 100}`;
+          div.title = displayName + (isLive ? ' (ao vivo)' : '');
+          div.innerHTML = `
+            <div style="position:relative;width:${size}px;height:${height}px;display:flex;align-items:flex-end;justify-content:center">
+              <div style="position:relative;width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);background:${color}">
+                ${photoURL
+                  ? `<img src="${photoURL.replace(/"/g, '&quot;')}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';var s=this.nextElementSibling;if(s)s.style.display='flex'"/>
+                  <span style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:white">${initial}</span>`
+                  : isMe
+                    ? `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white"></span></span>`
+                    : `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:white">${initial}</span>`
+                }
+                ${isLive ? `<span style="position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#ef4444;border:1.5px solid white"></span>` : ''}
+              </div>
+              <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid ${color}"></div>
+            </div>`;
+          div.addEventListener('click', () => this.onClick());
+          this.getPanes()!.overlayMouseTarget.appendChild(div);
+          this.div = div;
+        }
+        draw() {
+          if (!this.div) return;
+          const projection = this.getProjection();
+          if (!projection) return;
+          const point = projection.fromLatLngToDivPixel(new google.maps.LatLng(this.position.lat, this.position.lng));
+          if (point && this.div) {
+            this.div.style.left = point.x + 'px';
+            this.div.style.top = point.y + 'px';
+          }
+        }
+        onRemove() {
+          if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+          this.div = null;
+        }
+      }
+
+      const overlay = new UserMarkerOverlay(
+        { lat: u.lat!, lng: u.lng! },
+        { color, size, height, initial, isMe, isLive, photoURL: u.photoURL ?? null },
+        () => {
+          if (u.isLiveStreaming && u.uid !== user?.uid && u.liveRoomName) {
+            setLiveViewerUser(u);
+            setLiveViewerOpen(true);
+          } else if (u.lat && u.lng && mapInstanceRef.current) {
+            mapInstanceRef.current.panTo({ lat: u.lat!, lng: u.lng! });
+            mapInstanceRef.current.setZoom(12);
+          }
+        }
+      );
+      overlay.setMap(map);
+      onlineUserMarkersRef.current.push(overlay);
     });
     return () => {
       onlineUserMarkersRef.current.forEach((m) => m.setMap(null));
       onlineUserMarkersRef.current = [];
     };
-  }, [onlineUsers, user?.uid, myLocation, mapReady]);
+  }, [onlineUsers, user?.uid, myLocation, mapReady, isStreaming]);
 
   const prevotsForecastToShow = prevotsForecasts.find((f) => f.date === prevotsForecastDate);
 
@@ -577,6 +1125,7 @@ export default function AoVivoPage() {
     if (!mapInstanceRef.current || !mapReady || !prevotsOverlayVisible || !prevotsForecastToShow) return;
     const map = mapInstanceRef.current;
     (prevotsForecastToShow.polygons ?? [])
+      .filter((p) => p.level !== 0)
       .sort((a, b) => a.level - b.level)
       .forEach((poly) => {
         const ring = poly.coordinates[0];
@@ -617,6 +1166,78 @@ export default function AoVivoPage() {
     return () => unsub();
   }, [user]);
 
+  /** Ícones de radar no mapa — clicar filtra para mostrar só esse radar */
+  const getRadarCenter = useCallback((dr: DisplayRadar): { lat: number; lng: number } => {
+    const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+    const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
+    if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) return { lat: cfg.lat, lng: cfg.lng };
+    return { lat: dr.station.lat, lng: dr.station.lng };
+  }, [radarConfigs]);
+
+  /** Cria ou recria marcadores de radar (não depende de failedRadars para evitar piscar) */
+  useEffect(() => {
+    radarMarkersRef.current.forEach((m) => m.setMap(null));
+    radarMarkersRef.current = [];
+    radarKeyToMarkerRef.current.clear();
+    if (!mapInstanceRef.current || !mapReady || editingRadar) return;
+    const map = mapInstanceRef.current;
+    const g = (window as any).google;
+    if (!g?.maps) return;
+
+    const displayKeys = new Set(displayRadars.map((r) => r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`));
+    allRadars.forEach((dr) => {
+      const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
+      const isDisplayed = displayKeys.has(radarKey);
+      const hasData = isDisplayed && !failedRadars.has(radarKey);
+      const pos = getRadarCenter(dr);
+      const marker = new g.maps.Marker({
+        position: pos,
+        map,
+        icon: {
+          url: hasData ? RADAR_ICON_AVAILABLE : RADAR_ICON_UNAVAILABLE,
+          scaledSize: new g.maps.Size(28, 28),
+          anchor: new g.maps.Point(14, 14),
+        },
+        title: dr.station.name,
+        zIndex: focusedRadarKey === radarKey ? 600 : 400,
+      });
+      marker.addListener('click', () => {
+        const isUnfocus = focusedRadarKey === radarKey;
+        if (isUnfocus) {
+          setFocusedRadarKey(null);
+          setRadarMode('mosaico');
+          setSelectedIndividualRadars(new Set());
+        } else {
+          setFocusedRadarKey(radarKey);
+          setRadarMode('unico');
+          setSelectedIndividualRadars(new Set([radarKey]));
+        }
+      });
+      radarMarkersRef.current.push(marker);
+      radarKeyToMarkerRef.current.set(radarKey, { marker, isDisplayed });
+    });
+
+    return () => {
+      radarMarkersRef.current.forEach((m) => m.setMap(null));
+      radarMarkersRef.current = [];
+      radarKeyToMarkerRef.current.clear();
+    };
+  }, [mapReady, allRadars, displayRadars, radarConfigs, getRadarCenter, editingRadar, focusedRadarKey]);
+
+  /** Atualiza ícones dos marcadores quando failedRadars muda (evita recriar = evita piscar) */
+  useEffect(() => {
+    const g = (window as any).google;
+    if (!g?.maps) return;
+    radarKeyToMarkerRef.current.forEach(({ marker, isDisplayed }, radarKey) => {
+      const hasData = isDisplayed && !failedRadars.has(radarKey);
+      marker.setIcon({
+        url: hasData ? RADAR_ICON_AVAILABLE : RADAR_ICON_UNAVAILABLE,
+        scaledSize: new g.maps.Size(28, 28),
+        anchor: new g.maps.Point(14, 14),
+      });
+    });
+  }, [failedRadars]);
+
   /** Renderiza marcadores dos relatos no mapa */
   useEffect(() => {
     stormReportMarkersRef.current.forEach((m) => m.setMap(null));
@@ -632,7 +1253,29 @@ export default function AoVivoPage() {
       ven: { path: 'M -4,-4 4,-4 4,4 -4,4 z', fillColor: '#3b82f6', fillOpacity: 1, strokeColor: 'white', strokeWeight: 1.5, scale: 1 },
     };
 
+    const buildReportContent = (rep: StormReport, viewCount: number) => {
+      const typeLabel = rep.type === 'tor' ? 'Tornado' : rep.type === 'gra' ? 'Granizo' : 'Vento';
+      let html = `<div style="font-family:sans-serif;max-width:240px;color:#e2e8f0;">
+        <p style="margin:0 0 4px;font-weight:700;font-size:13px;">${typeLabel}</p>`;
+      if (rep.detail) html += `<p style="margin:0 0 4px;font-size:12px;">${rep.type === 'ven' ? 'Velocidade' : 'Tamanho'}: ${rep.detail}</p>`;
+      html += `<p style="margin:0 0 4px;font-size:11px;color:#94a3b8;">por ${rep.displayName}</p>`;
+      html += `<p style="margin:0 0 6px;font-size:10px;color:#64748b;">👁 ${viewCount} ${viewCount === 1 ? 'visualização' : 'visualizações'}</p>`;
+      if (rep.mediaUrl && rep.mediaType === 'link') {
+        html += `<a href="${rep.mediaUrl}" target="_blank" rel="noopener" style="color:#22d3ee;font-size:12px;word-break:break-all;">Link do relato</a>`;
+      } else if (rep.mediaUrl && rep.mediaType === 'file') {
+        if (rep.mediaUrl.match(/\.(mp4|webm|mov)/i)) {
+          html += `<video src="${rep.mediaUrl}" controls style="max-width:100%;border-radius:6px;margin-top:4px;" />`;
+        } else {
+          html += `<div style="min-height:60px;background:#1e293b;border-radius:6px;margin-top:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${rep.mediaUrl}" style="max-width:100%;border-radius:6px;cursor:pointer;" onclick="window.open('${rep.mediaUrl}','_blank')" onerror="this.onerror=null;this.style.display='none'" /></div>`;
+        }
+      }
+      html += `</div>`;
+      return html;
+    };
+
     stormReports.forEach((r) => {
+      const reportId = r.id;
+      if (!reportId) return;
       const icon = SYMBOLS[r.type] ?? SYMBOLS.ven;
       const marker = new g.maps.Marker({
         position: { lat: r.lat, lng: r.lng },
@@ -642,27 +1285,13 @@ export default function AoVivoPage() {
         zIndex: 500,
       });
 
-      const typeLabel = r.type === 'tor' ? 'Tornado' : r.type === 'gra' ? 'Granizo' : 'Vento';
-      let contentHtml = `<div style="font-family:sans-serif;max-width:240px;color:#e2e8f0;">
-        <p style="margin:0 0 4px;font-weight:700;font-size:13px;">${typeLabel}</p>`;
-      if (r.detail) contentHtml += `<p style="margin:0 0 4px;font-size:12px;">${r.type === 'ven' ? 'Velocidade' : 'Tamanho'}: ${r.detail}</p>`;
-      contentHtml += `<p style="margin:0 0 4px;font-size:11px;color:#94a3b8;">por ${r.displayName}</p>`;
-      if (r.mediaUrl && r.mediaType === 'link') {
-        contentHtml += `<a href="${r.mediaUrl}" target="_blank" rel="noopener" style="color:#22d3ee;font-size:12px;word-break:break-all;">Link do relato</a>`;
-      } else if (r.mediaUrl && r.mediaType === 'file') {
-        if (r.mediaUrl.match(/\.(mp4|webm|mov)/i)) {
-          contentHtml += `<video src="${r.mediaUrl}" controls style="max-width:100%;border-radius:6px;margin-top:4px;" />`;
-        } else {
-          contentHtml += `<img src="${r.mediaUrl}" style="max-width:100%;border-radius:6px;margin-top:4px;cursor:pointer;" onclick="window.open('${r.mediaUrl}','_blank')" />`;
-        }
-      }
-      contentHtml += `</div>`;
-
-      const iw = new g.maps.InfoWindow({ content: contentHtml });
-      marker.addListener('click', () => {
+      const iw = new g.maps.InfoWindow({ content: buildReportContent(r, 0) });
+      marker.addListener('click', async () => {
         stormReportInfoWindowRef.current?.close();
         iw.open(map, marker);
         stormReportInfoWindowRef.current = iw;
+        const viewCount = await recordReportView(reportId);
+        iw.setContent(buildReportContent(r, viewCount));
       });
       stormReportMarkersRef.current.push(marker);
     });
@@ -673,7 +1302,9 @@ export default function AoVivoPage() {
     };
   }, [stormReports, mapReady, showReportsOnMap]);
 
-  /** Cria overlays de radar para um determinado mapa e tipo de produto */
+  /** Cria overlays de radar para um determinado mapa e tipo de produto.
+   * Em LIVE (useFallback): cada radar busca individualmente a última imagem disponível conforme seu horário (CPTEC/REDEMET/Argentina).
+   */
   const addRadarOverlays = useCallback((
     map: any,
     overlaysArr: any[],
@@ -683,41 +1314,117 @@ export default function AoVivoPage() {
     useFallback: boolean,
     opacity: number,
   ) => {
+    /** Em LIVE: usa timestamp o mais fresco possível (1 min) para cada radar buscar sua própria última imagem. */
+    const nominalTs = useFallback ? getNowMinusMinutesTimestamp12UTC(1) : timestamp;
     const nominalDate = new Date(Date.UTC(
-      parseInt(timestamp.slice(0, 4), 10),
-      parseInt(timestamp.slice(4, 6), 10) - 1,
-      parseInt(timestamp.slice(6, 8), 10),
-      parseInt(timestamp.slice(8, 10), 10),
-      parseInt(timestamp.slice(10, 12), 10)
+      parseInt(nominalTs.slice(0, 4), 10),
+      parseInt(nominalTs.slice(4, 6), 10) - 1,
+      parseInt(nominalTs.slice(6, 8), 10),
+      parseInt(nominalTs.slice(8, 10), 10),
+      parseInt(nominalTs.slice(10, 12), 10)
     ));
     radars.forEach((dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
-      let urlsToTry: { url: string; ts12: string }[] = [];
+      const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+      const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
+      const rotationDeg = cfg?.rotationDegrees ?? 0;
+      const effectiveOpacity = cfg?.opacity ?? opacity;
+      type UrlEntry = { url: string; ts12: string; source: 'cptec' | 'redemet' };
+      let urlsToTry: UrlEntry[] = [];
+      let redemetFindPromise: Promise<string | null> | null = null;
       if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
-        const IPMET_URL = 'https://us-central1-studio-4398873450-7cc8f.cloudfunctions.net/getRadarIPMet';
-        urlsToTry = [{ url: IPMET_URL + `?t=${Date.now()}`, ts12: timestamp }];
+        const IPMET_URL = GET_RADAR_IPMET_URL;
+        urlsToTry = [{ url: IPMET_URL + `?t=${Date.now()}`, ts12: nominalTs, source: 'cptec' }];
+      } else if (dr.type === 'cptec' && dr.station.slug === 'usp-starnet') {
+        const USP_URL = GET_RADAR_USP_URL + `?t=${Date.now()}`;
+        urlsToTry = [{ url: USP_URL, ts12: nominalTs, source: 'cptec' }];
       } else if (dr.type === 'cptec') {
+        const isHdMode = radarSourceMode === 'hd';
         if (useFallback) {
-          for (let back = 0; back <= 60; back += 6) {
-            const baseTs = back === 0 ? timestamp : subtractMinutesFromTimestamp12UTC(timestamp, back);
-            const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
+          if (!isHdMode) {
+            for (let back = 0; back <= 60; back += 6) {
+              const baseTs = back === 0 ? nominalTs : subtractMinutesFromTimestamp12UTC(nominalTs, back);
+              const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
+              urlsToTry.push({
+                url: getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, productType)),
+                ts12,
+                source: 'cptec',
+              });
+            }
+          }
+          if (hasRedemetFallback(dr.station.slug)) {
+            const area = getRedemetArea(dr.station.slug)!;
+            const ts12ForRedemet = getNearestRadarTimestamp(nominalTs, dr.station);
+            redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=false`)
+              .then(r => r.ok ? r.json() : null)
+              .then(d => {
+                const u = d?.url ?? null;
+                if (u) {
+                  setRedemetAvailableKeys(prev => new Set(prev).add(radarKey));
+                  setRedemetFoundUrls(prev => ({ ...prev, [radarKey]: u }));
+                }
+                return u;
+              })
+              .catch(() => null);
+          }
+        } else {
+          if (!isHdMode) {
+            for (let back = 0; back <= 60; back += 6) {
+              const baseTs = back === 0 ? timestamp : subtractMinutesFromTimestamp12UTC(timestamp, back);
+              const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
+              urlsToTry.push({
+                url: getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, productType)),
+                ts12,
+                source: 'cptec',
+              });
+            }
+          }
+          if (hasRedemetFallback(dr.station.slug)) {
+            const area = getRedemetArea(dr.station.slug)!;
+            const ts12ForRedemet = getNearestRadarTimestamp(timestamp, dr.station);
+            redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=true`)
+              .then(r => r.ok ? r.json() : null)
+              .then(d => {
+                const u = d?.url ?? null;
+                if (u) {
+                  setRedemetAvailableKeys(prev => new Set(prev).add(radarKey));
+                  setRedemetFoundUrls(prev => ({ ...prev, [radarKey]: u }));
+                }
+                return u;
+              })
+              .catch(() => null);
+          }
+        }
+      } else {
+        const interval = dr.station.updateIntervalMinutes ?? 10;
+        if (useFallback) {
+          for (let back = 0; back <= 60; back += interval) {
+            const d = new Date(Date.now() - back * 60 * 1000);
+            const tsArg = getArgentinaRadarTimestamp(d, dr.station);
             urlsToTry.push({
-              url: getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, productType)),
-              ts12,
+              url: getProxiedRadarUrl(buildArgentinaRadarPngUrl(dr.station, tsArg, productType)),
+              ts12: tsArg,
+              source: 'cptec',
             });
           }
         } else {
-          const ts12 = getNearestRadarTimestamp(timestamp, dr.station);
-          urlsToTry = [{ url: getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, productType)), ts12 }];
+          /** Histórico Argentina: tenta horários próximos (intervalo do radar) */
+          for (let back = 0; back <= 60; back += interval) {
+            const d = new Date(nominalDate.getTime() - back * 60 * 1000);
+            const tsArg = getArgentinaRadarTimestamp(d, dr.station);
+            urlsToTry.push({
+              url: getProxiedRadarUrl(buildArgentinaRadarPngUrl(dr.station, tsArg, productType)),
+              ts12: tsArg,
+              source: 'cptec',
+            });
+          }
         }
-      } else {
-        const tsArg = getArgentinaRadarTimestamp(nominalDate, dr.station);
-        urlsToTry = [{
-          url: getProxiedRadarUrl(buildArgentinaRadarPngUrl(dr.station, tsArg, productType)),
-          ts12: tsArg,
-        }];
       }
-      const bounds = getBoundsForDisplayRadar(dr);
+      let bounds = getBoundsForDisplayRadar(dr);
+      if (radarSourceMode === 'hd' && dr.type === 'cptec' && dr.station.slug === 'santiago') {
+        const hb = getRadarImageBounds(dr.station, 400);
+        bounds = { north: hb.north, south: hb.south, east: hb.east, west: hb.west };
+      }
       const latLngBounds = new google.maps.LatLngBounds(
         { lat: bounds.south, lng: bounds.west },
         { lat: bounds.north, lng: bounds.east }
@@ -726,26 +1433,59 @@ export default function AoVivoPage() {
       let divEl: HTMLDivElement | null = null;
       ov.onAdd = () => {
         divEl = document.createElement('div');
-        divEl.style.cssText = 'position:absolute;pointer-events:none;';
+        divEl.style.cssText = 'position:absolute;pointer-events:none;overflow:hidden;display:none;';
         const img = document.createElement('img');
         img.className = 'pixelated-layer';
-        img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;`;
+        const isUsp = dr.type === 'cptec' && dr.station.slug === 'usp-starnet';
+        img.style.cssText = `width:100%;height:100%;opacity:${effectiveOpacity};object-fit:fill;transform-origin:center center;${isUsp ? 'mix-blend-mode:multiply;' : ''}`;
+        if (rotationDeg !== 0) img.style.transform = `rotate(${rotationDeg}deg)`;
         let tryIndex = 0;
+        let redemetAttempted = false;
+        const markFailed = () => {
+          setFailedRadars((prev) => new Set(prev).add(radarKey));
+          setRadarEffectiveSource((prev) => {
+            const next = { ...prev };
+            delete next[radarKey];
+            return next;
+          });
+          if (divEl) divEl.style.display = 'none';
+        };
+        const showOverlay = () => { if (divEl) divEl.style.display = ''; };
+        const onRedemetLoad = (ts12Val: string) => {
+          setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: ts12Val }));
+          setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'redemet' }));
+          setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
+          showOverlay();
+        };
         const tryNext = () => {
-          if (tryIndex >= urlsToTry.length) {
-            setFailedRadars((prev) => new Set(prev).add(radarKey));
-            if (divEl) divEl.style.display = 'none';
+          if (tryIndex < urlsToTry.length) {
+            img.src = urlsToTry[tryIndex].url;
+            tryIndex += 1;
             return;
           }
-          img.src = urlsToTry[tryIndex].url;
-          tryIndex += 1;
+          if (!redemetAttempted && redemetFindPromise) {
+            redemetAttempted = true;
+            redemetFindPromise.then(redemetUrl => {
+              if (!redemetUrl) { markFailed(); return; }
+              img.onerror = () => markFailed();
+              img.onload = () => onRedemetLoad(timestamp);
+              img.src = getProxiedRadarUrl(redemetUrl);
+            });
+            return;
+          }
+          markFailed();
         };
         img.onerror = tryNext;
         img.onload = () => {
+          const loaded = urlsToTry[tryIndex - 1];
           setRadarEffectiveTimestamps((prev) => ({
             ...prev,
-            [radarKey]: urlsToTry[tryIndex - 1]?.ts12 ?? timestamp,
+            [radarKey]: loaded?.ts12 ?? timestamp,
           }));
+          if (loaded?.source) {
+            setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: loaded.source }));
+          }
+          showOverlay();
           setFailedRadars((prev) => {
             const next = new Set(prev);
             next.delete(radarKey);
@@ -763,59 +1503,200 @@ export default function AoVivoPage() {
         const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
         const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
         if (!sw || !ne) return;
-        divEl.style.left = Math.min(sw.x, ne.x) + 'px';
-        divEl.style.top = Math.min(sw.y, ne.y) + 'px';
-        divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
-        divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
+        const w = Math.abs(ne.x - sw.x);
+        const h = Math.abs(ne.y - sw.y);
+        const left = Math.min(sw.x, ne.x);
+        const top = Math.min(sw.y, ne.y);
+        divEl.style.left = left + 'px';
+        divEl.style.top = top + 'px';
+        divEl.style.width = w + 'px';
+        divEl.style.height = h + 'px';
       };
       ov.onRemove = () => { divEl?.parentNode?.removeChild(divEl); divEl = null; };
       ov.setMap(map);
       overlaysArr.push(ov);
     });
-  }, [getBoundsForDisplayRadar]);
+  }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode]);
 
-  /** Overlays de radar no mapa principal (refletividade, ou produto único quando split=1) */
+  const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
+
+  /** Overlays de radar no mapa principal. Quando editando um radar, exclui-o da lista (terá overlay editável separado) */
   useEffect(() => {
     setFailedRadars(new Set());
     setRadarEffectiveTimestamps({});
+    setRadarEffectiveSource({});
     radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
     radarOverlaysRef.current = [];
     if (!mapInstanceRef.current || displayRadars.length === 0) return;
     const product = splitCount === 2 ? 'reflectividade' : radarProductType;
+    const radarsToShow = editingRadar
+      ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
+      : displayRadars;
+    if (radarsToShow.length === 0 && !editingRadar) return;
     addRadarOverlays(
       mapInstanceRef.current,
       radarOverlaysRef.current,
       product,
-      displayRadars,
-      radarTimestamp,
-      sliderMinutesAgo === 0,
+      radarsToShow.length > 0 ? radarsToShow : [],
+      effectiveRadarTimestamp,
+      useFallbackForOverlays,
       radarOpacity,
     );
     return () => {
       radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
       radarOverlaysRef.current = [];
     };
-  }, [displayRadars, radarProductType, radarOpacity, radarTimestamp, sliderMinutesAgo, splitCount, addRadarOverlays]);
+  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, addRadarOverlays, editingRadar, radarConfigs]);
+
+  /** Overlay editável (arrastável) para posicionar o radar — apenas quando editingRadar está setado */
+  useEffect(() => {
+    if (editOverlayRef.current) {
+      (editOverlayRef.current as any).setMap?.(null);
+      editOverlayRef.current = null;
+    }
+    if (!mapReady || !mapInstanceRef.current || !editingRadar) return;
+
+    const map = mapInstanceRef.current;
+    const mapDiv = map.getDiv();
+    const centerLat = editLiveCenter ? editLiveCenter.lat : editCenterLat;
+    const centerLng = editLiveCenter ? editLiveCenter.lng : editCenterLng;
+    const isIpmet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'ipmet-bauru';
+    const isUspStarnet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'usp-starnet';
+    const b = isIpmet ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw }
+      : isUspStarnet ? { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw }
+      : calculateRadarBounds(centerLat, centerLng, editRangeKm);
+    const latLngBounds = new google.maps.LatLngBounds(
+      { lat: b.sw.lat, lng: b.sw.lng },
+      { lat: b.ne.lat, lng: b.ne.lng }
+    );
+    const imageUrl = getEditRadarImageUrl(editingRadar);
+
+    let moveHandler: (e: MouseEvent) => void;
+    let upHandler: () => void;
+
+    const ov = new google.maps.OverlayView();
+    let divEl: HTMLDivElement | null = null;
+    ov.onAdd = () => {
+      divEl = document.createElement('div');
+      divEl.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;border:2px solid #22d3ee;user-select:none;';
+      divEl.addEventListener('mousedown', (e: MouseEvent) => {
+        e.preventDefault();
+        const proj = ov.getProjection();
+        if (!proj) return;
+        const rect = mapDiv.getBoundingClientRect();
+        const clickMapX = e.clientX - rect.left;
+        const clickMapY = e.clientY - rect.top;
+        const centerPixel = proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng));
+        if (!centerPixel) return;
+        const offsetX = clickMapX - centerPixel.x;
+        const offsetY = clickMapY - centerPixel.y;
+        divEl!.style.cursor = 'grabbing';
+
+        moveHandler = (e2: MouseEvent) => {
+          const mx = e2.clientX - rect.left - offsetX;
+          const my = e2.clientY - rect.top - offsetY;
+          const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
+          if (!pt || !divEl) return;
+          const newLat = pt.lat();
+          const newLng = pt.lng();
+          lastEditDragRef.current = { lat: newLat, lng: newLng };
+          setEditLiveCenter({ lat: newLat, lng: newLng });
+          const editSlug = editingRadar.type === 'cptec' ? editingRadar.station.slug : null;
+          const newB = editSlug === 'ipmet-bauru' ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw }
+            : editSlug === 'usp-starnet' ? { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw }
+            : calculateRadarBounds(newLat, newLng, editRangeKm);
+          const newSw = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.sw.lat, newB.sw.lng));
+          const newNe = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.ne.lat, newB.ne.lng));
+          if (newSw && newNe) {
+            divEl.style.left = Math.min(newSw.x, newNe.x) + 'px';
+            divEl.style.top = Math.min(newSw.y, newNe.y) + 'px';
+            divEl.style.width = Math.abs(newNe.x - newSw.x) + 'px';
+            divEl.style.height = Math.abs(newNe.y - newSw.y) + 'px';
+          }
+        };
+        upHandler = () => {
+          divEl!.style.cursor = 'grab';
+          document.removeEventListener('mousemove', moveHandler);
+          document.removeEventListener('mouseup', upHandler);
+          setEditLiveCenter(null);
+          const last = lastEditDragRef.current;
+          if (last) {
+            setEditCenterLat(last.lat);
+            setEditCenterLng(last.lng);
+            handleSaveEditPosition(last.lat, last.lng);
+          }
+          lastEditDragRef.current = null;
+        };
+        document.addEventListener('mousemove', moveHandler);
+        document.addEventListener('mouseup', upHandler);
+      });
+
+      const inner = document.createElement('div');
+      inner.style.cssText = 'width:100%;height:100%;position:relative;min-height:60px;pointer-events:none;';
+      const img = document.createElement('img');
+      img.src = imageUrl;
+      const isUspEdit = editingRadar.type === 'cptec' && editingRadar.station.slug === 'usp-starnet';
+      img.style.cssText = `width:100%;height:100%;object-fit:fill;transform-origin:center center;${isUspEdit ? 'mix-blend-mode:multiply;' : ''}`;
+      img.style.transform = `rotate(${editRotationDegrees}deg)`;
+      inner.appendChild(img);
+      const centerIcon = document.createElement('img');
+      centerIcon.src = 'https://raw.githubusercontent.com/stormchasermt-netizen/main/ec772010815ceed0001897a8b99858f3993c34e0/2656046-200.png';
+      centerIcon.alt = 'Posição do radar';
+      centerIcon.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;pointer-events:none;';
+      inner.appendChild(centerIcon);
+      divEl.appendChild(inner);
+      ov.getPanes()?.overlayLayer?.appendChild(divEl);
+    };
+    ov.draw = () => {
+      if (!divEl) return;
+      const proj = ov.getProjection();
+      if (!proj) return;
+      const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
+      const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
+      if (!sw || !ne) return;
+      divEl.style.left = Math.min(sw.x, ne.x) + 'px';
+      divEl.style.top = Math.min(sw.y, ne.y) + 'px';
+      divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
+      divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
+    };
+    ov.onRemove = () => {
+      document.removeEventListener('mousemove', moveHandler!);
+      document.removeEventListener('mouseup', upHandler!);
+      divEl?.parentNode?.removeChild(divEl!);
+      divEl = null;
+    };
+    ov.setMap(map);
+    editOverlayRef.current = ov;
+    map.fitBounds(latLngBounds, { top: 120, right: 120, bottom: 120, left: 320 });
+
+    return () => {
+      (ov as any).setMap?.(null);
+      editOverlayRef.current = null;
+    };
+  }, [mapReady, editingRadar, editCenterLat, editCenterLng, editRangeKm, editRotationDegrees, editLiveCenter, getEditRadarImageUrl, handleSaveEditPosition]);
 
   /** Overlays de radar no mapa 2 (Doppler) — apenas quando split=2 */
   useEffect(() => {
     radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
     radarOverlays2Ref.current = [];
     if (splitCount !== 2 || !map2InstanceRef.current || !map2Ready || displayRadars.length === 0) return;
+    const radars2 = editingRadar
+      ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
+      : displayRadars;
     addRadarOverlays(
       map2InstanceRef.current,
       radarOverlays2Ref.current,
       'velocidade',
-      displayRadars,
-      radarTimestamp,
-      sliderMinutesAgo === 0,
+      radars2,
+      effectiveRadarTimestamp,
+      useFallbackForOverlays,
       radarOpacity,
     );
     return () => {
       radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
       radarOverlays2Ref.current = [];
     };
-  }, [displayRadars, radarOpacity, radarTimestamp, sliderMinutesAgo, splitCount, map2Ready, addRadarOverlays]);
+  }, [displayRadars, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, map2Ready, addRadarOverlays, editingRadar, radarConfigs]);
 
   const openReportPopup = () => setReportStep('location');
 
@@ -861,6 +1742,11 @@ export default function AoVivoPage() {
 
   const submitReport = useCallback(async () => {
     if (!user || reportLat == null || reportLng == null) return;
+    const hasMedia = reportMediaFile || (reportMediaMode === 'link' && reportMediaLink?.trim());
+    if (!hasMedia) {
+      addToast('Adicione uma foto, link ou vídeo para confirmar o relato', 'info');
+      return;
+    }
     setReportSending(true);
     try {
       const d = new Date();
@@ -939,36 +1825,45 @@ export default function AoVivoPage() {
     );
   }
 
-  if (locationPermission !== 'granted' && !locationSkipped) {
+  if (locationPermission !== 'granted' && !locationExcluded) {
     return (
       <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-slate-950 text-white p-4">
         <div className="max-w-md text-center space-y-4">
           <MapPin className="w-16 h-16 text-cyan-400 mx-auto" />
-          <h1 className="text-xl font-bold">Localização</h1>
+          <h1 className="text-xl font-bold">Localização obrigatória</h1>
           <p className="text-slate-400">
-            O Modo Ao Vivo usa sua localização para exibir os radares próximos e posicionar você no mapa.
+            O Modo Ao Vivo exige que você compartilhe sua localização para funcionar. Sua posição é usada para:
           </p>
+          <ul className="text-left text-slate-400 text-sm space-y-2 list-disc list-inside">
+            <li>Exibir radares próximos a você</li>
+            <li>Posicionar você no mapa junto aos outros usuários online</li>
+            <li>Permitir que todos vejam quem está acompanhando em tempo real</li>
+          </ul>
           {locationPermission === 'denied' && (
-            <p className="text-red-400 text-sm">Permissão negada. Ative a localização nas configurações do navegador.</p>
+            <div className="text-red-400 text-sm space-y-1">
+              {locationErrorType === 'denied' && (
+                <p>Permissão negada. Ative a localização nas configurações do navegador e clique em &quot;Tentar novamente&quot;.</p>
+              )}
+              {locationErrorType === 'timeout' && (
+                <p>O tempo esgotou. Verifique se o GPS está ativado, saia de locais fechados e tente novamente.</p>
+              )}
+              {locationErrorType === 'unavailable' && (
+                <p>Localização indisponível. Verifique se o GPS está ativado no dispositivo e tente novamente.</p>
+              )}
+              {!locationErrorType && (
+                <p>Não foi possível obter sua localização. Tente novamente.</p>
+              )}
+            </div>
           )}
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={requestLocation}
-              disabled={locationPermission === 'denied'}
-              className="px-6 py-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-900 font-semibold"
-            >
-              {locationPermission === 'unknown' ? 'Permitir localização' : 'Tentar novamente'}
-            </button>
-            <button
-              onClick={() => setLocationSkipped(true)}
-              className="px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-sm"
-            >
-              Acessar sem localização
-            </button>
-          </div>
-          <p className="text-[11px] text-slate-500">
-            Se não conseguir entrar no celular, use &quot;Acessar sem localização&quot; para visualizar o mapa.
-          </p>
+          <p className="text-slate-500 text-xs">Use sempre a mesma URL (ex: previsasomaster.com). www e sem www são tratados como sites diferentes.</p>
+          <button
+            onClick={requestLocation}
+            disabled={locationLoading}
+            className="px-6 py-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-60 disabled:cursor-not-allowed text-slate-900 font-semibold flex items-center justify-center gap-2"
+          >
+            {locationLoading && <Loader2 className="w-5 h-5 animate-spin" />}
+            {locationLoading ? 'Obtendo localização...' : locationPermission === 'unknown' ? 'Permitir localização' : 'Tentar novamente'}
+          </button>
         </div>
       </div>
     );
@@ -994,21 +1889,48 @@ export default function AoVivoPage() {
 
         {/* Header: Menu | Título central (radar + horário) */}
         <header className="relative z-20 flex items-center gap-3 px-3 py-2.5 bg-[#0F131C]/80 backdrop-blur-md border-b border-white/10 flex-shrink-0 shadow-lg">
-          <button
-            type="button"
+              <button
+                type="button"
             onClick={() => setSideMenuOpen(true)}
             className="p-2 -ml-1 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
             aria-label="Abrir menu"
           >
             <Menu className="w-6 h-6" />
-          </button>
+              </button>
+          {/* Visitas do dia */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-500/15 border border-slate-500/30">
+            <span className="text-xs font-bold text-slate-300 tabular-nums">{todayVisitCount}</span>
+            <span className="text-[10px] text-slate-400/80 uppercase tracking-wider">visitas hoje</span>
+          </div>
+          {/* Contador de visitantes online */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+            </span>
+            <span className="text-xs font-bold text-emerald-300 tabular-nums">{onlineUsers.length}</span>
+            <span className="text-[10px] text-emerald-400/80 uppercase tracking-wider">online</span>
+          </div>
           <div className="flex-1 min-w-0 text-center">
             <p className="text-sm font-black tracking-wider text-white truncate uppercase">{headerTitle.name}</p>
             <p className="text-[10px] tracking-widest text-cyan-400/80 uppercase font-medium mt-0.5">
               {headerTitle.time ? `Última imagem: ${headerTitle.time} (local)` : 'Carregando…'}
             </p>
-          </div>
-          <button
+            {focusedRadarKey && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFocusedRadarKey(null);
+                  setRadarMode('mosaico');
+                  setSelectedIndividualRadars(new Set());
+                }}
+                className="mt-1.5 text-[10px] px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/40"
+              >
+                Ver mosaico
+              </button>
+            )}
+            </div>
+              <button
             onClick={() => setShowReportsOnMap((v) => !v)}
             className={`relative p-2 rounded-lg transition-all transform hover:scale-105 ${showReportsOnMap ? 'text-amber-400 bg-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
             title="Relatos de hoje"
@@ -1019,7 +1941,7 @@ export default function AoVivoPage() {
                 {stormReports.length}
               </span>
             )}
-          </button>
+              </button>
           <Link href="/" className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all transform hover:scale-105" aria-label="Voltar">
             <ChevronLeft className="w-5 h-5" />
           </Link>
@@ -1052,7 +1974,7 @@ export default function AoVivoPage() {
                   <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${radarMode === 'mosaico' ? 'bg-cyan-500 border-cyan-500' : 'border-slate-500 group-hover:border-cyan-500/50'}`}>
                     {radarMode === 'mosaico' && <Check className="w-3 h-3 text-black" />}
                   </div>
-                  <input type="checkbox" checked={radarMode === 'mosaico'} onChange={() => { setRadarMode('mosaico'); setSelectedRadar(null); }} className="hidden" />
+                  <input type="checkbox" checked={radarMode === 'mosaico'} onChange={() => setRadarMode('mosaico')} className="hidden" />
                   <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Mosaico</span>
                 </label>
                 <label className="flex items-center gap-3 py-2 cursor-pointer group">
@@ -1062,61 +1984,276 @@ export default function AoVivoPage() {
                   <input type="checkbox" checked={radarMode === 'unico'} onChange={() => setRadarMode('unico')} className="hidden" />
                   <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Radar Individual</span>
                 </label>
-                {radarMode === 'unico' && (
-                  <motion.select
+              {radarMode === 'unico' && (
+                  <motion.div
                     initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-                    value={selectedRadar ? (selectedRadar.type === 'cptec' ? `cptec:${selectedRadar.station.slug}` : `argentina:${selectedRadar.station.id}`) : allRadars[0] ? (allRadars[0].type === 'cptec' ? `cptec:${allRadars[0].station.slug}` : `argentina:${allRadars[0].station.id}`) : ''}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (!v) { setSelectedRadar(null); return; }
-                      const [type, id] = v.split(':');
-                      const s = type === 'cptec' ? allRadars.find((r) => r.type === 'cptec' && r.station.slug === id) : allRadars.find((r) => r.type === 'argentina' && r.station.id === id);
-                      setSelectedRadar(s ?? null);
-                    }}
-                    className="w-full mt-3 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
+                    className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-2 custom-scrollbar"
                   >
-                    {allRadars.map((r) => (
-                      <option key={r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`} value={r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`}>
-                        {r.station.name}
-                      </option>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">Ative os radares desejados</p>
+                    {groupRadarsByLocation(allRadars).map(({ country, state, radars }) => (
+                      <div key={`${country}-${state}`} className="mb-3 last:mb-0">
+                        <p className="text-[10px] font-semibold text-cyan-400/90 mb-1.5 px-1">{country} – {state}</p>
+                        <div className="space-y-1">
+                          {radars.map((r) => {
+                            const id = r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`;
+                            const checked = selectedIndividualRadars.has(id);
+                            return (
+                              <label key={id} className="flex items-center gap-3 py-1.5 px-2 rounded cursor-pointer hover:bg-white/5 transition-colors">
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${checked ? 'bg-cyan-500 border-cyan-500' : 'border-slate-500'}`}>
+                                  {checked && <Check className="w-3 h-3 text-black" />}
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setSelectedIndividualRadars((prev) => {
+                                      const next = new Set(prev);
+                                      if (e.target.checked) next.add(id);
+                                      else next.delete(id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="hidden"
+                                />
+                                <span className="text-sm text-slate-300 truncate">{r.station.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
                     ))}
-                  </motion.select>
-                )}
-              </div>
+                  </motion.div>
+              )}
+            </div>
               <div>
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Tipo do radar</p>
                 <div className="flex gap-2 p-1 bg-black/40 rounded-xl border border-white/5">
-                  <button
-                    onClick={() => setRadarProductType('reflectividade')}
+              <button
+                onClick={() => setRadarProductType('reflectividade')}
                     className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${radarProductType === 'reflectividade' ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                  >
-                    Refletividade
-                  </button>
-                  <button
-                    onClick={() => setRadarProductType('velocidade')}
+              >
+                Refletividade
+              </button>
+              <button
+                onClick={() => setRadarProductType('velocidade')}
                     className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${radarProductType === 'velocidade' ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                  >
-                    Doppler
-                  </button>
-                </div>
+              >
+                Doppler
+              </button>
+            </div>
               </div>
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Opacidade</label>
-                <input
-                  type="range"
-                  min="0.3"
-                  max="1"
-                  step="0.05"
-                  value={radarOpacity}
-                  onChange={(e) => setRadarOpacity(parseFloat(e.target.value))}
+              <input
+                type="range"
+                min="0.3"
+                max="1"
+                step="0.05"
+                value={radarOpacity}
+                onChange={(e) => setRadarOpacity(parseFloat(e.target.value))}
                   className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 hover:accent-cyan-400 transition-all"
-                />
+              />
+            </div>
+              <div>
+                <p className="text-[10px] font-bold text-amber-400/90 mb-2 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  Este recurso se tornará premium em breve.
+                </p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  Imagens anteriores
+                  <span title="Busca imagens de todos os radares na data/hora selecionada (ou só o radar individual). Cada radar usa a imagem mais próxima disponível.">
+                    <Info className="w-3 h-3 text-slate-500 flex-shrink-0 cursor-help" />
+                  </span>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowHistoricalPicker((p) => !p)}
+                    className="flex-1 py-2.5 px-3 rounded-lg bg-black/40 border border-white/10 hover:border-cyan-500/40 text-left text-sm text-slate-300 hover:text-cyan-300 transition-all flex items-center justify-between"
+                  >
+                    <span>
+                      {historicalTimestampOverride
+                        ? `${historicalDate} ${historicalTime} (UTC)`
+                        : 'Clique aqui.'}
+                    </span>
+                    <Calendar className="w-4 h-4 flex-shrink-0 opacity-60" />
+                  </button>
+                  {historicalTimestampOverride && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHistoricalTimestampOverride(null);
+                        setRadarTimestamp(getNowMinusMinutesTimestamp12UTC(3));
+                        setSliderMinutesAgo(0);
+                        setShowHistoricalPicker(false);
+                      }}
+                      className="py-2 px-3 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white text-xs font-bold shrink-0"
+                      title="Voltar ao ao vivo"
+                    >
+                      LIVE
+                    </button>
+                  )}
+                </div>
+                {showHistoricalPicker && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 overflow-hidden"
+                  >
+                    <div className="rounded-xl border border-white/10 bg-[#0A0E17]/80 overflow-hidden shadow-inner flex">
+                      {/* Calendário (esquerda) */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-cyan-500/10">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const [y, m] = historicalDate.split('-').map(Number);
+                              const d = new Date(y, m - 1, 1);
+                              d.setMonth(d.getMonth() - 1);
+                              setHistoricalDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider capitalize">
+                            {new Date(historicalDate + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const [y, m] = historicalDate.split('-').map(Number);
+                              const nextFirst = new Date(y, m, 1);
+                              const today = new Date();
+                              today.setHours(23, 59, 59, 999);
+                              if (nextFirst > today) return;
+                              setHistoricalDate(`${nextFirst.getFullYear()}-${String(nextFirst.getMonth() + 1).padStart(2, '0')}-01`);
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                            disabled={(() => {
+                              const [y, m] = historicalDate.split('-').map(Number);
+                              const nextFirst = new Date(y, m, 1);
+                              return nextFirst > new Date();
+                            })()}
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="p-1.5">
+                          <div className="grid grid-cols-7 gap-0 text-center text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
+                              <span key={d} className="py-0.5">{d}</span>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7 gap-0.5">
+                            {(() => {
+                              const [y, m] = historicalDate.split('-').map(Number);
+                              const first = new Date(y, m - 1, 1);
+                              const startPad = first.getDay();
+                              const daysInMonth = new Date(y, m, 0).getDate();
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              const cells: (number | null)[] = [];
+                              for (let i = 0; i < startPad; i++) cells.push(null);
+                              for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                              return cells.map((day, i) => {
+                                if (day === null) return <div key={`e-${i}`} className="aspect-square" />;
+                                const cellDate = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                const isSelected = cellDate === historicalDate;
+                                const isToday = cellDate === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                                const isFuture = new Date(cellDate) > today;
+                                return (
+                                  <button
+                                    key={cellDate}
+                                    type="button"
+                                    onClick={() => !isFuture && setHistoricalDate(cellDate)}
+                                    disabled={isFuture}
+                                    className={`aspect-square rounded text-[11px] font-semibold transition-all ${
+                                      isFuture
+                                        ? 'text-slate-600 cursor-not-allowed'
+                                        : isSelected
+                                          ? 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                                          : isToday
+                                            ? 'bg-white/10 text-cyan-300 ring-1 ring-cyan-500/50 hover:bg-white/15'
+                                            : 'text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-300'
+                                    }`}
+                                  >
+                                    {day}
+                                  </button>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const t = new Date();
+                            setHistoricalDate(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`);
+                          }}
+                          className="w-full py-1 text-[9px] font-medium text-cyan-400/80 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors border-t border-white/5"
+                        >
+                          Ir para hoje
+                        </button>
+                      </div>
+                      {/* Horários (direita) */}
+                      <div className="w-[72px] flex-shrink-0 border-l border-white/10 flex flex-col">
+                        <div className="px-2 py-2 border-b border-white/10 bg-cyan-500/10 text-center">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">UTC</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar max-h-[220px]">
+                          {Array.from({ length: 288 }, (_, i) => {
+                            const h = Math.floor(i * 5 / 60);
+                            const m = (i * 5) % 60;
+                            const t = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                            const isSelected = historicalTime === t;
+                            return (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => {
+                                  setHistoricalTime(t);
+                                  const [y, mo, d] = historicalDate.split('-').map(Number);
+                                  const ts12 = `${y}${String(mo).padStart(2, '0')}${String(d).padStart(2, '0')}${String(h).padStart(2, '0')}${String(m).padStart(2, '0')}`;
+                                  setHistoricalTimestampOverride(ts12);
+                                  setSliderMinutesAgo(0);
+                                }}
+                                className={`w-full py-1.5 px-2 text-center text-[11px] font-mono transition-colors ${
+                                  isSelected
+                                    ? 'bg-cyan-500/30 text-cyan-200 font-bold'
+                                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                                }`}
+                              >
+                                {t}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    {historicalTimestampOverride && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoricalTimestampOverride(null);
+                          setRadarTimestamp(getNowMinusMinutesTimestamp12UTC(3));
+                          setSliderMinutesAgo(0);
+                          setShowHistoricalPicker(false);
+                        }}
+                        className="w-full mt-2 py-2 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold text-xs"
+                      >
+                        Voltar ao vivo
+                      </button>
+                    )}
+                  </motion.div>
+                )}
               </div>
               <div>
                 <label className="flex items-center gap-3 py-2 cursor-pointer group">
                   <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${prevotsOverlayVisible ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
                     {prevotsOverlayVisible && <Check className="w-3 h-3 text-black" />}
-                  </div>
+          </div>
                   <input type="checkbox" checked={prevotsOverlayVisible} onChange={(e) => setPrevotsOverlayVisible(e.target.checked)} className="hidden" />
                   <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Overlay Prevots</span>
                 </label>
@@ -1133,13 +2270,30 @@ export default function AoVivoPage() {
               {radarTimeLegends.length > 0 && (
                 <div className="pt-4 border-t border-white/10">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Horário da última imagem</p>
-                  <div className="space-y-1.5 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                    {radarTimeLegends.map(({ name, hhmm }) => (
-                      <div key={name} className="text-xs flex justify-between items-center bg-black/20 px-2 py-1.5 rounded border border-white/5">
-                        <span className="text-slate-300 truncate mr-2">{name}</span>
-                        <span className={`font-bold tracking-wider ${hhmm === 'sem imagem' ? 'text-amber-400/90' : 'text-cyan-400'}`}>{hhmm}</span>
-                      </div>
-                    ))}
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                    {radarTimeLegends.map(({ name, hhmm, source }, i) => {
+                      const dr = displayRadars[i];
+                      const isEditing = editingRadar && dr && (editingRadar.type !== dr.type ? false : editingRadar.type === 'cptec' ? (editingRadar.station as CptecRadarStation).slug === (dr.station as CptecRadarStation).slug : (editingRadar.station as ArgentinaRadarStation).id === (dr.station as ArgentinaRadarStation).id);
+                      return (
+                        <div key={name} className="text-xs flex flex-col gap-1 bg-black/20 px-2 py-1.5 rounded border border-white/5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300 truncate mr-2">{name}</span>
+                            <span className={`font-bold tracking-wider flex-shrink-0 ${hhmm === 'sem imagem' ? 'text-amber-400/90' : 'text-cyan-400'}`}>
+                              {hhmm}{source === 'redemet' ? ' (REDEMET)' : ''}
+                            </span>
+                          </div>
+                          {dr && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditRadar(dr)}
+                              className={`text-[10px] px-2 py-1 rounded font-medium transition-colors ${isEditing ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50' : 'bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 border border-white/10'}`}
+                            >
+                              {isEditing ? 'Editando…' : 'Gerar imagem do ao vivo'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1176,109 +2330,302 @@ export default function AoVivoPage() {
 
           {/* UI sobreposta ao mapa (botões, slider, etc.) — posiciona sobre tudo */}
           <div className="absolute inset-0 pointer-events-none z-10">
-          <div className="absolute left-2 top-2 pointer-events-auto flex flex-col gap-1">
+          <div className="absolute left-2 top-2 pointer-events-auto flex flex-col gap-2">
             <button
               onClick={goToBrazil}
-              className="w-10 h-10 rounded-lg bg-slate-900/95 border border-slate-600 text-slate-200 hover:bg-slate-800 shadow"
+              className="group/btn w-10 h-10 rounded-xl bg-[#0A0E17]/80 backdrop-blur-md border border-white/10 text-slate-400 shadow-lg transition-all duration-200 hover:scale-110 hover:text-white hover:border-cyan-500/40 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] flex items-center justify-center"
               title="Centralizar Brasil"
             >
-              <Home className="w-5 h-5 mx-auto" />
+              <Home className="w-5 h-5 transition-transform group-hover/btn:scale-110" />
             </button>
             <button
               onClick={refreshRadarNow}
-              className="w-10 h-10 rounded-lg bg-slate-900/95 border border-slate-600 text-slate-200 hover:bg-slate-800 shadow"
+              className="group/btn w-10 h-10 rounded-xl bg-[#0A0E17]/80 backdrop-blur-md border border-white/10 text-slate-400 shadow-lg transition-all duration-200 hover:scale-110 hover:text-white hover:border-cyan-500/40 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] flex items-center justify-center"
               title="Atualizar imagens"
             >
-              <svg className="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-5 h-5 transition-transform group-hover/btn:rotate-180 duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
-          </div>
+            {redemetAvailableKeys.size > 0 && (
+              <div className="flex gap-1 mt-1">
+                <button
+                  onClick={() => setRadarSourceMode('superres')}
+                  className={`text-[10px] font-bold px-2 py-1 rounded-lg backdrop-blur-md shadow-lg transition-all duration-200 ${
+                    radarSourceMode === 'superres'
+                      ? 'bg-cyan-500/30 border border-cyan-400/60 text-cyan-200'
+                      : 'bg-[#0A0E17]/80 border border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                  title="CPTEC Nowcasting (Super Res)"
+                >
+                  Super Res
+                </button>
+                <button
+                  onClick={() => setRadarSourceMode('hd')}
+                  className={`text-[10px] font-bold px-2 py-1 rounded-lg backdrop-blur-md shadow-lg transition-all duration-200 ${
+                    radarSourceMode === 'hd'
+                      ? 'bg-amber-500/30 border border-amber-400/60 text-amber-200'
+                      : 'bg-[#0A0E17]/80 border border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                  title="REDEMET HD (maior cobertura)"
+                >
+                  HD
+                </button>
+              </div>
+            )}
+                  </div>
 
-          {/* Botão Reportar — canto direito abaixo dos controles de zoom */}
+          {/* Botão Reportar */}
           <div className="absolute right-2 top-[140px] pointer-events-auto">
             <button
               onClick={openReportPopup}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-slate-900 font-semibold text-xs shadow-lg"
+              className="group/report flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-500/90 text-slate-900 font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all duration-200 hover:scale-105 hover:bg-amber-400 hover:shadow-[0_0_25px_rgba(245,158,11,0.5)]"
               title="Enviar relato"
             >
-              <AlertTriangle className="w-4 h-4" />
+              <AlertTriangle className="w-4 h-4 transition-transform group-hover/report:scale-110" />
               Reportar
             </button>
           </div>
 
+          {/* Painel de edição de radar — arrastar, rotacionar, raio */}
+          <AnimatePresence>
+            {editingRadar && (
+              <motion.div
+                initial={{ opacity: 0, x: 40 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 40 }}
+                className="pointer-events-auto fixed right-2 top-24 bottom-24 z-30 w-72 rounded-xl border border-cyan-500/30 bg-[#0A0E17]/95 backdrop-blur-xl shadow-xl overflow-hidden flex flex-col"
+              >
+                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 flex-shrink-0">
+                  <span className="text-sm font-bold text-cyan-300 truncate">{editingRadar.station.name}</span>
+                  <button onClick={handleCloseEditRadar} className="p-1 rounded text-slate-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditMinutesAgo(0)}
+                    className="w-full py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium flex items-center justify-center gap-2"
+                  >
+                    <Radar className="w-4 h-4" />
+                    Gerar imagem do ao vivo
+                  </button>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Tempo da imagem (0–60 min atrás)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={60}
+                        step={1}
+                        value={editMinutesAgo}
+                        onChange={(e) => setEditMinutesAgo(Number(e.target.value))}
+                        className="flex-1 h-2 bg-slate-700 rounded-lg accent-cyan-500"
+                      />
+                      <span className="text-xs font-mono text-cyan-400 w-8">{editMinutesAgo} min</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Rotação (°)</label>
+                    <input
+                      type="range"
+                      min={-360}
+                      max={360}
+                      step={0.5}
+                      value={editRotationDegrees}
+                      onChange={(e) => setEditRotationDegrees(parseFloat(e.target.value))}
+                      onMouseUp={() => saveEditConfig()}
+                      onTouchEnd={() => saveEditConfig()}
+                      className="w-full h-2 bg-slate-700 rounded-lg accent-cyan-500"
+                    />
+                    <span className="text-xs font-mono text-cyan-400">{editRotationDegrees}°</span>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Raio (km)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={50}
+                        max={500}
+                        step={10}
+                        value={editRangeKm}
+                        onChange={(e) => setEditRangeKm(Number(e.target.value))}
+                        onMouseUp={() => saveEditConfig()}
+                        onTouchEnd={() => saveEditConfig()}
+                        className="flex-1 h-2 bg-slate-700 rounded-lg accent-cyan-500"
+                      />
+                      <span className="text-xs font-mono text-cyan-400 w-12">{editRangeKm} km</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Centro (lat, lng) — arraste ou digite</label>
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono mb-1">
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">Lat</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editLiveCenter ? editLiveCenter.lat : editCenterLat}
+                          onChange={(e) => {
+                            setEditLiveCenter(null);
+                            const v = parseFloat(e.target.value);
+                            if (!Number.isNaN(v)) setEditCenterLat(v);
+                          }}
+                          onBlur={() => saveEditConfig()}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
+                          className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-cyan-400 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">Lng</span>
+                        <input
+                          type="number"
+                          step="any"
+                          value={editLiveCenter ? editLiveCenter.lng : editCenterLng}
+                          onChange={(e) => {
+                            setEditLiveCenter(null);
+                            const v = parseFloat(e.target.value);
+                            if (!Number.isNaN(v)) setEditCenterLng(v);
+                          }}
+                          onBlur={() => saveEditConfig()}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
+                          className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-cyan-400 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    {editSaving && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Salvando…</span>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => saveEditConfig()}
+                    disabled={editSaving}
+                    className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-bold flex items-center justify-center gap-2"
+                  >
+                    {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Salvar
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {showBaseMapGallery && (
             <div className="pointer-events-auto">
               <div className="fixed inset-0 z-30" onClick={() => setShowBaseMapGallery(false)} aria-hidden />
-              <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[min(20rem,95vw)] rounded-xl border border-slate-600 bg-slate-900 shadow-2xl p-4">
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Galeria de mapa base</div>
-                <div className="grid grid-cols-2 gap-2">
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[min(20rem,95vw)] rounded-2xl border border-white/10 bg-[#0A0E17]/95 backdrop-blur-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-4"
+              >
+                <div className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest mb-3">Galeria de mapa base</div>
+                  <div className="grid grid-cols-2 gap-2">
                   {BASE_MAP_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
+                        <button
+                          key={opt.id}
+                          type="button"
                       onClick={() => { setBaseMapId(opt.id); setShowBaseMapGallery(false); }}
-                      className={`rounded-lg overflow-hidden border-2 text-left transition-all hover:border-cyan-500/50 ${baseMapId === opt.id ? 'border-cyan-500 ring-1 ring-cyan-500/30' : 'border-slate-600'}`}
+                      className={`rounded-xl overflow-hidden border-2 text-left transition-all duration-200 hover:scale-[1.03] ${baseMapId === opt.id ? 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'border-white/5 hover:border-white/20'}`}
                     >
-                      <div className="aspect-[3/2] relative bg-slate-800">
+                      <div className="aspect-[3/2] relative bg-black/40">
                         {opt.previewType === 'static' && opt.staticMapType && getStaticMapPreviewUrl(opt.staticMapType) ? (
-                          <img src={getStaticMapPreviewUrl(opt.staticMapType)} alt="" className="w-full h-full object-cover" />
+                          <img src={getStaticMapPreviewUrl(opt.staticMapType)} alt="" className="w-full h-full object-cover opacity-80" />
                         ) : (
-                          <div className="w-full h-full" style={{ backgroundColor: opt.placeholderBg }} />
+                          <div className="w-full h-full opacity-50" style={{ backgroundColor: opt.placeholderBg }} />
                         )}
                         {baseMapId === opt.id && (
-                          <div className="absolute top-1 right-1 rounded-full bg-cyan-500 p-0.5"><Check className="w-3 h-3 text-black" /></div>
+                          <div className="absolute top-1 right-1 rounded-full bg-cyan-400 p-0.5"><Check className="w-3 h-3 text-black" /></div>
                         )}
-                      </div>
-                      <div className="px-2 py-1.5 bg-slate-800/80 text-xs font-medium text-slate-200 truncate">{opt.label}</div>
+                                </div>
+                      <div className="px-2 py-1.5 bg-[#0A0E17]/90 text-[10px] font-bold uppercase tracking-wider text-slate-300 truncate">{opt.label}</div>
                     </button>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             </div>
           )}
 
-          {/* Slider de tempo: na parte inferior do mapa, acima da barra de ferramentas */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] px-3 py-1.5 rounded-xl bg-slate-900/95 border border-slate-600 shadow-xl pointer-events-auto">
-            {sliderMinutesAgo > 60 && (
-              <p className="text-[9px] text-amber-400/90 mb-1 text-center">
+          {/* Slider de tempo — efeito neon */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] px-4 py-3 rounded-2xl bg-[#0A0E17]/90 backdrop-blur-xl border border-cyan-500/20 shadow-[0_0_30px_rgba(6,182,212,0.15),0_8px_32px_rgba(0,0,0,0.6)] pointer-events-auto group/slider">
+            {sliderMinutesAgo > 60 && !validSliderMinutesAgo && (
+              <p className="text-[9px] text-amber-400/90 mb-2 text-center font-bold tracking-wider uppercase">
                 Voltar além de 1h se tornará recurso premium em breve.
               </p>
             )}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-500 flex-shrink-0 w-12">
-                {sliderMinutesAgo >= maxSliderMinutesAgo
-                  ? (maxSliderMinutesAgo >= 1440 ? '24h atrás' : '00:00')
-                  : sliderMinutesAgo >= 60 ? `${Math.floor(sliderMinutesAgo / 60)}h` : `-${sliderMinutesAgo} min`}
+            {sliderValidVerifying && (
+              <div className="flex items-center gap-2 text-xs text-slate-400 mb-2 justify-center">
+                <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+                Verificando imagens disponíveis…
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-black tracking-widest text-slate-500 flex-shrink-0 w-12 uppercase">
+                {historicalTimestampOverride
+                  ? `-${sliderMinutesAgo >= 60 ? `${Math.floor(sliderMinutesAgo / 60)}h${sliderMinutesAgo % 60 ? String(sliderMinutesAgo % 60).padStart(2, '0') : ''}` : `${sliderMinutesAgo}m`}`
+                  : sliderMinutesAgo >= maxSliderMinutesAgo
+                    ? (maxSliderMinutesAgo >= 1440 ? '-24h' : '00:00')
+                    : sliderMinutesAgo >= 60 ? `-${Math.floor(sliderMinutesAgo / 60)}h` : `-${sliderMinutesAgo}m`}
               </span>
-              <div className="flex-1 flex flex-col gap-0">
+              <div className="flex-1 flex flex-col gap-0 relative">
+                <div className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-800 overflow-hidden pointer-events-none">
+                  <div 
+                    className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-300 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.8)] transition-all duration-150"
+                    style={{ width: validSliderMinutesAgo && validSliderMinutesAgo.length > 1
+                      ? `${((validSliderMinutesAgo.indexOf(sliderMinutesAgo) >= 0 ? validSliderMinutesAgo.indexOf(sliderMinutesAgo) : 0) / Math.max(1, validSliderMinutesAgo.length - 1)) * 100}%`
+                      : `${((maxSliderMinutesAgo - sliderMinutesAgo) / maxSliderMinutesAgo) * 100}%` }}
+                  />
+                </div>
+                {validSliderMinutesAgo && validSliderMinutesAgo.length > 1 && !sliderValidVerifying ? (
+                  <input
+                    type="range"
+                    min="0"
+                    max={validSliderMinutesAgo.length - 1}
+                    step="1"
+                    value={Math.min(
+                      validSliderMinutesAgo.indexOf(sliderMinutesAgo) >= 0 ? validSliderMinutesAgo.indexOf(sliderMinutesAgo) : 0,
+                      validSliderMinutesAgo.length - 1
+                    )}
+                    onChange={(e) => setSliderMinutesAgo(validSliderMinutesAgo[parseInt(e.target.value, 10)] ?? 0)}
+                    className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
+                    title={sliderMinutesAgo === 0 ? 'Ao vivo' : `${sliderMinutesAgo} min atrás`}
+                  />
+                ) : (
                 <input
                   type="range"
                   min="0"
                   max={maxSliderMinutesAgo}
-                  step="5"
+                  step={historicalTimestampOverride ? 6 : 5}
                   value={maxSliderMinutesAgo - sliderMinutesAgo}
                   onChange={(e) => setSliderMinutesAgo(maxSliderMinutesAgo - parseInt(e.target.value, 10))}
-                  className="w-full h-1.5 accent-cyan-500 cursor-pointer my-1"
+                  disabled={sliderValidVerifying}
+                  className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
                   title={sliderMinutesAgo === 0 ? 'Ao vivo' : sliderMinutesAgo >= maxSliderMinutesAgo ? (maxSliderMinutesAgo >= 1440 ? '24h atrás' : 'Meia-noite') : `${sliderMinutesAgo} min atrás`}
                 />
-                <div className="text-center leading-none">
-                  <span className="text-[11px] font-semibold text-cyan-300">
+                )}
+                <div className="text-center leading-none mt-1">
+                  <span className="text-sm font-black tracking-widest text-cyan-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]">
                     {(() => {
+                      const ts = effectiveRadarTimestamp;
                       const d = new Date(Date.UTC(
-                        parseInt(radarTimestamp.slice(0, 4), 10),
-                        parseInt(radarTimestamp.slice(4, 6), 10) - 1,
-                        parseInt(radarTimestamp.slice(6, 8), 10),
-                        parseInt(radarTimestamp.slice(8, 10), 10),
-                        parseInt(radarTimestamp.slice(10, 12), 10)
+                        parseInt(ts.slice(0, 4), 10),
+                        parseInt(ts.slice(4, 6), 10) - 1,
+                        parseInt(ts.slice(6, 8), 10),
+                        parseInt(ts.slice(8, 10), 10),
+                        parseInt(ts.slice(10, 12), 10)
                       ));
                       return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
                     })()}
                   </span>
-                  <span className="text-[9px] text-slate-500 ml-1">(horário local)</span>
                 </div>
               </div>
-              <span className="text-[10px] text-slate-500 flex-shrink-0 w-10 text-right">Ao vivo</span>
+              <span className={`text-[10px] font-black tracking-widest flex-shrink-0 w-14 text-right uppercase ${
+                historicalTimestampOverride
+                  ? 'text-amber-400'
+                  : sliderMinutesAgo === 0 ? 'text-emerald-400 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'text-slate-600'
+              }`}>
+                {historicalTimestampOverride
+                  ? `${historicalTimestampOverride.slice(8, 10)}:${historicalTimestampOverride.slice(10, 12)}`
+                  : sliderMinutesAgo === 0 ? '● LIVE' : 'Ao vivo'}
+              </span>
             </div>
           </div>
           </div>{/* fecha div pointer-events-none */}
@@ -1289,11 +2636,29 @@ export default function AoVivoPage() {
       <AnimatePresence>
       {reportStep !== 'closed' && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={cancelReport} aria-hidden />
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }} 
-            animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }} 
-            exit={{ opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }} 
+          {reportStep !== 'pick-map' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={cancelReport} aria-hidden />
+          )}
+          {reportStep === 'pick-map' ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed z-50 bottom-24 left-4 right-4 mx-auto max-w-md rounded-xl bg-[#0F131C]/95 backdrop-blur-xl border border-white/10 shadow-lg p-4 flex items-center justify-between gap-4"
+            >
+              <p className="text-slate-300 text-sm font-medium flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-cyan-400" />
+                Toque no mapa para selecionar o local
+              </p>
+              <button onClick={cancelReport} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-sm font-bold shrink-0">
+                Cancelar
+              </button>
+            </motion.div>
+          ) : (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }}
+            animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
+            exit={{ opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }}
             className="fixed z-50 top-1/2 left-1/2 w-[min(22rem,92vw)] rounded-2xl bg-[#0F131C]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden"
           >
             {/* Etapa 1: Escolher localização */}
@@ -1344,41 +2709,18 @@ export default function AoVivoPage() {
               </motion.div>
             )}
 
-            {/* Etapa pick-map: instrução */}
-            {reportStep === 'pick-map' && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4 text-center">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold tracking-widest uppercase text-cyan-400">Clique no mapa</h3>
-                  <button onClick={cancelReport} className="text-slate-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
-                </div>
-                <div className="py-4">
-                  <div className="relative flex items-center justify-center w-16 h-16 mx-auto mb-4">
-                    <div className="absolute w-12 h-12 border border-cyan-500 rounded-full animate-ping opacity-50" />
-                    <div className="w-6 h-6 border-2 border-cyan-400 rounded-full bg-black/50" />
-                  </div>
-                  <p className="text-slate-300 text-sm font-medium">Toque no local do mapa onde ocorreu o evento.</p>
-                </div>
-                <button
-                  onClick={cancelReport}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 text-sm font-bold transition-colors"
-                >
-                  Cancelar
-                </button>
-              </motion.div>
-            )}
-
             {/* Etapa 2: Formulário */}
             {reportStep === 'form' && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold tracking-widest uppercase text-cyan-400">Dados do relato</h3>
                   <button onClick={cancelReport} className="text-slate-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
-                </div>
+                          </div>
 
                 <div className="flex gap-3 text-[10px] font-mono text-slate-400 bg-black/20 p-2 rounded-lg border border-white/5">
                   <span>Lat: {reportLat}</span>
                   <span>Lon: {reportLng}</span>
-                </div>
+                          </div>
 
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Tipo de relato</label>
@@ -1393,7 +2735,7 @@ export default function AoVivoPage() {
                         style={reportType === val ? { backgroundColor: `${clr}40`, boxShadow: `0 0 15px ${clr}40` } : undefined}
                       >
                         {lbl}
-                      </button>
+                        </button>
                     ))}
                   </div>
                 </div>
@@ -1424,7 +2766,7 @@ export default function AoVivoPage() {
                 )}
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Enviar mídia (opcional)</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Enviar mídia (obrigatório: foto, link ou vídeo)</label>
                   <div className="flex gap-2 mb-3 bg-black/20 p-1 rounded-xl border border-white/5">
                     <button
                       onClick={() => setReportMediaMode('file')}
@@ -1471,8 +2813,8 @@ export default function AoVivoPage() {
 
                 <button
                   onClick={submitReport}
-                  disabled={reportSending}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-900 font-black text-sm uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all transform hover:scale-[1.02]"
+                  disabled={reportSending || (!reportMediaFile && !(reportMediaMode === 'link' && reportMediaLink?.trim()))}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-black text-sm uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all transform hover:scale-[1.02]"
                 >
                   <Send className="w-4 h-4" />
                   {reportSending ? 'Enviando…' : 'Enviar relato'}
@@ -1480,100 +2822,253 @@ export default function AoVivoPage() {
               </motion.div>
             )}
           </motion.div>
+          )}
         </>
       )}
       </AnimatePresence>
 
       {/* Barra de ferramentas inferior horizontal */}
-      <div className="flex-shrink-0 flex items-center justify-around gap-2 px-2 py-1.5 bg-slate-900/95 border-t border-slate-700">
+      <div className="flex-shrink-0 flex items-center justify-around gap-1 px-2 py-2 bg-[#0A0E17]/90 backdrop-blur-xl border-t border-white/10 relative z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.4)]">
+        {/* Botão Ao vivo - transmissão */}
+        <button
+          onClick={async () => {
+            if (isStreaming) {
+              liveKitRoomRef.current?.disconnect(true);
+              liveKitRoomRef.current = null;
+              localStreamRef.current?.getTracks().forEach((t) => t.stop());
+              localStreamRef.current = null;
+              setIsStreaming(false);
+              liveRoomNameRef.current = null;
+              if (user) {
+                await updatePresence(user.uid, {
+                  displayName: user.displayName || 'Usuário',
+                  photoURL: user.photoURL,
+                  userType: null,
+                  locationShared: !!myLocation,
+                  lat: myLocation?.lat ?? null,
+                  lng: myLocation?.lng ?? null,
+                  page: 'ao-vivo',
+                  isLiveStreaming: false,
+                  liveRoomName: null,
+                });
+              }
+              addToast('Transmissão encerrada.', 'info');
+              return;
+            }
+            setStreamError(null);
+            setStreamLoading(true);
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+              localStreamRef.current = stream;
+              const roomName = `live-${user?.uid ?? 'anon'}`;
+              liveRoomNameRef.current = roomName;
+
+              const tokenRes = await fetch('/api/livekit-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  roomName,
+                  participantName: user?.displayName || 'Transmissor',
+                  participantIdentity: user?.uid,
+                }),
+              });
+              if (!tokenRes.ok) {
+                const errData = await tokenRes.json().catch(() => ({}));
+                throw new Error(errData.error || 'Falha ao obter token LiveKit');
+              }
+              const { token, url } = await tokenRes.json();
+
+              const room = new Room();
+              liveKitRoomRef.current = room;
+              await room.connect(url, token);
+              for (const track of stream.getTracks()) {
+                await room.localParticipant.publishTrack(track, { name: track.kind });
+              }
+
+              setIsStreaming(true);
+              if (user && myLocation) {
+                await updatePresence(user.uid, {
+                  displayName: user.displayName || 'Usuário',
+                  photoURL: user.photoURL,
+                  userType: null,
+                  locationShared: true,
+                  lat: myLocation.lat,
+                  lng: myLocation.lng,
+                  page: 'ao-vivo',
+                  isLiveStreaming: true,
+                  liveRoomName: roomName,
+                });
+              }
+              addToast('Transmissão ao vivo iniciada! Outros podem clicar no seu ícone para assistir.', 'success');
+            } catch (err: any) {
+              localStreamRef.current?.getTracks().forEach((t) => t.stop());
+              localStreamRef.current = null;
+              liveKitRoomRef.current = null;
+              setStreamError(err?.message || 'Erro ao acessar câmera');
+              addToast(err?.message || 'Permissão de câmera negada ou LiveKit não configurado.', 'error');
+            } finally {
+              setStreamLoading(false);
+            }
+          }}
+          disabled={streamLoading}
+          className={`group/tab flex flex-col items-center gap-1 p-2.5 rounded-xl transition-all duration-200 relative ${
+            isStreaming ? 'text-red-400' : 'text-slate-500 hover:text-white'
+          }`}
+          title={isStreaming ? 'Encerrar transmissão' : 'Transmitir ao vivo'}
+        >
+          {isStreaming && (
+            <motion.div layoutId="liveGlow" className="absolute inset-0 rounded-xl bg-red-500/20 border border-red-500/40" />
+          )}
+          <div className="relative z-10 flex items-center justify-center">
+            {streamLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <Video className="w-5 h-5" />
+                {isStreaming && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                )}
+              </>
+            )}
+          </div>
+          <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">
+            {isStreaming ? 'Ao vivo' : 'Ao vivo'}
+          </span>
+        </button>
+
         <div className="relative">
           <button
             onClick={() => setShowOnlinePanel((v) => !v)}
-            className={`flex flex-col items-center gap-0.5 p-2 rounded-lg transition-colors ${
-              showOnlinePanel ? 'text-emerald-400 bg-slate-800' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            className={`group/tab flex flex-col items-center gap-1 p-2.5 rounded-xl transition-all duration-200 relative ${
+              showOnlinePanel ? 'text-emerald-400' : 'text-slate-500 hover:text-white'
             }`}
             title="Usuários Online"
           >
-            <div className="relative">
+            {showOnlinePanel && (
+              <motion.div layoutId="bottomBarGlow" className="absolute inset-0 rounded-xl bg-emerald-400/10 border border-emerald-400/20" />
+            )}
+            <div className="relative z-10 transition-transform duration-200 group-hover/tab:scale-110 group-hover/tab:-translate-y-0.5">
               <Users className="w-5 h-5" />
               {onlineUsers.length > 0 && (
-                <span className="absolute -top-1 -right-2 w-3.5 h-3.5 flex items-center justify-center text-[8px] font-bold bg-emerald-500 text-white rounded-full">
+                <span className="absolute -top-1.5 -right-2.5 w-4 h-4 flex items-center justify-center text-[8px] font-black bg-emerald-500 text-white rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]">
                   {onlineUsers.length}
                 </span>
-              )}
-            </div>
-            <span className="text-[10px]">Online</span>
+            )}
+          </div>
+            <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">Online</span>
           </button>
 
+          <AnimatePresence>
           {showOnlinePanel && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setShowOnlinePanel(false)} aria-hidden />
-              <div className="absolute bottom-full left-0 mb-2 z-40 w-56 max-h-[40vh] bg-slate-900/98 border border-emerald-500/40 rounded-lg shadow-2xl overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between px-3 py-2 bg-slate-800/80 border-b border-slate-700">
-                  <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    Online ({onlineUsers.length})
-                  </span>
-                  <button onClick={() => setShowOnlinePanel(false)} className="text-slate-400 hover:text-white">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-700/50">
-                  {onlineUsers.length === 0 ? (
-                    <p className="px-3 py-3 text-xs text-slate-500 text-center">Nenhum usuário online.</p>
-                  ) : (
-                    onlineUsers.map((u) => (
-                      <div
-                        key={u.uid}
-                        className="flex items-center gap-2 px-3 py-2 hover:bg-slate-800/50 cursor-default"
-                        onClick={() => {
-                          if (u.locationShared && u.lat && u.lng && mapInstanceRef.current) {
-                            mapInstanceRef.current.panTo({ lat: u.lat, lng: u.lng });
-                            mapInstanceRef.current.setZoom(10);
-                            setShowOnlinePanel(false);
-                          }
-                        }}
-                      >
-                        {u.photoURL ? (
-                          <img src={u.photoURL} alt="" className="w-6 h-6 rounded-full object-cover border border-slate-600" />
-                        ) : (
-                          <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-[10px] font-bold text-white">
-                            {(u.displayName?.[0] ?? '?').toUpperCase()}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-slate-200 truncate">
-                            {u.displayName}
-                            {u.uid === user?.uid && <span className="text-emerald-400 ml-1">(você)</span>}
-                          </p>
-                          {u.locationShared && <p className="text-[9px] text-slate-500">📍 no mapa</p>}
-                        </div>
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                      </div>
-                    ))
-                  )}
-                </div>
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                className="absolute bottom-full left-0 mb-3 z-40 w-64 max-h-[40vh] bg-[#0A0E17]/95 backdrop-blur-xl border border-emerald-500/20 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col"
+              >
+                <div className="flex items-center justify-between px-4 py-3 bg-black/20 border-b border-white/5">
+                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-400 flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                    </span>
+                  Online ({onlineUsers.length})
+                </span>
+                  <button onClick={() => setShowOnlinePanel(false)} className="text-slate-400 hover:text-white transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
+                <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-white/5">
+                {onlineUsers.length === 0 ? (
+                    <p className="px-4 py-6 text-xs text-slate-500 text-center font-medium">Nenhum usuário online.</p>
+                ) : (
+                  onlineUsers.map((u) => (
+                    <div
+                      key={u.uid}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-white/5 cursor-pointer transition-colors"
+                      onClick={() => {
+                        if (u.isLiveStreaming && u.uid !== user?.uid && u.liveRoomName) {
+                          setLiveViewerUser(u);
+                          setLiveViewerOpen(true);
+                          setShowOnlinePanel(false);
+                        } else if (u.locationShared && u.lat && u.lng && mapInstanceRef.current) {
+                          mapInstanceRef.current.panTo({ lat: u.lat, lng: u.lng });
+                          mapInstanceRef.current.setZoom(10);
+                            setShowOnlinePanel(false);
+                        }
+                      }}
+                    >
+                      <div className="relative w-7 h-7 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center border border-white/10 shrink-0">
+                        {u.photoURL ? (
+                          <>
+                            <img
+                              src={u.photoURL}
+                              alt=""
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.style.display = 'none';
+                                const fb = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (fb) fb.classList.remove('hidden');
+                              }}
+                            />
+                            <div className="hidden absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
+                              {(u.displayName?.[0] ?? '?').toUpperCase()}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-[10px] font-bold text-white">{(u.displayName?.[0] ?? '?').toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-200 truncate">
+                          {u.displayName}
+                            {u.uid === user?.uid && <span className="text-emerald-400 ml-1 font-medium">(você)</span>}
+                        </p>
+                          {u.locationShared && <p className="text-[9px] text-slate-500 mt-0.5">📍 no mapa</p>}
+                          {u.isLiveStreaming && <p className="text-[9px] text-red-400 mt-0.5 font-medium">● Ao vivo</p>}
+                      </div>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 shadow-[0_0_5px_rgba(16,185,129,0.8)] ${u.isLiveStreaming ? 'bg-red-500' : 'bg-emerald-400'}`} />
+                    </div>
+                  ))
+                )}
+              </div>
+              </motion.div>
             </>
           )}
+          </AnimatePresence>
         </div>
 
-        <button
+        {/* Botão GPS com efeito ping */}
+          <button
           onClick={goToMyLocation}
-          className="flex flex-col items-center gap-0.5 p-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white"
+          className="group/tab flex flex-col items-center gap-1 p-2.5 rounded-xl text-slate-500 hover:text-cyan-400 transition-all duration-200 relative"
           title="Minha localização"
         >
-          <MapPin className="w-5 h-5" />
-          <span className="text-[10px]">Localização</span>
+          <div className="relative z-10 transition-transform duration-200 group-hover/tab:scale-110 group-hover/tab:-translate-y-0.5">
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="absolute w-7 h-7 rounded-full border border-cyan-500/40 animate-ping opacity-30" />
+              <span className="absolute w-5 h-5 rounded-full border border-cyan-500/30 animate-[ping_2s_ease-in-out_infinite_0.5s] opacity-20" />
+              </span>
+            <MapPin className="w-5 h-5 relative z-10 drop-shadow-[0_0_4px_rgba(6,182,212,0.5)]" />
+          </div>
+          <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">GPS</span>
         </button>
+
         <button
           onClick={() => setShowBaseMapGallery((v) => !v)}
-          className="flex flex-col items-center gap-0.5 p-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white"
+          className={`group/tab flex flex-col items-center gap-1 p-2.5 rounded-xl transition-all duration-200 relative ${showBaseMapGallery ? 'text-cyan-400' : 'text-slate-500 hover:text-white'}`}
           title="Tipo de mapa"
         >
-          <Layers className="w-5 h-5" />
-          <span className="text-[10px]">Mapa base</span>
-        </button>
+          {showBaseMapGallery && (
+            <motion.div layoutId="bottomBarGlow" className="absolute inset-0 rounded-xl bg-cyan-400/10 border border-cyan-400/20" />
+          )}
+          <div className="relative z-10 transition-transform duration-200 group-hover/tab:scale-110 group-hover/tab:-translate-y-0.5">
+            <Layers className="w-5 h-5" />
+          </div>
+          <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">Mapa</span>
+          </button>
+
         <div className="relative">
           <button
             onClick={() => {
@@ -1584,30 +3079,40 @@ export default function AoVivoPage() {
                 setShowAnimationMenu((v) => !v);
               }
             }}
-            className="flex flex-col items-center gap-0.5 p-2 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white min-w-[3rem]"
+            className={`group/tab flex flex-col items-center gap-1 p-2.5 rounded-xl min-w-[3rem] transition-all duration-200 relative ${animationPlaying ? 'text-amber-400' : showAnimationMenu ? 'text-cyan-400' : 'text-slate-500 hover:text-white'}`}
             title={animationPlaying ? 'Pausar animação' : 'Reproduzir animação'}
           >
-            {animationPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-            <span className="text-[10px]">{animationPlaying ? 'Pausar' : 'Play'}</span>
+            {(animationPlaying || showAnimationMenu) && (
+              <motion.div layoutId="bottomBarGlow" className={`absolute inset-0 rounded-xl border ${animationPlaying ? 'bg-amber-400/10 border-amber-400/20' : 'bg-cyan-400/10 border-cyan-400/20'}`} />
+            )}
+            <div className="relative z-10 transition-transform duration-200 group-hover/tab:scale-110 group-hover/tab:-translate-y-0.5">
+              {animationPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+        </div>
+            <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">{animationPlaying ? 'Pausar' : 'Play'}</span>
           </button>
+          <AnimatePresence>
           {showAnimationMenu && !animationPlaying && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setShowAnimationMenu(false)} aria-hidden />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-40 w-40 rounded-lg bg-slate-800 border border-slate-600 shadow-xl py-1">
-                <p className="px-3 py-1.5 text-[10px] text-slate-500 uppercase">Duração da animação</p>
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-40 w-44 rounded-xl bg-[#0A0E17]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] py-2 overflow-hidden"
+              >
+                <p className="px-4 py-2 text-[9px] font-bold text-cyan-400 uppercase tracking-widest bg-black/20 mb-1">Duração</p>
                 {([60, 240, 1440] as const).map((mins) => (
                   <button
                     key={mins}
                     onClick={() => { setAnimationDuration(mins); setShowAnimationMenu(false); setAnimationPlaying(true); }}
-                    className={`w-full px-3 py-2 text-left text-sm ${animationDuration === mins ? 'bg-cyan-500/30 text-cyan-200' : 'text-slate-300 hover:bg-slate-700'}`}
+                    className={`w-full px-4 py-2.5 text-left text-xs font-bold tracking-wider uppercase transition-all ${animationDuration === mins ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                   >
                     {mins === 60 ? '1 hora' : mins === 240 ? '4 horas' : '24 horas'}
                   </button>
                 ))}
-              </div>
+              </motion.div>
             </>
           )}
-        </div>
+          </AnimatePresence>
+      </div>
         <div className="relative">
           <button
             onClick={() => setShowSplitMenu((v) => !v)}
@@ -1650,8 +3155,126 @@ export default function AoVivoPage() {
             </>
           )}
           </AnimatePresence>
-        </div>
+    </div>
       </div>
+
+      {/* Preview local quando transmitindo */}
+      {isStreaming && (
+        <div className="fixed bottom-20 left-3 z-30 w-28 aspect-video rounded-xl overflow-hidden border-2 border-red-500/60 shadow-[0_0_20px_rgba(239,68,68,0.3)] bg-black">
+          <video
+            ref={(el) => {
+              localPreviewVideoRef.current = el;
+              if (el && localStreamRef.current) el.srcObject = localStreamRef.current;
+            }}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute bottom-0 left-0 right-0 py-1 px-2 bg-red-500/80 text-[9px] font-bold text-white text-center uppercase tracking-wider">
+            Ao vivo
+          </div>
+        </div>
+      )}
+
+      {/* Modal de visualização da transmissão de outro usuário */}
+      <AnimatePresence>
+        {liveViewerOpen && liveViewerUser && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
+              onClick={() => setLiveViewerOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={`fixed z-50 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
+                liveViewerFullscreen ? 'inset-4 md:inset-8' : 'bottom-24 left-4 right-4 md:left-auto md:right-4 md:w-96'
+              }`}
+            >
+              <div className="flex items-center justify-between px-4 py-3 bg-black/40 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="relative w-8 h-8 rounded-full overflow-hidden bg-slate-600 flex items-center justify-center shrink-0">
+                    {liveViewerUser.photoURL ? (
+                      <>
+                        <img
+                          src={liveViewerUser.photoURL}
+                          alt=""
+                          className="absolute inset-0 w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.style.display = 'none';
+                            const fb = e.currentTarget.nextElementSibling as HTMLElement;
+                            if (fb) fb.classList.remove('hidden');
+                          }}
+                        />
+                        <div className="hidden absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
+                          {(liveViewerUser.displayName?.[0] ?? '?').toUpperCase()}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-sm font-bold text-white">{(liveViewerUser.displayName?.[0] ?? '?').toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">{liveViewerUser.displayName}</p>
+                    <p className="text-[10px] text-red-400 font-medium uppercase tracking-wider">● Ao vivo</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setLiveViewerFullscreen((v) => !v)}
+                    className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                    title={liveViewerFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                  >
+                    {liveViewerFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                  </button>
+                  <button
+                    onClick={() => {
+                      liveViewerRoomRef.current?.disconnect(true);
+                      liveViewerRoomRef.current = null;
+                      if (liveViewerVideoRef.current) liveViewerVideoRef.current.srcObject = null;
+                      setLiveViewerOpen(false);
+                      setLiveViewerUser(null);
+                      setLiveViewerLoading(false);
+                      setLiveViewerError(null);
+                    }}
+                    className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-[200px] flex items-center justify-center bg-black relative">
+                {liveViewerLoading && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10">
+                    <Loader2 className="w-12 h-12 text-cyan-400 animate-spin mb-4" />
+                    <p className="text-slate-400 text-sm">Conectando à transmissão...</p>
+                  </div>
+                )}
+                {liveViewerError && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 p-6">
+                    <Video className="w-16 h-16 text-red-500/50 mx-auto mb-4" />
+                    <p className="text-red-400 text-sm font-medium mb-2">Erro ao conectar</p>
+                    <p className="text-slate-500 text-xs text-center max-w-[260px]">{liveViewerError}</p>
+                  </div>
+                )}
+                <video
+                  ref={liveViewerVideoRef}
+                  autoPlay
+                  playsInline
+                  muted={false}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </motion.div>
     </AnimatePresence>
   );

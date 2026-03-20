@@ -115,7 +115,91 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update, delete: if isAdmin();
     }
+
+    /**
+     * Rastros de tornados: leitura para qualquer usuário logado; criar/atualizar/excluir apenas admin e com adminId igual ao uid.
+     * Documentos antigos sem adminId podem ser atualizados/excluídos por qualquer admin.
+     */
+    match /tornado_tracks/{trackId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && request.resource.data.adminId == request.auth.uid;
+      allow update: if isAdmin() && (
+        (resource.get('adminId', '') == '' ) ||
+        (resource.data.adminId == request.auth.uid && request.resource.data.adminId == resource.data.adminId)
+      );
+      allow delete: if isAdmin() && (resource.get('adminId', '') == '' || resource.data.adminId == request.auth.uid);
+    }
     
+    /**
+     * Previsões Prevots — overlays de tempestades por data. Usado no Modo Ao Vivo.
+     * Leitura: qualquer usuário logado. Escrita: apenas admin.
+     */
+    match /prevots_forecasts/{forecastId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && request.resource.data.adminId == request.auth.uid;
+      allow update, delete: if isAdmin() && (
+        resource.get('adminId', '') == '' || resource.data.adminId == request.auth.uid
+      );
+    }
+
+    /**
+     * Configurações de radares meteorológicos (bounds, URL template).
+     * Leitura: qualquer usuário logado (rastros usa para overlay). Escrita: apenas admin.
+     */
+    match /radar_configs/{configId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Presença em tempo real.
+     * Qualquer pessoa pode ler (lista de usuários online é pública).
+     * Apenas o próprio usuário autenticado pode escrever/excluir seu documento.
+     */
+    match /presence/{uid} {
+      allow read: if true;
+      allow write, delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    /**
+     * Perfil do usuário na página Rastros de Tornados (nome, tipo: Meteorologista, Storm Chaser, Observador, Civil).
+     * Cada usuário só pode ler e escrever seu próprio perfil.
+     */
+    match /rastros_profiles/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    /**
+     * Visitas diárias do site. Contador por data (YYYY-MM-DD).
+     * Leitura: qualquer um (para exibir o contador).
+     * Escrita: usuários logados (increment ao registrar visita).
+     */
+    match /daily_visits/{dateId} {
+      allow read: if true;
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+
+    /**
+     * Relatos de tempestade enviados pelos usuários (vento, granizo, tornado).
+     * Leitura: qualquer usuário logado. Criação: próprio usuário. Edição/exclusão: bloqueada.
+     */
+    match /storm_reports/{reportId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    /**
+     * Contador de visualizações por relato. Qualquer usuário logado pode ler e incrementar.
+     */
+    match /report_views/{reportId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if false;
+    }
+
     /**
      * @description This collection is no longer used for authorization logic in the rules.
      * All client access is blocked.

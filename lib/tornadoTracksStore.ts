@@ -8,7 +8,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { TornadoTrack, FScale } from '@/lib/tornadoTracksData';
+import { inferCountryFromTrack, type TornadoTrack, type FScale, type TrackImageBounds, type PrevotsPolygon } from '@/lib/tornadoTracksData';
 
 const COLLECTION = 'tornado_tracks';
 
@@ -41,6 +41,31 @@ function polygonsFromFirestore(polygons: { intensity?: string; coordinatesJson?:
   });
 }
 
+function prevotsPolygonsFromFirestore(raw: unknown): PrevotsPolygon[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p: any) => {
+      const level = Number(p?.level ?? 0);
+      if (level < 1 || level > 4) return null;
+      let coords: number[][][] = [];
+      if (typeof p?.coordinatesJson === 'string') {
+        try {
+          coords = JSON.parse(p.coordinatesJson);
+        } catch { coords = []; }
+      } else if (Array.isArray(p?.coordinates)) coords = p.coordinates;
+      if (!Array.isArray(coords) || coords.length === 0) return null;
+      return { level: level as 1 | 2 | 3 | 4, coordinates: coords };
+    })
+    .filter((x): x is PrevotsPolygon => x != null);
+}
+
+function prevotsPolygonsToFirestore(prevots: PrevotsPolygon[]) {
+  return prevots.map((p) => ({
+    level: p.level,
+    coordinatesJson: JSON.stringify(p.coordinates),
+  }));
+}
+
 export async function fetchTornadoTracks(): Promise<TornadoTrack[]> {
   if (!db) return [];
   const col = collection(db, COLLECTION);
@@ -48,36 +73,70 @@ export async function fetchTornadoTracks(): Promise<TornadoTrack[]> {
   const list = snap.docs.map((d) => {
     const data = d.data();
     const polygonsRaw = Array.isArray(data.polygons) ? data.polygons : [];
-    return {
+    const bounds = data.trackImageBounds;
+    const createdAtMs = typeof data.createdAt?.toMillis === 'function' ? data.createdAt.toMillis() : undefined;
+    const updatedAtMs = typeof data.updatedAt?.toMillis === 'function' ? data.updatedAt.toMillis() : undefined;
+    const baseTrack: TornadoTrack = {
       id: d.id,
       date: data.date || '',
+      time: data.time ?? undefined,
       polygons: polygonsFromFirestore(polygonsRaw),
+      prevotsPolygons: prevotsPolygonsFromFirestore(data.prevotsPolygons),
+      country: data.country ?? undefined,
       state: data.state || '',
       locality: data.locality,
       description: data.description,
       source: data.source,
+      radarWmsUrl: data.radarWmsUrl ?? undefined,
+      radarStationId: data.radarStationId ?? undefined,
       beforeImage: data.beforeImage,
       afterImage: data.afterImage,
+      beforeImageBounds: data.beforeImageBounds && typeof data.beforeImageBounds.ne?.lat === 'number'
+        ? { ne: data.beforeImageBounds.ne, sw: data.beforeImageBounds.sw }
+        : undefined,
+      afterImageBounds: data.afterImageBounds && typeof data.afterImageBounds.ne?.lat === 'number'
+        ? { ne: data.afterImageBounds.ne, sw: data.afterImageBounds.sw }
+        : undefined,
+      trackImage: data.trackImage ?? undefined,
+      trackImageBounds: bounds && typeof bounds.ne?.lat === 'number' && typeof bounds.sw?.lat === 'number'
+        ? { ne: bounds.ne, sw: bounds.sw }
+        : undefined,
+      createdAtMs,
+      updatedAtMs,
+    };
+    return {
+      ...baseTrack,
+      country: inferCountryFromTrack(baseTrack),
     };
   });
   return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
-export async function saveTornadoTrack(track: TornadoTrackInput): Promise<string> {
+export async function saveTornadoTrack(track: TornadoTrackInput, adminId: string): Promise<string> {
   if (!db) throw new Error('Firestore não inicializado');
   const payload = {
     date: track.date,
+    time: track.time || null,
     polygons: polygonsToFirestore(track.polygons),
+    prevotsPolygons: prevotsPolygonsToFirestore(track.prevotsPolygons ?? []),
+    country: track.country || null,
     state: track.state,
     locality: track.locality || null,
     description: track.description || null,
     source: track.source || null,
+    radarWmsUrl: track.radarWmsUrl || null,
+    radarStationId: track.radarStationId || null,
     beforeImage: track.beforeImage || null,
     afterImage: track.afterImage || null,
+    beforeImageBounds: track.beforeImageBounds || null,
+    afterImageBounds: track.afterImageBounds || null,
+    trackImage: track.trackImage || null,
+    trackImageBounds: track.trackImageBounds || null,
+    adminId,
     updatedAt: serverTimestamp(),
   };
   if (track.id) {
-    await setDoc(doc(db, COLLECTION, track.id), { ...payload, updatedAt: serverTimestamp() });
+    await setDoc(doc(db, COLLECTION, track.id), { ...payload, updatedAt: serverTimestamp() }, { merge: true });
     return track.id;
   }
   const ref = await addDoc(collection(db, COLLECTION), {

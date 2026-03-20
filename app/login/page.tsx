@@ -45,7 +45,7 @@ export default function Login() {
          
          <div className="mt-8 pt-6 border-t border-white/5 text-center">
             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-                PettusPlots © 2025
+                Previsao Masters
             </p>
          </div>
       </div>

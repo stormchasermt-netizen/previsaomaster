@@ -9,5 +9,15 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null;
     }
+    // Imagens de rastros de tornados (GeoTIFF/fotos) — apenas o dono pode escrever
+    match /tornado_tracks/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Fotos/vídeos de relatos de tempestade (vento, granizo, tornado)
+    match /storm_reports/{reportId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
   }
 }

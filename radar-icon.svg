@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36">
+  <!-- Base circular (branco) -->
+  <circle cx="18" cy="24" r="6" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <!-- C�pula/antena (verde/cyan) -->
+  <path d="M18 8 C10 8 6 14 6 20 C6 22 8 24 18 24 C28 24 30 22 30 20 C30 14 26 8 18 8 Z" fill="#22d3ee" stroke="#06b6d4" stroke-width="1"/>
+  <!-- Centro -->
+  <circle cx="18" cy="16" r="2" fill="#0e7490" opacity="0.8"/>
+</svg>

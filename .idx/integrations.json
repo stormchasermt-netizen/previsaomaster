@@ -1,5 +1,6 @@
 {
   "firebase_hosting": {
     "deploymentHostingUrl": "https://studio-4398873450-7cc8f.web.app"
-  }
+  },
+  "cloud_run_deploy": {}
 }

@@ -1,4 +1,5 @@
 import './globals.css';
+import 'react-image-crop/dist/ReactCrop.css';
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Providers } from './providers';
@@ -10,6 +11,8 @@ export const metadata: Metadata = {
 };
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "COLE_SUA_CHAVE_DE_API_DO_GOOGLE_MAPS_AQUI";
+// ID da métrica do GA4 (Fluxo do site). Sobrescreva com NEXT_PUBLIC_GA_MEASUREMENT_ID se necessário.
+const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-L9DJ8DDGCP';
 
 export default function RootLayout({
   children,
@@ -22,20 +25,33 @@ export default function RootLayout({
   
   return (
     <html lang="pt-BR" className="dark">
-      <head>
-        <link rel="stylesheet" href="https://unpkg.com/react-image-crop/dist/ReactCrop.css" />
-      </head>
       <body>
         <Providers>
           <AppLayout>
             {children}
           </AppLayout>
         </Providers>
-        <Script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js" />
+        <Script src="/turf.min.js" strategy="beforeInteractive" />
         <Script
           src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&v=weekly&libraries=drawing,geometry&loading=async`}
           strategy="afterInteractive"
         />
+        {GA_MEASUREMENT_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${GA_MEASUREMENT_ID}');
+              `}
+            </Script>
+          </>
+        )}
       </body>
     </html>
   );

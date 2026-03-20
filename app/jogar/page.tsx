@@ -118,9 +118,14 @@ export default function Game() {
 
   // MULTIPLAYER: Sync Loading Timer & Auto-start game
   useEffect(() => {
-      if (isMultiplayer && lobby?.status === 'loading' && lobby.loadingStartTime) {
+      if (isMultiplayer && lobby?.status === 'loading' && lobby.loadingStartTime != null) {
           const timer = setInterval(() => {
-              const startTime = (lobby.loadingStartTime as any)?.toMillis?.() || lobby.loadingStartTime;
+              const raw = lobby.loadingStartTime;
+              const startTime = typeof raw === 'number' ? raw : (raw?.toMillis?.() ?? raw);
+              if (startTime == null || typeof startTime !== 'number') {
+                  setLoadingTimeLeft(0);
+                  return;
+              }
               const elapsed = Date.now() - startTime;
               const left = Math.max(0, 10 - Math.floor(elapsed / 1000));
               setLoadingTimeLeft(left);
@@ -145,6 +150,11 @@ export default function Game() {
         return;
     }
 
+    // 0. Se o Firestore já está em 'playing', todos devem ir para a partida (evita loop na sincronização)
+    if (lobby?.status === 'playing' && phase === 'loading') {
+        setPhase('playing');
+    }
+
     // 1. GAME START SYNC
     if (lobby && (lobby.status === 'playing' || lobby.status === 'loading')) {
         setDifficulty(lobby.difficulty);
@@ -154,7 +164,7 @@ export default function Game() {
                                (lobby.roundsPlayed || 0) > lastRoundsPlayed;
             
             if (isNewRound) {
-                setPhase('loading');
+                if (lobby.status !== 'playing') setPhase('loading');
                 setCurrentEvent(currentEventData);
                 setLastRoundsPlayed(lobby.roundsPlayed || 0);
                 
@@ -674,8 +684,8 @@ export default function Game() {
             </div>
         )}
 
-        {/* WAITING OVERLAY (Multiplayer Submitted) */}
-        {isMultiplayer && hasSubmittedMP && lobby?.status === 'playing' && (
+        {/* WAITING OVERLAY (Multiplayer Submitted) - não exibir para o host para que ele possa finalizar a rodada */}
+        {isMultiplayer && hasSubmittedMP && !isHost && lobby?.status === 'playing' && (
              <div className="absolute inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center animate-in fade-in">
                  <div className="bg-slate-900 border border-white/10 p-8 rounded-2xl flex flex-col items-center shadow-2xl">
                      <Loader2 className="w-10 h-10 text-cyan-400 animate-spin mb-4" />

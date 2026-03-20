@@ -10,10 +10,12 @@ type Props = {
   className?: string;
 };
 
-/** Comparação antes/depois com divisor arrastável. */
+/** Comparação antes/depois com divisor arrastável. Em erro de carregamento, mostra link para abrir em nova aba. */
 export function BeforeAfterCompare({ beforeUrl, afterUrl, beforeLabel = 'Antes', afterLabel = 'Depois', className = '' }: Props) {
   const [split, setSplit] = useState(50);
   const [dragging, setDragging] = useState(false);
+  const [beforeError, setBeforeError] = useState(false);
+  const [afterError, setAfterError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMove = useCallback(
@@ -64,7 +66,16 @@ export function BeforeAfterCompare({ beforeUrl, afterUrl, beforeLabel = 'Antes',
     >
       {/* Imagem "Depois" (fundo) */}
       <div className="absolute inset-0">
-        <img src={afterUrl} alt={afterLabel} className="w-full h-full object-cover" />
+        {afterError ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-slate-800/80 p-4 text-center">
+            <span className="text-slate-500 text-sm">Imagem não carregou</span>
+            <a href={afterUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:text-emerald-300 text-sm underline">
+              Abrir Depois em nova aba
+            </a>
+          </div>
+        ) : (
+          <img src={afterUrl} alt={afterLabel} className="w-full h-full object-cover" onError={() => setAfterError(true)} />
+        )}
         <span className="absolute bottom-2 right-2 text-xs font-medium bg-black/60 text-white px-2 py-1 rounded">
           {afterLabel}
         </span>
@@ -74,7 +85,16 @@ export function BeforeAfterCompare({ beforeUrl, afterUrl, beforeLabel = 'Antes',
         className="absolute inset-0 z-10"
         style={{ clipPath: `inset(0 ${100 - split}% 0 0)` }}
       >
-        <img src={beforeUrl} alt={beforeLabel} className="w-full h-full object-cover" />
+        {beforeError ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-slate-800/80 p-4 text-center">
+            <span className="text-slate-500 text-sm">Imagem não carregou</span>
+            <a href={beforeUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:text-emerald-300 text-sm underline">
+              Abrir Antes em nova aba
+            </a>
+          </div>
+        ) : (
+          <img src={beforeUrl} alt={beforeLabel} className="w-full h-full object-cover" onError={() => setBeforeError(true)} />
+        )}
         <span className="absolute bottom-2 left-2 text-xs font-medium bg-black/60 text-white px-2 py-1 rounded">
           {beforeLabel}
         </span>

@@ -110,10 +110,10 @@ export default function LobbyPage() {
         initJoin();
     }, [code, user, joinLobby]); 
 
-    // Redirect on lobby status change
+    // Redirect on lobby status change — replace para evitar voltar à sala em loading
     useEffect(() => {
         if (lobby?.status === 'playing' || lobby?.status === 'loading') {
-            router.push('/jogar');
+            router.replace('/jogar');
         }
     }, [lobby?.status, router]);
 
@@ -150,6 +150,16 @@ export default function LobbyPage() {
             <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
                 <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
                 <p className="text-slate-400 animate-pulse">Conectando à sala...</p>
+            </div>
+        );
+    }
+
+    if (lobby.status === 'loading' || lobby.status === 'playing') {
+        return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+                <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
+                <p className="text-slate-400 animate-pulse">Redirecionando para a partida...</p>
+                <p className="text-slate-500 text-sm">Se não sair em instantes, clique em &quot;Jogar&quot; no menu.</p>
             </div>
         );
     }

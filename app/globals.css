@@ -74,3 +74,14 @@
 .animate-pulse-slow {
   animation: pulse-slow 8s infinite ease-in-out;
 }
+
+/* Classe para renderização "Crocante" (Pixel Perfect) — evita desfoque ao dar zoom */
+.pixelated-layer {
+  /* Padrão para Chrome, Edge, Safari e Opera */
+  image-rendering: pixelated;
+  /* Padrão para Firefox */
+  image-rendering: crisp-edges;
+  /* Fallbacks para navegadores antigos */
+  image-rendering: -moz-crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}
