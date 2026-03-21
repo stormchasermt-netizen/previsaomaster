@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -1660,7 +1660,8 @@ export default function AoVivoPage() {
                 img.onerror = null;
                 img.src = filteredSrc;
               }
-            }).catch(() => { /* exibe sem filtro */ });
+              markProcessed();
+            }).catch(() => { markProcessed(); });
             return;
           }
 
@@ -1783,7 +1784,7 @@ export default function AoVivoPage() {
       ov.setMap(map);
       overlaysArr.push(ov);
     });
-  }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode]);
+  }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode, superResEnabled]);
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
@@ -2321,21 +2322,7 @@ export default function AoVivoPage() {
               </button>
             </div>
               </div>
-              {/* Toggle Super Res (Doppler) */}
-              {radarProductType === 'velocidade' && (
-                <div className="mt-1">
-                  <label className="flex items-center gap-3 py-2 cursor-pointer group">
-                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${superResEnabled ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
-                      {superResEnabled && <Check className="w-3 h-3 text-black" />}
-                    </div>
-                    <input type="checkbox" checked={superResEnabled} onChange={() => setSuperResEnabled(!superResEnabled)} className="hidden" />
-                    <div>
-                      <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Super Res</span>
-                      <p className="text-[9px] text-slate-500 mt-0.5">Remove ruido do Doppler</p>
-                    </div>
-                  </label>
-                </div>
-              )}
+              {/* Removed Super Res toggle from sidebar */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Opacidade</label>
               <input
@@ -2597,6 +2584,7 @@ export default function AoVivoPage() {
                   <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">dBZ</span>
                   <div className="flex flex-col items-center">
                     <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
+                      <div className="flex-1" style={{ background: 'transparent' }} />
                       <div className="flex-1" style={{ background: 'linear-gradient(to right, #00c8ff, #0090ff)' }} />
                       <div className="flex-1" style={{ background: 'linear-gradient(to right, #0090ff, #00ff00)' }} />
                       <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #80ff00)' }} />
@@ -2604,7 +2592,10 @@ export default function AoVivoPage() {
                       <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
                       <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
                       <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #cc0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc0000, #ff00ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc0000, #8b0000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #8b0000, #ff00ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #cc00ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc00ff, #ffffff)' }} />
                     </div>
                     <div className="flex justify-between w-full mt-0.5">
                       {['-30','-20','-10','0','10','20','30','40','50','60','70','80','90'].map((v) => (
@@ -2687,20 +2678,16 @@ export default function AoVivoPage() {
                   <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-1.5">
                     <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">m/s</span>
                     <div className="flex flex-col items-center">
-                      <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #4b0082)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #4b0082, #0000ff)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #0080ff)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #0080ff, #00ffff)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ffff, #00ff00)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #e0e0e0)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #e0e0e0, #ff0000)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #ff8000)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff8000, #ffff00)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #c0c000)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #c0c000, #808000)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #808000, #404000)' }} />
-                      </div>
+                        <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00c8ff, #0090ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0090ff, #00ff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #80ff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #80ff00, #ffff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #cc0000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc0000, #ff00ff)' }} />
+                        </div>
                       <div className="flex justify-between w-full mt-0.5">
                         {['-60','-50','-40','-30','-20','-10','0','10','20','30','40','50','60'].map((v) => (
                           <span key={v} className="text-[6px] sm:text-[7px] text-slate-600 font-semibold leading-none">{v}</span>
@@ -2760,8 +2747,24 @@ export default function AoVivoPage() {
             )}
                   </div>
 
-          {/* Botão Reportar */}
-          <div className="absolute right-2 top-[140px] pointer-events-auto">
+          {/* Botões do lado direito (Reportar e Super Res) */}
+          <div className="absolute z-50 right-2 top-[140px] pointer-events-auto flex flex-col gap-2 items-end">
+            {(splitCount === 2 || radarProductType === 'velocidade') && (
+              <button
+                onClick={() => setSuperResEnabled(!superResEnabled)}
+                className={`group/sres flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all duration-200 shadow-lg ${
+                  superResEnabled 
+                    ? 'bg-emerald-500 border-emerald-400 text-slate-900 shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
+                    : 'bg-[#0A0E17]/80 border-white/10 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50'
+                }`}
+                title="Super Res: Filtro de precisão Doppler"
+              >
+                <Zap className={`w-4 h-4 transition-transform group-hover/sres:scale-110 ${superResEnabled ? 'fill-current' : ''}`} />
+                <span className="font-bold text-[10px] uppercase tracking-wider">Super Res</span>
+                {superResEnabled && <Check className="w-3 h-3" />}
+              </button>
+            )}
+
             <button
               onClick={openReportPopup}
               className="group/report flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-500/90 text-slate-900 font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.3)] transition-all duration-200 hover:scale-105 hover:bg-amber-400 hover:shadow-[0_0_25px_rgba(245,158,11,0.5)]"

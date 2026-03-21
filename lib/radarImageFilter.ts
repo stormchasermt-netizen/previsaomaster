@@ -412,6 +412,47 @@ function applyLocalModeFilter(data: Uint8ClampedArray, w: number, h: number): vo
 }
 
 /**
+ * Estágio 3.5 — Filtro de Preenchimento (Hole Filling).
+ * Se um pixel for transparente (buraco) mas estiver cercado por muitos pixels coloridos,
+ * nós o restauramos com a cor média dos vizinhos para fechar buracos dentro das tempestades.
+ */
+function applyHoleFilling(data: Uint8ClampedArray, w: number, h: number): void {
+  const copy = new Uint8ClampedArray(data);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const ci = (y * w + x) * 4;
+      if (copy[ci + 3] > 0) continue;
+
+      let colorNeighbors = 0;
+      let rSum = 0, gSum = 0, bSum = 0;
+      
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const ny = y + dy;
+          const nx = x + dx;
+          if (ny < 0 || nx < 0 || ny >= h || nx >= w) continue;
+          const ni = (ny * w + nx) * 4;
+          if (copy[ni + 3] > 0) {
+            colorNeighbors++;
+            rSum += copy[ni];
+            gSum += copy[ni + 1];
+            bSum += copy[ni + 2];
+          }
+        }
+      }
+      
+      if (colorNeighbors >= 8) {
+        data[ci] = Math.round(rSum / colorNeighbors);
+        data[ci + 1] = Math.round(gSum / colorNeighbors);
+        data[ci + 2] = Math.round(bSum / colorNeighbors);
+        data[ci + 3] = 255;
+      }
+    }
+  }
+}
+
+/**
  * SUPER RES — Pipeline completo de limpeza para imagens Doppler (velocidade radial).
  *
  * @param velocityUrl URL da imagem de velocidade (ppivr)
@@ -440,10 +481,13 @@ export async function filterDopplerSuperRes(
       }
     }
 
-    // Estágio 2: Blob Filter — remove clusters isolados < 5 pixels
-    applyBlobFilter(velData, w, h, 5);
+    // Estágio 2: Blob Filter (exclui pequenos clusters isolados)
+    applyBlobFilter(velData, w, h, 6);
 
-    // Estágio 3: Filtro de Moda Local — corrige outliers internos
+    // Estágio 3: Preencher buracos internos
+    applyHoleFilling(velData, w, h);
+
+    // Estágio 4: Suavização Espacial
     applyLocalModeFilter(velData, w, h);
 
     // Renderizar resultado
