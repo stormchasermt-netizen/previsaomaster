@@ -93,8 +93,8 @@ export interface CptecRadarStation {
 export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   // Radares DECEA/SDCSC (Sul)
   { id: 'R12558322', slug: 'santiago', name: 'Santiago', lat: -29.183, lng: -54.867, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12558323', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12137761', slug: 'chapeco', name: 'Chapecó', lat: -27.08, lng: -52.614, rangeKm: 450, org: 'sdcsc', server: 's2', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityServer: 's3', velocityId: 'R12137762', updateIntervalMinutes: 6, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.16, lng: -49.54, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12227760', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12137761', slug: 'chapeco', name: 'Chapecó', lat: -27.04879621266378, lng: -52.60375894804104, rangeKm: 450, org: 'sdcsc', server: 's2', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityServer: 's3', velocityId: 'R12137762', updateIntervalMinutes: 6, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.23109712981659, lng: -49.461747790379526, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12227760', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
   { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.12, lng: -49.49, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
   // Outras fontes (mockadas como CPTEC estruturalmente)
@@ -323,7 +323,7 @@ export function getRadarImageBounds(station: CptecRadarStation, overrideRangeKm?
     return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
   }
   const range = overrideRangeKm ?? station.rangeKm;
-  const b = calculateRadarBounds(station.lat, station.lng, range);
+  const b = calculateRadarBoundsGeodesic(station.lat, station.lng, range);
   return {
     north: b.ne.lat,
     south: b.sw.lat,
