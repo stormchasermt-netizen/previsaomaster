@@ -581,6 +581,15 @@ export default function AoVivoPage() {
         const b = getRadarImageBounds(dr.station);
         return { north: b.north, south: b.south, east: b.east, west: b.west };
       }
+      
+      const configSlug = `argentina:${dr.station.id}`;
+      const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
+      if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
+        const range = cfg.rangeKm ?? dr.station.rangeKm ?? 480;
+        const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
+        return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+      }
+
       const b = getArgentinaRadarBounds(dr.station);
       return { north: b.north, south: b.south, east: b.east, west: b.west };
     },
@@ -2380,24 +2389,7 @@ export default function AoVivoPage() {
                   </motion.div>
                 )}
               </div>
-              <div>
-                <label className="flex items-center gap-3 py-2 cursor-pointer group">
-                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${prevotsOverlayVisible ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
-                    {prevotsOverlayVisible && <Check className="w-3 h-3 text-black" />}
-          </div>
-                  <input type="checkbox" checked={prevotsOverlayVisible} onChange={(e) => setPrevotsOverlayVisible(e.target.checked)} className="hidden" />
-                  <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Overlay Prevots</span>
-                </label>
-                {prevotsOverlayVisible && (
-                  <motion.input
-                    initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-                    type="date"
-                    value={prevotsForecastDate}
-                    onChange={(e) => setPrevotsForecastDate(e.target.value)}
-                    className="mt-3 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
-                  />
-                )}
-              </div>
+              {/* Removed Prevots inline toggle */}
               {radarTimeLegends.length > 0 && (
                 <div className="pt-4 border-t border-white/10">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Horário da última imagem</p>
@@ -2444,6 +2436,33 @@ export default function AoVivoPage() {
                 <span className="text-[10px] font-semibold text-cyan-300">Refletividade</span>
               </div>
             )}
+          </div>
+
+          {/* Botão Prevots e DatePicker */}
+          <div className="absolute right-2 top-[70px] pointer-events-auto flex flex-col items-end gap-2">
+            <button
+              onClick={() => setPrevotsOverlayVisible(!prevotsOverlayVisible)}
+              className={`group/prevots flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-200 hover:scale-105 ${
+                prevotsOverlayVisible 
+                  ? 'bg-emerald-500/90 text-slate-900 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400' 
+                  : 'bg-[#0A0E17]/80 text-slate-400 border border-white/10 shadow-lg hover:text-white hover:border-emerald-500/40'
+              }`}
+              title="Alternar Overlay Prevots"
+            >
+              <Layers className="w-4 h-4 transition-transform group-hover/prevots:scale-110" />
+              Prevots
+            </button>
+            <AnimatePresence>
+              {prevotsOverlayVisible && (
+                <motion.input
+                  initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+                  type="date"
+                  value={prevotsForecastDate}
+                  onChange={(e) => setPrevotsForecastDate(e.target.value)}
+                  className="bg-[#0A0E17]/90 backdrop-blur-md border border-emerald-500/50 rounded-lg px-3 py-2 text-sm text-emerald-100 focus:border-emerald-400 outline-none shadow-xl pointer-events-auto"
+                />
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Mapa secundário (Doppler) — somente no split */}
