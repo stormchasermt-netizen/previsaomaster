@@ -19,5 +19,9 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null;
     }
+    // Permite leitura pública de todas as imagens históricas de radar (IPMet/Bauru/Presidente Prudente)
+    match /ipmet-bauru/{allPaths=**} {
+      allow read: if true;
+    }
   }
 }
