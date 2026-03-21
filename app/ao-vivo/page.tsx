@@ -2545,6 +2545,60 @@ export default function AoVivoPage() {
                 <span className="text-[10px] font-semibold text-cyan-300">Refletividade</span>
               </div>
             )}
+            {/* Legenda de cores — dBZ (Refletividade) */}
+            {(splitCount === 2 || radarProductType === 'reflectividade') && (
+              <div className="absolute z-20 top-2 left-2 pointer-events-none sm:top-3 sm:left-3" style={splitCount === 2 ? { top: '28px' } : undefined}>
+                <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-1.5">
+                  <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">dBZ</span>
+                  <div className="flex flex-col items-center">
+                    <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00c8ff, #0090ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0090ff, #00ff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #80ff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #80ff00, #ffff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #cc0000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc0000, #ff00ff)' }} />
+                    </div>
+                    <div className="flex justify-between w-full mt-0.5">
+                      {['-30','-20','-10','0','10','20','30','40','50','60','70','80','90'].map((v) => (
+                        <span key={v} className="text-[6px] sm:text-[7px] text-slate-600 font-semibold leading-none">{v}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Legenda de cores — m/s (Velocidade) — single map mode */}
+            {splitCount !== 2 && radarProductType === 'velocidade' && (
+              <div className="absolute z-20 top-2 left-2 pointer-events-none sm:top-3 sm:left-3">
+                <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-1.5">
+                  <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">m/s</span>
+                  <div className="flex flex-col items-center">
+                    <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #cc00cc)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc00cc, #0000ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #00aaff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00aaff, #00cccc)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00cccc, #aaffaa)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #aaffaa, #ffffff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffffff, #ffff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #990000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #990000, #ffcc00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffcc00, #cccc88)' }} />
+                    </div>
+                    <div className="flex justify-between w-full mt-0.5">
+                      {['-60','-50','-40','-30','-20','-10','0','10','20','30','40','50','60'].map((v) => (
+                        <span key={v} className="text-[6px] sm:text-[7px] text-slate-600 font-semibold leading-none">{v}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Botão Prevots e DatePicker */}
@@ -2582,6 +2636,33 @@ export default function AoVivoPage() {
                 <div ref={map2Ref} className="absolute inset-0 w-full h-full" />
                 <div className={`absolute z-10 bg-slate-900/80 px-3 py-1 pointer-events-none ${isDesktop ? 'top-0 left-0 right-0' : 'bottom-0 left-0 right-0'}`}>
                   <span className="text-[10px] font-semibold text-emerald-300">Doppler (Velocidade)</span>
+                </div>
+                {/* Legenda de cores — m/s (Velocidade) */}
+                <div className="absolute z-20 pointer-events-none" style={{ top: '28px', left: '8px' }}>
+                  <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-1.5">
+                    <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">m/s</span>
+                    <div className="flex flex-col items-center">
+                      <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #cc00cc)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc00cc, #0000ff)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #00aaff)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00aaff, #00cccc)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00cccc, #aaffaa)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #aaffaa, #ffffff)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffffff, #ffff00)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #990000)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #990000, #ffcc00)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffcc00, #cccc88)' }} />
+                      </div>
+                      <div className="flex justify-between w-full mt-0.5">
+                        {['-60','-50','-40','-30','-20','-10','0','10','20','30','40','50','60'].map((v) => (
+                          <span key={v} className="text-[6px] sm:text-[7px] text-slate-600 font-semibold leading-none">{v}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
