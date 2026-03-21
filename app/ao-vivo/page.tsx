@@ -96,26 +96,47 @@ async function filterValidSliderMinutesAgo(
 
   /** IPMET: imagens antigas estão no Storage; a mais recente (0) sempre existe no servidor. */
   if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
+    const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
     const result: number[] = [0];
-    const BATCH = 8;
-    for (let i = 1; i < candidates.length; i += BATCH) {
-      if (signal?.aborted) return candidates;
-      const batch = candidates.slice(i, i + BATCH);
-      const checks = await Promise.all(
-        batch.map(async (minutesAgo) => {
-          const ts12 = getNowMinusMinutesTimestamp12UTC(3 + minutesAgo);
-          try {
-            const res = await fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(ts12)}`, { cache: 'no-store', signal });
-            const data = await res.json().catch(() => ({}));
-            return !!data.url;
-          } catch {
-            return false;
-          }
-        })
-      );
-      batch.forEach((m, j) => { if (checks[j]) result.push(m); });
+
+    try {
+      const res = await fetch(`/api/ipmet-available-timestamps?ts12=${encodeURIComponent(baseTs12)}`, { cache: 'no-store', signal });
+      const data = await res.json().catch(() => ({}));
+      
+      const timestamps: string[] = data.timestamps || [];
+      if (timestamps.length > 0) {
+        const y = parseInt(baseTs12.slice(0, 4), 10);
+        const m = parseInt(baseTs12.slice(4, 6), 10) - 1;
+        const d = parseInt(baseTs12.slice(6, 8), 10);
+        const hh = parseInt(baseTs12.slice(8, 10), 10);
+        const mm = parseInt(baseTs12.slice(10, 12), 10);
+        const baseDateMs = Date.UTC(y, m, d, hh, mm);
+        
+        timestamps.forEach(ts => {
+           const fy = parseInt(ts.slice(0, 4), 10);
+           const fm = parseInt(ts.slice(4, 6), 10) - 1;
+           const fd = parseInt(ts.slice(6, 8), 10);
+           const fhh = parseInt(ts.slice(8, 10), 10);
+           const fmm = parseInt(ts.slice(10, 12), 10);
+           const fileDateMs = Date.UTC(fy, fm, fd, fhh, fmm);
+           
+           const diffMin = Math.round((baseDateMs - fileDateMs) / 60000);
+           // Como estamos lidando com imagens históricas de até maxMinutes, filtramos:
+           if (diffMin > 0 && diffMin <= maxMinutes) {
+             result.push(diffMin);
+           }
+        });
+      }
+    } catch {
+       // Se der erro, só exibe o Ao Vivo (0)
     }
-    return result.length > 0 ? result : [0];
+
+    // A API retorna do mais recente pro mais antigo (diffMin será 14, 25, 36, ...)
+    // Então o vetor "result" fica [0, 14, 25, 36]
+    // A interface genérica espera que idx=0 seja o mais ANTIGO, e o final seja 0 (recente).
+    // Ou seja: [60, 50, ..., 0]. Precisamos reverter.
+    result.reverse();
+    return result;
   }
 
   const BATCH = 12;
