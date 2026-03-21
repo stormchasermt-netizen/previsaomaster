@@ -97,6 +97,11 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.16, lng: -49.54, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12227760', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
   { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.12, lng: -49.49, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
+  // Outras fontes (mockadas como CPTEC estruturalmente)
+  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet (Bauru)', lat: -22.358, lng: -49.026, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'ppi', sigmaSubtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 }, // Fake org/server just to satisfy CPTEC schema
+  { id: 'R12093558', slug: 'ipmet-prudente', name: 'IPMet (Presidente Prudente)', lat: -22.116, lng: -51.385, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'ppi', sigmaSubtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 },
+  { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
+
   // DECEA - Sudeste
   { id: 'R12537563', slug: 'saoroque', name: 'São Roque', lat: -23.53, lng: -47.13, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12537536', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
   { id: 'R12567564', slug: 'picocouto', name: 'Pico do Couto', lat: -22.95, lng: -43.25, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12567537', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
@@ -463,6 +468,9 @@ export function buildNowcastingPngUrl(
   ts12: string,
   productType: 'reflectividade' | 'velocidade' = 'reflectividade'
 ): string {
+  if (station.slug === 'climatempo-poa') {
+    return `https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png?nocache=${ts12}`;
+  }
   const y = ts12.slice(0, 4);
   const m = ts12.slice(4, 6);
   const sub =

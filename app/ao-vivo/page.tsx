@@ -36,7 +36,7 @@ import { fetchRadarConfigs, saveRadarConfig, type RadarConfig } from '@/lib/rada
 import { groupRadarsByLocation } from '@/lib/radarGrouping';
 import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
-import { filterRadarImageFromUrl } from '@/lib/radarImageFilter';
+import { filterRadarImageFromUrl, filterClimatempoRadarImage } from '@/lib/radarImageFilter';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
 
@@ -93,6 +93,11 @@ async function filterValidSliderMinutesAgo(
   const candidates: number[] = [];
   for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
   if (candidates.length === 0) return [0];
+
+  /** Climatempo POA só possui latest (sem histórico) */
+  if (dr.type === 'cptec' && dr.station.slug === 'climatempo-poa') {
+    return [0];
+  }
 
   /** IPMET: imagens antigas estão no Storage; a mais recente (0) sempre existe no servidor. */
   if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
@@ -1545,7 +1550,12 @@ export default function AoVivoPage() {
           if (noiseFiltered) return;
           noiseFiltered = true;
           const currentSrc = img.src;
-          filterRadarImageFromUrl(currentSrc).then((filteredSrc) => {
+          const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
+          const filterAction = isClimatempo 
+            ? filterClimatempoRadarImage(currentSrc) 
+            : filterRadarImageFromUrl(currentSrc);
+
+          filterAction.then((filteredSrc) => {
             if (filteredSrc && img.src === currentSrc) {
               img.onload = null;
               img.onerror = null;

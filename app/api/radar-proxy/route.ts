@@ -10,6 +10,7 @@ const ALLOWED_HOSTS = [
   'redemet.decea.mil.br',
   'estatico-redemet.decea.mil.br',
   'firebasestorage.googleapis.com',
+  'statics.climatempo.com.br',
 ];
 
 export async function GET(req: NextRequest) {
