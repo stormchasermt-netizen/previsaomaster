@@ -117,6 +117,19 @@ export default function AdminRadaresPage() {
   /** Lat/lng durante arraste — atualiza os inputs em tempo real. null quando não está arrastando. */
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
 
+  // === ESTÚDIO DE RADAR ===
+  // Bounding Box (Arrasto e estiramento nas 4 pontas em vez de só centro/raio)
+  const [useCustomBounds, setUseCustomBounds] = useState(false);
+  const [customBounds, setCustomBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null);
+
+  // Chroma Key e Corte (Limpação da imagem)
+  const [chromaKeyDeltaThreshold, setChromaKeyDeltaThreshold] = useState<number>(0);
+  const [cropTop, setCropTop] = useState<number>(0);
+  const [cropBottom, setCropBottom] = useState<number>(0);
+  const [cropLeft, setCropLeft] = useState<number>(0);
+  const [cropRight, setCropRight] = useState<number>(0);
+  const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
+
   const loadConfigs = async () => {
     setLoading(true);
     try {
@@ -252,6 +265,13 @@ export default function AdminRadaresPage() {
     setPreviewUrlsToTry(urlsToTry);
     setLoadingPreview(true);
     setLiveCenter(null);
+    setUseCustomBounds(!!existing?.customBounds);
+    setCustomBounds(existing?.customBounds || null);
+    setChromaKeyDeltaThreshold(existing?.chromaKeyDeltaThreshold ?? 0);
+    setCropTop(existing?.cropConfig?.top ?? 0);
+    setCropBottom(existing?.cropConfig?.bottom ?? 0);
+    setCropLeft(existing?.cropConfig?.left ?? 0);
+    setCropRight(existing?.cropConfig?.right ?? 0);
     setPreviewMinutesAgo(0);
     setPreviewDateTime('');
     setPanelOpen(true);
@@ -307,6 +327,13 @@ export default function AdminRadaresPage() {
     setPreviewUrlsToTry(urlsToTry);
     setLoadingPreview(true);
     setLiveCenter(null);
+    setUseCustomBounds(!!existing?.customBounds);
+    setCustomBounds(existing?.customBounds || null);
+    setChromaKeyDeltaThreshold(existing?.chromaKeyDeltaThreshold ?? 0);
+    setCropTop(existing?.cropConfig?.top ?? 0);
+    setCropBottom(existing?.cropConfig?.bottom ?? 0);
+    setCropLeft(existing?.cropConfig?.left ?? 0);
+    setCropRight(existing?.cropConfig?.right ?? 0);
     setPreviewMinutesAgo(0);
     setPreviewDateTime('');
     setPanelOpen(true);
@@ -371,6 +398,9 @@ export default function AdminRadaresPage() {
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
         opacity: previewOpacity,
+        customBounds: useCustomBounds && customBounds ? customBounds : undefined,
+        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
+        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
       });
       addToast('Posição salva automaticamente.', 'success');
       await loadConfigs();
@@ -386,6 +416,9 @@ export default function AdminRadaresPage() {
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
         opacity: previewOpacity,
+        customBounds: useCustomBounds && customBounds ? customBounds : undefined,
+        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
+        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
       });
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
@@ -436,7 +469,80 @@ export default function AdminRadaresPage() {
     };
   }, [mapReady, panelOpen, selectedStation, centerLat, centerLng, liveCenter, handleSavePosition]);
 
-  /** Overlay da imagem no mapa — arrastável, com ponto central. Mostra mesmo sem imagem. */
+  // === LOCAL CANVAS PROCESSOR ===
+  // Ativado sempre que os sliders do Estúdio mexerem.
+  useEffect(() => {
+    let active = true;
+    if (!previewImageUrl) {
+      setProcessedImageUrl(null);
+      return;
+    }
+    const runFilter = async () => {
+      try {
+        let blob: Blob;
+        try {
+          const res = await fetch(previewImageUrl, { mode: 'cors' });
+          if (!res.ok) throw new Error('CORS');
+          blob = await res.blob();
+        } catch {
+          const res = await fetch(getProxiedRadarUrl(previewImageUrl));
+          if (!res.ok) return;
+          blob = await res.blob();
+        }
+        if (!active) return;
+        
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+
+        // 1. Cropping
+        if (cropTop > 0) ctx.clearRect(0, 0, canvas.width, canvas.height * cropTop);
+        if (cropBottom > 0) ctx.clearRect(0, canvas.height * (1 - cropBottom), canvas.width, canvas.height * cropBottom);
+        if (cropLeft > 0) ctx.clearRect(0, 0, canvas.width * cropLeft, canvas.height);
+        if (cropRight > 0) ctx.clearRect(canvas.width * (1 - cropRight), 0, canvas.width * cropRight, canvas.height);
+
+        // 2. Chroma Key Saturation Delta
+        if (chromaKeyDeltaThreshold > 0) {
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const d = imgData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] === 0) continue;
+            const r = d[i], g = d[i + 1], b = d[i + 2];
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            if (max - min < chromaKeyDeltaThreshold) {
+              d[i + 3] = 0;
+              continue;
+            }
+            // Remove as rodovias pre-calculadas como lixo sujo (mesma lógica Climatempo base)
+            if (r > 130 && r < 210 && g > 110 && g < 190 && b < 100) { d[i+3] = 0; }
+            if (r < 100 && g < 120 && b < 120 && (max-min) < 80) { d[i+3] = 0; }
+          }
+          ctx.putImageData(imgData, 0, 0);
+        }
+        
+        // Se NENHUM filtro extra foi ativado, não force a renderização para economizar processamento
+        if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0) {
+          setProcessedImageUrl(null);
+          return;
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        if (active) setProcessedImageUrl(dataUrl);
+      } catch (e) {
+        console.error("Canvas Studio Filter Error:", e);
+      }
+    };
+    runFilter();
+    return () => { active = false; };
+  }, [previewImageUrl, chromaKeyDeltaThreshold, cropTop, cropBottom, cropLeft, cropRight]);
+
+  /** Overlay da imagem no mapa — arrastável, e Suporte a Rectangle Bounds */
   useEffect(() => {
     if (overlayRef.current) {
       (overlayRef.current as any).setMap?.(null);
@@ -448,10 +554,17 @@ export default function AdminRadaresPage() {
     const mapDiv = map.getDiv();
     const isIpmet = selectedStation?.type === 'cptec' && (selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru';
     const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
-    const b = calcBounds(centerLat, centerLng, rangeKm);
+    const defaultB = calcBounds(centerLat, centerLng, rangeKm);
+    
+    // Matriz Fonte de Origem
+    const currentB = (useCustomBounds && customBounds) ? { 
+       sw: { lat: customBounds.south, lng: customBounds.west }, 
+       ne: { lat: customBounds.north, lng: customBounds.east } 
+    } : defaultB;
+
     const latLngBounds = new google.maps.LatLngBounds(
-      { lat: b.sw.lat, lng: b.sw.lng },
-      { lat: b.ne.lat, lng: b.ne.lng }
+      { lat: currentB.sw.lat, lng: currentB.sw.lng },
+      { lat: currentB.ne.lat, lng: currentB.ne.lng }
     );
 
     let moveHandler: (e: MouseEvent) => void;
@@ -459,81 +572,99 @@ export default function AdminRadaresPage() {
 
     const ov = new google.maps.OverlayView();
     let divEl: HTMLDivElement | null = null;
+    let rectEl: any = null;
+
+    if (useCustomBounds) {
+      rectEl = new google.maps.Rectangle({
+        bounds: latLngBounds,
+        editable: true,
+        draggable: true,
+        map: map,
+        fillOpacity: 0.05,
+        strokeColor: '#facc15', // Yellow Box
+        strokeWeight: 2,
+        zIndex: 50
+      });
+      rectEl.addListener('bounds_changed', () => {
+        const nb = rectEl.getBounds();
+        if (!nb) return;
+        setCustomBounds({
+          north: nb.getNorthEast().lat(),
+          south: nb.getSouthWest().lat(),
+          east: nb.getNorthEast().lng(),
+          west: nb.getSouthWest().lng()
+        });
+        if (divEl && ov.getProjection()) { // Forçar redesenho na hora do arrasto pra parecer liso
+          const swP = ov.getProjection().fromLatLngToDivPixel(nb.getSouthWest());
+          const neP = ov.getProjection().fromLatLngToDivPixel(nb.getNorthEast());
+          if (swP && neP) {
+            divEl.style.left = Math.min(swP.x, neP.x) + 'px';
+            divEl.style.top = Math.min(swP.y, neP.y) + 'px';
+            divEl.style.width = Math.abs(neP.x - swP.x) + 'px';
+            divEl.style.height = Math.abs(neP.y - swP.y) + 'px';
+          }
+        }
+      });
+    }
+
     ov.onAdd = () => {
       divEl = document.createElement('div');
-      divEl.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;border:2px solid #22d3ee;user-select:none;';
-      divEl.addEventListener('mousedown', (e: MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const proj = ov.getProjection();
-        if (!proj) return;
-        const rect = mapDiv.getBoundingClientRect();
-        const clickMapX = e.clientX - rect.left;
-        const clickMapY = e.clientY - rect.top;
-        const centerPixel = proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng));
-        if (!centerPixel) return;
-        const offsetX = clickMapX - centerPixel.x;
-        const offsetY = clickMapY - centerPixel.y;
-        divEl!.style.cursor = 'grabbing';
-
-        moveHandler = (e2: MouseEvent) => {
-          const mx = e2.clientX - rect.left - offsetX;
-          const my = e2.clientY - rect.top - offsetY;
-          const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
-          if (!pt || !divEl) return;
-          const newLat = pt.lat();
-          const newLng = pt.lng();
-          lastDragCenterRef.current = { lat: newLat, lng: newLng };
-          setLiveCenter({ lat: newLat, lng: newLng });
-          const newB = calcBounds(newLat, newLng, rangeKm);
-          const newSw = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.sw.lat, newB.sw.lng));
-          const newNe = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.ne.lat, newB.ne.lng));
-          if (newSw && newNe) {
-            divEl.style.left = Math.min(newSw.x, newNe.x) + 'px';
-            divEl.style.top = Math.min(newSw.y, newNe.y) + 'px';
-            divEl.style.width = Math.abs(newNe.x - newSw.x) + 'px';
-            divEl.style.height = Math.abs(newNe.y - newSw.y) + 'px';
-          }
-        };
-        upHandler = () => {
-          divEl!.style.cursor = 'grab';
-          document.removeEventListener('mousemove', moveHandler);
-          document.removeEventListener('mouseup', upHandler);
-          setLiveCenter(null);
-          const last = lastDragCenterRef.current;
-          if (last) {
-            setCenterLat(last.lat);
-            setCenterLng(last.lng);
-            handleSavePosition(last.lat, last.lng);
-          }
-          lastDragCenterRef.current = null;
-        };
-        document.addEventListener('mousemove', moveHandler);
-        document.addEventListener('mouseup', upHandler);
-      });
+      divEl.style.cssText = `position:absolute;user-select:none;${useCustomBounds ? 'pointer-events:none;' : 'pointer-events:auto;cursor:grab;border:2px solid #22d3ee;'}`;
+      
+      if (!useCustomBounds) {
+        divEl.addEventListener('mousedown', (e: MouseEvent) => {
+          e.preventDefault(); e.stopPropagation();
+          const proj = ov.getProjection();
+          if (!proj) return;
+          const rect = mapDiv.getBoundingClientRect();
+          const offsetX = (e.clientX - rect.left) - proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng))!.x;
+          const offsetY = (e.clientY - rect.top) - proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng))!.y;
+          divEl!.style.cursor = 'grabbing';
+  
+          moveHandler = (e2: MouseEvent) => {
+            const mx = e2.clientX - rect.left - offsetX;
+            const my = e2.clientY - rect.top - offsetY;
+            const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
+            if (!pt || !divEl) return;
+            setLiveCenter({ lat: pt.lat(), lng: pt.lng() });
+          };
+          upHandler = () => {
+            divEl!.style.cursor = 'grab';
+            document.removeEventListener('mousemove', moveHandler);
+            document.removeEventListener('mouseup', upHandler);
+            setLiveCenter(prev => { 
+                if(prev) handleSavePosition(prev.lat, prev.lng); 
+                return null; 
+            });
+          };
+          document.addEventListener('mousemove', moveHandler);
+          document.addEventListener('mouseup', upHandler);
+        });
+      }
 
       const inner = document.createElement('div');
       inner.style.cssText = 'width:100%;height:100%;position:relative;min-height:80px;pointer-events:none;';
       const urlsToTry = previewUrlsToTry;
-      if (previewImageUrl || urlsToTry.length > 0) {
+      if (processedImageUrl || previewImageUrl || urlsToTry.length > 0) {
         const img = document.createElement('img');
         img.style.cssText = `width:100%;height:100%;opacity:${previewOpacity};object-fit:fill;transform-origin:center center;pointer-events:none;`;
         img.style.transform = `rotate(${rotationDegrees}deg)`;
+        
         let tryIndex = 0;
         const tryNext = () => {
           if (urlsToTry.length > 0 && tryIndex < urlsToTry.length) {
-            img.src = urlsToTry[tryIndex].url;
-            tryIndex += 1;
-            return;
+            img.src = urlsToTry[tryIndex].url; tryIndex += 1; return;
           }
           setLoadingPreview(false);
-          addToast(urlsToTry.length > 0 ? 'Nenhuma imagem encontrada (CPTEC/REDEMET).' : 'Falha ao carregar imagem. Verifique a URL.', 'error');
         };
         img.onload = () => setLoadingPreview(false);
         img.onerror = tryNext;
-        if (urlsToTry.length > 0) {
-          img.src = urlsToTry[0].url;
-          tryIndex = 1;
+        
+        // Prioriza Processed (do Canvas) frente a preview estático da Rede.
+        if (processedImageUrl) {
+           img.src = processedImageUrl;
+        } else if (urlsToTry.length > 0) {
+          img.src = urlsToTry[0].url; tryIndex = 1;
         } else {
           img.src = (previewImageUrl || '').includes('getradaripmet') || (previewImageUrl || '').includes('cloudfunctions.net') ? (previewImageUrl || '') : getProxiedRadarUrl(previewImageUrl || '');
         }
@@ -543,6 +674,7 @@ export default function AdminRadaresPage() {
         ph.style.cssText = 'width:100%;height:100%;min-height:80px;background:rgba(34,211,238,0.1);';
         inner.appendChild(ph);
       }
+      
       const centerIcon = document.createElement('img');
       centerIcon.src = '/radar-icon.svg';
       centerIcon.alt = 'Posição do radar';
@@ -552,34 +684,42 @@ export default function AdminRadaresPage() {
       divEl.appendChild(inner);
       ov.getPanes()?.overlayMouseTarget?.appendChild(divEl);
     };
+    
     ov.draw = () => {
       if (!divEl) return;
       const proj = ov.getProjection();
       if (!proj) return;
-      const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
-      const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
+      
+      // Override Bounding box se Rect estiver ativo!
+      const activeBounds = rectEl ? rectEl.getBounds() : latLngBounds;
+      const sw = proj.fromLatLngToDivPixel(activeBounds.getSouthWest());
+      const ne = proj.fromLatLngToDivPixel(activeBounds.getNorthEast());
       if (!sw || !ne) return;
       divEl.style.left = Math.min(sw.x, ne.x) + 'px';
       divEl.style.top = Math.min(sw.y, ne.y) + 'px';
       divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
       divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
     };
+    
     ov.onRemove = () => {
-      document.removeEventListener('mousemove', moveHandler!);
-      document.removeEventListener('mouseup', upHandler!);
+      if(moveHandler) document.removeEventListener('mousemove', moveHandler);
+      if(upHandler) document.removeEventListener('mouseup', upHandler);
       divEl?.parentNode?.removeChild(divEl!);
       divEl = null;
     };
+    
     ov.setMap(map);
     overlayRef.current = ov;
 
-    map.fitBounds(latLngBounds, { top: 100, right: 100, bottom: 100, left: 100 });
-
+    // Apenas ajustar o zoom inicialmente quando o painel abrir. 
+    // Como esse Hook roda com muita frequência por variações do mouse, vamos focar a câmera manual só no save.
+    
     return () => {
+      if(rectEl) rectEl.setMap(null);
       (ov as any).setMap?.(null);
       overlayRef.current = null;
     };
-  }, [mapReady, panelOpen, selectedStation, previewImageUrl, previewUrlsToTry, centerLat, centerLng, rangeKm, rotationDegrees, previewOpacity, handleSavePosition]);
+  }, [mapReady, panelOpen, selectedStation, previewImageUrl, processedImageUrl, previewUrlsToTry, centerLat, centerLng, rangeKm, rotationDegrees, previewOpacity, useCustomBounds]); // Removido customBounds daqui pois o listener cuida do drag contínuo
 
   /** Preencher centro e raio a partir da estação padrão */
   const handleUseStationDefaults = () => {
@@ -618,6 +758,9 @@ export default function AdminRadaresPage() {
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
         opacity: previewOpacity,
+        customBounds: useCustomBounds && customBounds ? customBounds : null,
+        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : null,
+        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : null,
       });
       addToast('Configuração salva.', 'success');
       await loadConfigs();
@@ -633,6 +776,9 @@ export default function AdminRadaresPage() {
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
         opacity: previewOpacity,
+        customBounds: useCustomBounds && customBounds ? customBounds : undefined,
+        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
+        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
       });
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
@@ -1047,6 +1193,73 @@ export default function AdminRadaresPage() {
                   </div>
                 </div>
               </div>
+
+              {/* ==== SEÇÃO DO ESTÚDIO DE RADAR ==== */}
+              <div className="border-t border-slate-700 pt-4 mt-2">
+                <h4 className="font-semibold text-emerald-400 flex items-center gap-2 mb-3">
+                  <Layers className="w-4 h-4" /> Canvas Studio Override
+                </h4>
+
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={useCustomBounds} 
+                      onChange={(e) => {
+                        setUseCustomBounds(e.target.checked);
+                        if (e.target.checked && !customBounds) {
+                          setCustomBounds({ north: bounds.ne.lat, south: bounds.sw.lat, east: bounds.ne.lng, west: bounds.sw.lng });
+                        }
+                      }}
+                      className="rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500"
+                    />
+                    Ativar Mapeamento Livre (Custom Bounds)
+                  </label>
+                  <p className="text-xs text-slate-500 ml-6 mt-1">Gere uma <b>caixa amarela</b> no mapa. Arraste as quinas dela para esticar o radar independentemente do raio do feixe.</p>
+                </div>
+
+                <div className="mb-4">
+                  <label className="text-slate-400 text-sm block mb-1">Corte de Saturação (Delta ChromaKey)</label>
+                  <p className="text-xs text-slate-500 mb-2">Elimina cores neutras (terras, oceanos, legenda, ruas). Recomenda-se <b>60</b> ou mais para climatempo. (0 para Desligar).</p>
+                  <div className="flex items-center gap-3">
+                    <input type="range" min={0} max={200} step={5} value={chromaKeyDeltaThreshold} onChange={(e) => setChromaKeyDeltaThreshold(Number(e.target.value))} className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    <span className="text-sm font-mono text-emerald-400 min-w-[2.5rem]">{chromaKeyDeltaThreshold}</span>
+                  </div>
+                </div>
+
+                <div className="mb-2">
+                  <label className="text-slate-400 text-sm block mb-1">Cropping Margem Inferior (0.0 até 1.0)</label>
+                  <p className="text-xs text-slate-500 mb-2">Cortar pedaço da parte de baixo da imagem (ex: 0.25 corta um quarto da base).</p>
+                  <div className="flex items-center gap-3">
+                    <input type="range" min={0} max={0.5} step={0.01} value={cropBottom} onChange={(e) => setCropBottom(Number(e.target.value))} className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    <span className="text-sm font-mono text-emerald-400 min-w-[2.5rem]">{cropBottom}</span>
+                  </div>
+                </div>
+
+                <div className="mb-2">
+                  <label className="text-slate-400 text-sm block mb-1">Cropping Margem Direita (0.0 até 1.0)</label>
+                  <div className="flex items-center gap-3">
+                    <input type="range" min={0} max={0.5} step={0.01} value={cropRight} onChange={(e) => setCropRight(Number(e.target.value))} className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    <span className="text-sm font-mono text-emerald-400 min-w-[2.5rem]">{cropRight}</span>
+                  </div>
+                </div>
+
+                <div className="mb-2">
+                  <label className="text-slate-400 text-sm block mb-1">Cropping Margem Superior / Esquerda</label>
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-xs text-slate-500 w-8">Top</span>
+                    <input type="range" min={0} max={0.5} step={0.01} value={cropTop} onChange={(e) => setCropTop(Number(e.target.value))} className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    <span className="text-sm font-mono text-emerald-400 min-w-[2.5rem]">{cropTop}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500 w-8">Left</span>
+                    <input type="range" min={0} max={0.5} step={0.01} value={cropLeft} onChange={(e) => setCropLeft(Number(e.target.value))} className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    <span className="text-sm font-mono text-emerald-400 min-w-[2.5rem]">{cropLeft}</span>
+                  </div>
+                </div>
+
+              </div>
+              {/* ==== FIM ESTÚDIO ==== */}
 
               <div className="flex gap-2 pt-4">
                 <button

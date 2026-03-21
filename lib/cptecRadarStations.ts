@@ -97,9 +97,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.23109712981659, lng: -49.461747790379526, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12227760', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
   { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.12, lng: -49.49, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
-  // Outras fontes (mockadas como CPTEC estruturalmente)
-  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet (Bauru)', lat: -22.358, lng: -49.026, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'ppi', sigmaSubtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 }, // Fake org/server just to satisfy CPTEC schema
-  { id: 'R12093558', slug: 'ipmet-prudente', name: 'IPMet (Presidente Prudente)', lat: -22.116, lng: -51.385, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'ppi', sigmaSubtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet Mosaico (PP/Bauru)', lat: -22.116, lng: -51.385, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'ppi', sigmaSubtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 }, // Unificado como mosaico centralizado em Prudente no mapa
   { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
 
   // DECEA - Sudeste
@@ -137,7 +135,6 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   // Mantidos comentados até confirmação: { slug: 'quixeramobim', ... }, { slug: 'fortaleza', ... }
 
   // Fontes especiais (WMS/proxy)
-  { id: 'IPMET', slug: 'ipmet-bauru', name: 'IPMet/Presidente Prudente', lat: -22.175, lng: -51.374, rangeKm: 240, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.561, lng: -46.736, rangeKm: 85, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 ];
 

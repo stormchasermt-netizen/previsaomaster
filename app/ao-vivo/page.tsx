@@ -1525,10 +1525,13 @@ export default function AoVivoPage() {
           }
         }
       }
-      let bounds = getBoundsForDisplayRadar(dr);
+      let bounds = cfg?.customBounds 
+        ? { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west } 
+        : getBoundsForDisplayRadar(dr);
+
       if (radarSourceMode === 'hd' && dr.type === 'cptec' && dr.station.slug === 'santiago') {
         const hb = getRadarImageBounds(dr.station, 400);
-        bounds = { north: hb.north, south: hb.south, east: hb.east, west: hb.west };
+        bounds = cfg?.customBounds ? bounds : { north: hb.north, south: hb.south, east: hb.east, west: hb.west };
       }
       const latLngBounds = new google.maps.LatLngBounds(
         { lat: bounds.south, lng: bounds.west },
@@ -1552,8 +1555,8 @@ export default function AoVivoPage() {
           const currentSrc = img.src;
           const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
           const filterAction = isClimatempo 
-            ? filterClimatempoRadarImage(currentSrc) 
-            : filterRadarImageFromUrl(currentSrc);
+            ? filterClimatempoRadarImage(currentSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig) 
+            : filterRadarImageFromUrl(currentSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig);
 
           filterAction.then((filteredSrc) => {
             if (filteredSrc && img.src === currentSrc) {

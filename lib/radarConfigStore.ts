@@ -41,6 +41,12 @@ export interface RadarConfig {
   rotationDegrees?: number;
   /** Opacidade da imagem no mapa (0–1). Padrão 0.75. */
   opacity?: number;
+  /** Bounds personalizados desenhados manualmente (sobrescreve cálculo de alcance) */
+  customBounds?: { north: number; south: number; east: number; west: number };
+  /** Filtro de saturação (delta) para Chroma Key. Ex: 60 (apaga cores lavadas) */
+  chromaKeyDeltaThreshold?: number;
+  /** Margens de corte relativas da imagem crua (0 a 1). Ex: {top:0, bottom:0.25} */
+  cropConfig?: { top: number; bottom: number; left: number; right: number };
   updatedAtMs?: number;
 }
 
@@ -56,6 +62,10 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
     typeof (data.updatedAt as any)?.toMillis === 'function'
       ? (data.updatedAt as any).toMillis()
       : undefined;
+
+  const cb = data.customBounds as Record<string, number> | undefined;
+  const cr = data.cropConfig as Record<string, number> | undefined;
+
   return {
     id: docId,
     stationSlug: (data.stationSlug as string) || '',
@@ -68,6 +78,9 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
     updateIntervalMinutes: typeof data.updateIntervalMinutes === 'number' ? data.updateIntervalMinutes : undefined,
     rotationDegrees: typeof data.rotationDegrees === 'number' ? data.rotationDegrees : undefined,
     opacity: typeof data.opacity === 'number' ? data.opacity : undefined,
+    customBounds: cb && typeof cb.north === 'number' ? { north: cb.north, south: cb.south, east: cb.east, west: cb.west } : undefined,
+    chromaKeyDeltaThreshold: typeof data.chromaKeyDeltaThreshold === 'number' ? data.chromaKeyDeltaThreshold : undefined,
+    cropConfig: cr && typeof cr.top === 'number' ? { top: cr.top, bottom: cr.bottom, left: cr.left, right: cr.right } : undefined,
     updatedAtMs,
   };
 }
@@ -92,6 +105,9 @@ export async function saveRadarConfig(config: Omit<RadarConfig, 'id'> & { id?: s
     updateIntervalMinutes: config.updateIntervalMinutes ?? null,
     rotationDegrees: config.rotationDegrees ?? null,
     opacity: config.opacity ?? null,
+    customBounds: config.customBounds ?? null,
+    chromaKeyDeltaThreshold: config.chromaKeyDeltaThreshold ?? null,
+    cropConfig: config.cropConfig ?? null,
     updatedAt: serverTimestamp(),
   };
   const id = config.id || config.stationSlug;
