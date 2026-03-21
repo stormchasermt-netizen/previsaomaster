@@ -87,9 +87,15 @@ async function filterValidSliderMinutesAgo(
   dr: DisplayRadar,
   productType: 'reflectividade' | 'velocidade',
   maxMinutes: number,
+  radarConfigs: RadarConfig[],
   signal?: AbortSignal
 ): Promise<number[]> {
-  const step = 5;
+  const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+  const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
+  
+  // Usa o intervalo configurado do radar (admin/radares) ao invés de step fixo
+  const radarInterval = cfg?.updateIntervalMinutes ?? (dr.type === 'cptec' ? (dr.station.updateIntervalMinutes ?? 5) : 10);
+  const step = Math.max(1, radarInterval);
   const candidates: number[] = [];
   for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
   if (candidates.length === 0) return [0];
@@ -151,22 +157,28 @@ async function filterValidSliderMinutesAgo(
     const batch = candidates.slice(i, i + BATCH);
     const checks = await Promise.all(
       batch.map(async (minutesAgo) => {
-        let url: string;
-        if (dr.type === 'cptec') {
-          const ts12 = getNowMinusMinutesTimestamp12UTC(3 + minutesAgo);
-          url = buildNowcastingPngUrl(dr.station, ts12, productType);
-        } else {
-          const d = new Date(Date.now() - (3 + minutesAgo) * 60_000);
-          const ts = getArgentinaRadarTimestamp(d, dr.station);
-          url = buildArgentinaRadarPngUrl(dr.station, ts, productType);
+        // Regra de busca: se não encontrar no horário padrão, procura nos próximos 10 minutos
+        for (let windowOffset = 0; windowOffset < 10; windowOffset++) {
+          let url: string;
+          const searchMin = minutesAgo + windowOffset;
+          if (dr.type === 'cptec') {
+            const ts12 = getNowMinusMinutesTimestamp12UTC(3 + searchMin);
+            url = buildNowcastingPngUrl(dr.station, ts12, productType);
+          } else {
+            const d = new Date(Date.now() - (3 + searchMin) * 60_000);
+            const ts = getArgentinaRadarTimestamp(d, dr.station);
+            url = buildArgentinaRadarPngUrl(dr.station, ts, productType);
+          }
+          try {
+            const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
+            const data = await res.json().catch(() => ({}));
+            if (data.exists === true) return true;
+          } catch {
+            // continua para o próximo minuto da janela
+          }
+          if (signal?.aborted) break;
         }
-        try {
-          const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
-          const data = await res.json().catch(() => ({}));
-          return data.exists === true;
-        } catch {
-          return false;
-        }
+        return false;
       })
     );
     batch.forEach((m, j) => { if (checks[j]) result.push(m); });
@@ -225,6 +237,20 @@ export default function AoVivoPage() {
   /** Modo único: só horários com imagem (slider discreto). null = mosaico ou não carregado. */
   const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
 
+  /** Máximo de minutos atrás: live = meia-noite até agora */
+  const maxSliderMinutesAgo = useMemo(() => {
+    const now = new Date();
+    const utcDateStr = now.toISOString().slice(0, 10);
+    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const utcIsNextDay = utcDateStr > localDateStr;
+    if (utcIsNextDay) {
+      return 1440;
+    }
+    const startOfDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    return Math.max(60, Math.floor((now.getTime() - startOfDayUTC.getTime()) / 60_000));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radarTimestamp]);
+
   // Controle de Animação
   const [isPlaying, setIsPlaying] = useState(false);
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -235,16 +261,20 @@ export default function AoVivoPage() {
       if (!playIntervalRef.current) {
         playIntervalRef.current = setInterval(() => {
           setSliderMinutesAgo((prev) => {
-            if (!validSliderMinutesAgo || validSliderMinutesAgo.length === 0) return prev;
-            // O validSliderMinutesAgo está ordenado [Mais Antigo, ..., Mais Recente]
-            const currentIndex = validSliderMinutesAgo.indexOf(prev);
-            if (currentIndex < 0) return validSliderMinutesAgo[0]; 
-            
-            const nextIndex = currentIndex + 1;
-            if (nextIndex >= validSliderMinutesAgo.length) {
-              return validSliderMinutesAgo[0]; // Reset loop
+            if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
+              // Modo único: usa timestamps validados
+              const currentIndex = validSliderMinutesAgo.indexOf(prev);
+              if (currentIndex < 0) return validSliderMinutesAgo[0]; 
+              const nextIndex = currentIndex + 1;
+              if (nextIndex >= validSliderMinutesAgo.length) {
+                return validSliderMinutesAgo[0]; // Reset loop
+              }
+              return validSliderMinutesAgo[nextIndex];
+            } else {
+              // Modo mosaico: usa step fixo de 5 min
+              const next = prev - 5;
+              return next < 0 ? maxSliderMinutesAgo : next;
             }
-            return validSliderMinutesAgo[nextIndex];
           });
         }, 800); // 800ms por frame
       }
@@ -260,25 +290,33 @@ export default function AoVivoPage() {
         playIntervalRef.current = null;
       }
     };
-  }, [isPlaying, validSliderMinutesAgo]);
+  }, [isPlaying, validSliderMinutesAgo, maxSliderMinutesAgo]);
 
   const handleSkipBack = useCallback(() => {
-    if (!validSliderMinutesAgo || validSliderMinutesAgo.length === 0) return;
-    setSliderMinutesAgo((prev) => {
-      const currentIndex = validSliderMinutesAgo.indexOf(prev);
-      if (currentIndex <= 0) return validSliderMinutesAgo[0];
-      return validSliderMinutesAgo[currentIndex - 1]; 
-    });
-  }, [validSliderMinutesAgo]);
+    if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
+      setSliderMinutesAgo((prev) => {
+        const currentIndex = validSliderMinutesAgo.indexOf(prev);
+        if (currentIndex <= 0) return validSliderMinutesAgo[0];
+        return validSliderMinutesAgo[currentIndex - 1]; 
+      });
+    } else {
+      // Mosaico/split: step fixo de 5 min (voltar = aumenta minutesAgo)
+      setSliderMinutesAgo((prev) => Math.min(maxSliderMinutesAgo, prev + 5));
+    }
+  }, [validSliderMinutesAgo, maxSliderMinutesAgo]);
 
   const handleSkipForward = useCallback(() => {
-    if (!validSliderMinutesAgo || validSliderMinutesAgo.length === 0) return;
-    setSliderMinutesAgo((prev) => {
-      const currentIndex = validSliderMinutesAgo.indexOf(prev);
-      if (currentIndex >= validSliderMinutesAgo.length - 1) return validSliderMinutesAgo[validSliderMinutesAgo.length - 1];
-      return validSliderMinutesAgo[currentIndex + 1]; 
-    });
-  }, [validSliderMinutesAgo]);
+    if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
+      setSliderMinutesAgo((prev) => {
+        const currentIndex = validSliderMinutesAgo.indexOf(prev);
+        if (currentIndex >= validSliderMinutesAgo.length - 1) return validSliderMinutesAgo[validSliderMinutesAgo.length - 1];
+        return validSliderMinutesAgo[currentIndex + 1]; 
+      });
+    } else {
+      // Mosaico/split: step fixo de 5 min (avançar = diminui minutesAgo)
+      setSliderMinutesAgo((prev) => Math.max(0, prev - 5));
+    }
+  }, [validSliderMinutesAgo, maxSliderMinutesAgo]);
 
   const [sliderValidVerifying, setSliderValidVerifying] = useState(false);
   /** Localização obrigatória para ao-vivo (presença em tempo real e posicionamento no mapa) */
@@ -416,19 +454,6 @@ export default function AoVivoPage() {
     return list;
   }, [myLocation]);
 
-  /** Máximo de minutos atrás: histórico = 4h, live = meia-noite até agora */
-  const maxSliderMinutesAgo = useMemo(() => {
-    if (historicalTimestampOverride) return 240;
-    const now = new Date();
-    const utcDateStr = now.toISOString().slice(0, 10);
-    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const utcIsNextDay = utcDateStr > localDateStr;
-    if (utcIsNextDay) {
-      return 1440;
-    }
-    const startOfDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-    return Math.max(60, Math.floor((now.getTime() - startOfDayUTC.getTime()) / 60_000));
-  }, [radarTimestamp, historicalTimestampOverride]);
 
   const displayRadars = useMemo(() => {
     if (focusedRadarKey) {
@@ -827,10 +852,11 @@ export default function AoVivoPage() {
     setSliderValidVerifying(true);
     const ac = new AbortController();
     (async () => {
-      const valid = await filterValidSliderMinutesAgo(dr, radarProductType, maxMin, ac.signal);
+      const valid = await filterValidSliderMinutesAgo(dr, radarProductType, maxMin, radarConfigs, ac.signal);
       if (!ac.signal.aborted) {
         setValidSliderMinutesAgo(valid);
         setSliderMinutesAgo((prev) => {
+          if (valid.length === 0) return 0;
           const nearest = valid.reduce((a, b) => Math.abs(b - prev) < Math.abs(a - prev) ? b : a);
           return nearest;
         });
@@ -838,7 +864,7 @@ export default function AoVivoPage() {
       }
     })();
     return () => ac.abort();
-  }, [radarMode, displayRadars, radarProductType, maxSliderMinutesAgo]);
+  }, [radarMode, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs]);
 
   /** Setas do teclado: controlam o slider de tempo do radar (evita mover o mapa). Captura no capture phase para ter prioridade sobre o mapa. */
   useEffect(() => {
@@ -1606,7 +1632,14 @@ export default function AoVivoPage() {
         img.style.cssText = `width:100%;height:100%;opacity:${effectiveOpacity};object-fit:fill;transform-origin:center center;${isUsp ? 'mix-blend-mode:multiply;' : ''}`;
         if (rotationDeg !== 0) img.style.transform = `rotate(${rotationDeg}deg)`;
         let noiseFiltered = false;
-        /** Aplica filtro de ruído branco/cinza — fetch assíncrono para evitar CORS */
+        /** Evita flicker: mostra o overlay apenas após carregar e processar filtros */
+        let isFullyProcessed = false;
+        const markProcessed = () => {
+          if (isFullyProcessed) return;
+          isFullyProcessed = true;
+          if (divEl) divEl.style.display = '';
+        };
+
         const applyNoiseFilter = () => {
           if (noiseFiltered) return;
           noiseFiltered = true;
@@ -1641,7 +1674,8 @@ export default function AoVivoPage() {
               img.onerror = null;
               img.src = filteredSrc;
             }
-          }).catch(() => { /* exibe sem filtro */ });
+            markProcessed();
+          }).catch(() => { markProcessed(); });
         };
         let tryIndex = 0;
         let redemetAttempted = false;
@@ -1659,7 +1693,7 @@ export default function AoVivoPage() {
           setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: ts12Val }));
           setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'redemet' }));
           setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-          showOverlay();
+          markProcessed();
         };
         let ipmetStorageAttempted = false;
         const tryNext = () => {
@@ -1678,7 +1712,9 @@ export default function AoVivoPage() {
                 setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: timestamp }));
                 setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
                 setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-                showOverlay();
+                if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
+                   markProcessed();
+                }
               };
               img.src = storageUrl;
             });
@@ -1698,6 +1734,11 @@ export default function AoVivoPage() {
         };
         img.onerror = tryNext;
         img.onload = () => {
+          const isDataUrl = img.src.startsWith('data:');
+          if (isDataUrl) {
+            markProcessed();
+            return;
+          }
           applyNoiseFilter();
           const loaded = urlsToTry[tryIndex - 1];
           setRadarEffectiveTimestamps((prev) => ({
@@ -1707,12 +1748,16 @@ export default function AoVivoPage() {
           if (loaded?.source) {
             setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: loaded.source }));
           }
-          showOverlay();
           setFailedRadars((prev) => {
             const next = new Set(prev);
             next.delete(radarKey);
             return next;
           });
+          // Se não for Doppler ou Super Res não estiver ativo, aparece logo (o filtro Noise se aplica depois mas o flash é menor)
+          // Mas para ser 100% flicker-free:
+          if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
+             markProcessed();
+          }
         };
         divEl.appendChild(img);
         ov.getPanes()?.overlayLayer?.appendChild(divEl);
@@ -2577,18 +2622,18 @@ export default function AoVivoPage() {
                   <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">m/s</span>
                   <div className="flex flex-col items-center">
                     <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #cc00cc)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc00cc, #0000ff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #00aaff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00aaff, #00cccc)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00cccc, #aaffaa)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #aaffaa, #ffffff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffffff, #ffff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #990000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #990000, #ffcc00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffcc00, #cccc88)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #4b0082)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #4b0082, #0000ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #0080ff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0080ff, #00ffff)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ffff, #00ff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #e0e0e0)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #e0e0e0, #ff0000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #ff8000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff8000, #ffff00)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #c0c000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #c0c000, #808000)' }} />
+                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #808000, #404000)' }} />
                     </div>
                     <div className="flex justify-between w-full mt-0.5">
                       {['-60','-50','-40','-30','-20','-10','0','10','20','30','40','50','60'].map((v) => (
@@ -2643,18 +2688,18 @@ export default function AoVivoPage() {
                     <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">m/s</span>
                     <div className="flex flex-col items-center">
                       <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #cc00cc)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc00cc, #0000ff)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #00aaff)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00aaff, #00cccc)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00cccc, #aaffaa)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #aaffaa, #ffffff)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffffff, #ffff00)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #990000)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #990000, #ffcc00)' }} />
-                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffcc00, #cccc88)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #4b0082)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #4b0082, #0000ff)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #0080ff)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #0080ff, #00ffff)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ffff, #00ff00)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #e0e0e0)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #e0e0e0, #ff0000)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #ff8000)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff8000, #ffff00)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #c0c000)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #c0c000, #808000)' }} />
+                        <div className="flex-1" style={{ background: 'linear-gradient(to right, #808000, #404000)' }} />
                       </div>
                       <div className="flex justify-between w-full mt-0.5">
                         {['-60','-50','-40','-30','-20','-10','0','10','20','30','40','50','60'].map((v) => (
