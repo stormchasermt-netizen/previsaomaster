@@ -49,31 +49,73 @@ export async function GET(req: NextRequest) {
   const mm = ts12.slice(10, 12);
   const hhmmPrefix = `${hh}${mm}`;
 
-  // 1) Tenta path com dia: ipmet-bauru/YYYY/MM/DD/HHmm*.png
-  const dayPrefix = `${IPMET_PREFIX}/${y}/${m}/${d}/${hhmmPrefix}`;
+  // Monta prefixo da hora: se ts12 for "202603191710", d="19", hh="17", mm="10"
+  // Buscar pela HORA inteira garante que não percamos o arquivo se os minutos não baterem exato.
+  const targetMin = parseInt(mm, 10);
+  
+  // Função auxiliar para encontrar o arquivo com o minuto mais próximo
+  const findClosestFile = (files: string[], basenameExtractor: (f: string) => string) => {
+    let bestFile: string | null = null;
+    let minDiff = Infinity;
+    let bestBasename = '';
+
+    for (const file of files) {
+      const base = basenameExtractor(file);
+      // 'base' pode ser HHmm, DDHHmm, ou DDHHmmss
+      // O minuto sempre está nos índices indicados abaixo:
+      let fileMin = 0;
+      if (base.length >= 6) {
+        // DDHHmm(ss) -> minuto está no index 4,5
+        fileMin = parseInt(base.slice(4, 6), 10);
+      } else if (base.length >= 4) {
+        // HHmm -> minuto está no index 2,3
+        fileMin = parseInt(base.slice(2, 4), 10);
+      } else {
+        continue;
+      }
+
+      const diff = Math.abs(fileMin - targetMin);
+      // Aceita tolerância máxima de 15 minutos de diferença
+      if (diff < minDiff && diff <= 15) {
+        minDiff = diff;
+        bestFile = file;
+        bestBasename = base;
+      }
+    }
+    return { bestFile, bestBasename };
+  };
+
+  // 1) Tenta path com dia: ipmet-bauru/YYYY/MM/DD/HH*.png
+  const dayPrefix = `${IPMET_PREFIX}/${y}/${m}/${d}/${hh}`;
   const dayFiles = await listStorageObjects(dayPrefix);
   if (dayFiles.length > 0) {
-    // Pega o primeiro match (mais próximo)
-    const filePath = dayFiles[0];
-    const url = buildDownloadUrl(filePath);
-    const basename = filePath.split('/').pop()?.replace('.png', '') ?? hhmmPrefix;
-    return NextResponse.json(
-      { url, hhmmss: basename },
-      { headers: { 'Cache-Control': 'public, max-age=3600' } },
+    const { bestFile, bestBasename } = findClosestFile(
+      dayFiles, 
+      (f) => f.split('/').pop()?.replace('.png', '') ?? ''
     );
+    if (bestFile) {
+      return NextResponse.json(
+        { url: buildDownloadUrl(bestFile), hhmmss: bestBasename },
+        { headers: { 'Cache-Control': 'public, max-age=3600' } }
+      );
+    }
   }
 
-  // 2) Fallback: path legado sem dia: ipmet-bauru/YYYY/MM/HHmm*.png
-  const legacyPrefix = `${IPMET_PREFIX}/${y}/${m}/${hhmmPrefix}`;
+  // 2) Fallback: path legado (DDHHmm*.png) na pasta do mês ipmet-bauru/YYYY/MM/
+  // Os arquivos são frequentemente salvos como DDHHmmss.png direto na pasta do mês.
+  const legacyPrefix = `${IPMET_PREFIX}/${y}/${m}/${d}${hh}`;
   const legacyFiles = await listStorageObjects(legacyPrefix);
   if (legacyFiles.length > 0) {
-    const filePath = legacyFiles[0];
-    const url = buildDownloadUrl(filePath);
-    const basename = filePath.split('/').pop()?.replace('.png', '') ?? hhmmPrefix;
-    return NextResponse.json(
-      { url, hhmmss: basename },
-      { headers: { 'Cache-Control': 'public, max-age=3600' } },
+    const { bestFile, bestBasename } = findClosestFile(
+      legacyFiles, 
+      (f) => f.split('/').pop()?.replace('.png', '') ?? ''
     );
+    if (bestFile) {
+      return NextResponse.json(
+        { url: buildDownloadUrl(bestFile), hhmmss: bestBasename },
+        { headers: { 'Cache-Control': 'public, max-age=3600' } }
+      );
+    }
   }
 
   return NextResponse.json({ url: null });
