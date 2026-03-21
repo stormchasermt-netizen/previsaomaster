@@ -14,6 +14,7 @@ import {
   findWorkingArgentinaUrl,
   fetchPngBuffer,
   getLatestStoragePath,
+  getIpmetStoragePathForAoVivo,
   getNowTimestamp12UTC,
 } from './radarBackupUtils';
 
@@ -74,8 +75,10 @@ export const syncLatestRadarImages = onSchedule(
 
     const ipmetBuf = await fetchPngBuffer(IPMET_URL + '?t=' + Date.now());
     if (ipmetBuf) {
-      const path = getLatestStoragePath('ipmet-bauru', ts12);
-      await bucket.file(path).save(ipmetBuf, { contentType: 'image/png' });
+      const pathBackup = getLatestStoragePath('ipmet-bauru', ts12);
+      await bucket.file(pathBackup).save(ipmetBuf, { contentType: 'image/png' });
+      const pathAoVivo = getIpmetStoragePathForAoVivo(ts12);
+      await bucket.file(pathAoVivo).save(ipmetBuf, { contentType: 'image/png' });
       okCount++;
     } else {
       failCount++;

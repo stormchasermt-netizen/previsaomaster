@@ -241,6 +241,16 @@ export const UNIVERSAL_FALLBACK_CONFIGS = [
     const mm = ts12.slice(10, 12);
     return `radar_backup/${radarId}/${y}/${m}/${d}${hh}${mm}.png`;
   }
+
+  /** Path Storage IPMET para ao-vivo: ipmet-bauru/{year}/{month}/{day}/{HHMMSS}.png (evita colisão entre dias) */
+  export function getIpmetStoragePathForAoVivo(ts12: string): string {
+    const y = ts12.slice(0, 4);
+    const m = ts12.slice(4, 6);
+    const d = ts12.slice(6, 8);
+    const hh = ts12.slice(8, 10);
+    const mm = ts12.slice(10, 12);
+    return `ipmet-bauru/${y}/${m}/${d}/${hh}${mm}00.png`;
+  }
   
   /** Path Storage: radar_backup/{radarId}/{year}/{month}/{day}/{HHmm}.png (Função 2 - histórico) */
   export function getHistoricalStoragePath(
