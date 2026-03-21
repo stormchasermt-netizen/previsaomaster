@@ -64,24 +64,29 @@ export async function GET(req: NextRequest) {
   const targetMin = parseInt(mm, 10);
   
   // Função auxiliar para encontrar o arquivo com o minuto mais próximo
-  const findClosestFile = (files: string[], basenameExtractor: (f: string) => string) => {
+  const findClosestFile = (files: string[], basenameExtractor: (f: string) => string, format: 'HH' | 'DDHH') => {
     let bestFile: string | null = null;
     let minDiff = Infinity;
     let bestBasename = '';
 
     for (const file of files) {
       const base = basenameExtractor(file);
-      // 'base' pode ser HHmm, DDHHmm, ou DDHHmmss
-      // O minuto sempre está nos índices indicados abaixo:
       let fileMin = 0;
-      if (base.length >= 6) {
-        // DDHHmm(ss) -> minuto está no index 4,5
-        fileMin = parseInt(base.slice(4, 6), 10);
-      } else if (base.length >= 4) {
-        // HHmm -> minuto está no index 2,3
-        fileMin = parseInt(base.slice(2, 4), 10);
+      
+      if (format === 'DDHH') {
+        // Espera DDHHmm ou DDHHmmss: minuto está no índice 4,5
+        if (base.length >= 6) {
+          fileMin = parseInt(base.slice(4, 6), 10);
+        } else {
+          continue;
+        }
       } else {
-        continue;
+        // Espera HHmm ou HHmmss: minuto está no índice 2,3
+        if (base.length >= 4) {
+          fileMin = parseInt(base.slice(2, 4), 10);
+        } else {
+          continue;
+        }
       }
 
       const diff = Math.abs(fileMin - targetMin);
@@ -101,7 +106,8 @@ export async function GET(req: NextRequest) {
   if (dayFiles.length > 0) {
     const { bestFile, bestBasename } = findClosestFile(
       dayFiles, 
-      (f) => f.split('/').pop()?.replace('.png', '') ?? ''
+      (f) => f.split('/').pop()?.replace('.png', '') ?? '',
+      'HH'
     );
     if (bestFile) {
       return NextResponse.json(
@@ -118,7 +124,8 @@ export async function GET(req: NextRequest) {
   if (legacyFiles.length > 0) {
     const { bestFile, bestBasename } = findClosestFile(
       legacyFiles, 
-      (f) => f.split('/').pop()?.replace('.png', '') ?? ''
+      (f) => f.split('/').pop()?.replace('.png', '') ?? '',
+      'DDHH'
     );
     if (bestFile) {
       return NextResponse.json(
