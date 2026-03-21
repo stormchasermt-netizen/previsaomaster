@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-/** Permitido domínios de radar. IPMet e USP usam Cloud Functions (getRadarIPMet, getRadarUSP). Este proxy é para CPTEC, Argentina e outras fontes. */
 const ALLOWED_HOSTS = [
   's0.cptec.inpe.br',
   's1.cptec.inpe.br',
@@ -10,6 +9,7 @@ const ALLOWED_HOSTS = [
   'www.starnet.iag.usp.br',
   'redemet.decea.mil.br',
   'estatico-redemet.decea.mil.br',
+  'firebasestorage.googleapis.com',
 ];
 
 export async function GET(req: NextRequest) {
