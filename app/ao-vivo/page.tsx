@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -253,6 +253,10 @@ export default function AoVivoPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
   const prevotsPolygonsRef = useRef<any[]>([]);
+  
+  // Prevots Dialog state
+  const [showPrevotsDialog, setShowPrevotsDialog] = useState(false);
+  const [selectedPrevotsLinks, setSelectedPrevotsLinks] = useState<{ xUrl?: string; instagramUrl?: string; date: string } | null>(null);
 
   /** Imagens anteriores: data/hora selecionada. null = modo ao vivo. */
   const [historicalTimestampOverride, setHistoricalTimestampOverride] = useState<string | null>(null);
@@ -1200,8 +1204,18 @@ export default function AoVivoPage() {
           fillColor: color,
           fillOpacity: 0.35,
           map,
-          clickable: false,
+          clickable: true,
         });
+
+        gPoly.addListener('click', () => {
+          setSelectedPrevotsLinks({
+            xUrl: prevotsForecastToShow.xUrl,
+            instagramUrl: prevotsForecastToShow.instagramUrl,
+            date: prevotsForecastToShow.date,
+          });
+          setShowPrevotsDialog(true);
+        });
+
         prevotsPolygonsRef.current.push(gPoly);
       });
     return () => {
@@ -3394,6 +3408,81 @@ export default function AoVivoPage() {
           </>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showPrevotsDialog && selectedPrevotsLinks && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm pointer-events-auto"
+            onClick={() => setShowPrevotsDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl w-full max-w-sm overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-slate-700 bg-slate-800/50">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-emerald-400" />
+                  <h3 className="font-bold text-slate-100">Publicação da Prevots</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPrevotsDialog(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <p className="text-sm text-slate-300 font-medium">
+                  Acompanhe os detalhes e notas meteorológicas para a previsão do dia <strong className="text-white">{selectedPrevotsLinks.date.split('-').reverse().join('/')}</strong> nos canais oficiais:
+                </p>
+                <div className="space-y-3 pt-2">
+                  {selectedPrevotsLinks.instagramUrl ? (
+                    <a
+                      href={selectedPrevotsLinks.instagramUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 w-full p-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold transition-all shadow-lg hover:shadow-pink-500/25"
+                    >
+                      <Instagram className="w-5 h-5" />
+                      Visualizar no Instagram
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-3 w-full p-3 rounded-xl bg-slate-800 text-slate-500 font-bold border border-slate-700 cursor-not-allowed">
+                      <Instagram className="w-5 h-5 opacity-50" />
+                      Sem link do Instagram
+                    </div>
+                  )}
+                  
+                  {selectedPrevotsLinks.xUrl ? (
+                    <a
+                      href={selectedPrevotsLinks.xUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold transition-all shadow-lg"
+                    >
+                      <Twitter className="w-5 h-5 fill-current" />
+                      Visualizar no X (Twitter)
+                    </a>
+                  ) : (
+                    <div className="flex items-center gap-3 w-full p-3 rounded-xl bg-slate-800 text-slate-500 font-bold border border-slate-700 cursor-not-allowed">
+                      <Twitter className="w-5 h-5 opacity-50" />
+                      Sem link do X
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </motion.div>
     </AnimatePresence>
   );

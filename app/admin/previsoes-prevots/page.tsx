@@ -70,6 +70,8 @@ export default function AdminPrevisoesPrevotsPage() {
   const [polygons, setPolygons] = useState<PrevotsPolygon[]>([]);
   const [drawMode, setDrawMode] = useState(false);
   const [drawLevel, setDrawLevel] = useState<PrevotsLevel>(1);
+  const [xUrl, setXUrl] = useState('');
+  const [instagramUrl, setInstagramUrl] = useState('');
   const [brazilBoundary, setBrazilBoundary] = useState<BrazilForClip | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -300,6 +302,8 @@ export default function AdminPrevisoesPrevotsPage() {
     setPolygons([]);
     setDrawMode(false);
     setPanelOpen(false);
+    setXUrl('');
+    setInstagramUrl('');
     setSelectedForecastId(null);
   };
 
@@ -319,6 +323,8 @@ export default function AdminPrevisoesPrevotsPage() {
     setEditingId(f.id);
     setForecastDate(f.date);
     setPolygons(f.polygons?.filter((p) => p.level !== 0) ?? []);
+    setXUrl(f.xUrl || '');
+    setInstagramUrl(f.instagramUrl || '');
     setDrawMode(false);
     setPanelOpen(true);
   };
@@ -352,6 +358,8 @@ export default function AdminPrevisoesPrevotsPage() {
         id: editingId || undefined,
         date: forecastDate.trim(),
         polygons: polygons.filter((p) => p.level !== 0),
+        xUrl: xUrl.trim() || undefined,
+        instagramUrl: instagramUrl.trim() || undefined,
       };
       await savePrevotsForecast(input, user.uid);
       addToast(editingId ? 'Previsão atualizada.' : 'Previsão criada.', 'success');
@@ -605,6 +613,30 @@ export default function AdminPrevisoesPrevotsPage() {
                   className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2"
                 />
               </label>
+
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <label className="block">
+                  <span className="text-slate-400 block mb-1 text-xs">Link da publicação no X</span>
+                  <input
+                    type="url"
+                    placeholder="https://x.com/..."
+                    value={xUrl}
+                    onChange={(e) => setXUrl(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-slate-400 block mb-1 text-xs">Link da publicação no Instagram</span>
+                  <input
+                    type="url"
+                    placeholder="https://instagram.com/..."
+                    value={instagramUrl}
+                    onChange={(e) => setInstagramUrl(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+
               <div className="border-t border-slate-600 pt-4">
                 <span className="text-slate-400 text-sm block mb-2">Desenhar polígono (nível)</span>
                 <div className="flex flex-wrap gap-2 items-center mb-2">

@@ -60,6 +60,8 @@ export async function fetchPrevotsForecasts(): Promise<PrevotsForecast[]> {
       createdAtMs,
       updatedAtMs,
       adminId: data.adminId ?? undefined,
+      xUrl: data.xUrl ?? undefined,
+      instagramUrl: data.instagramUrl ?? undefined,
     };
   });
 }
@@ -81,6 +83,8 @@ export async function fetchPrevotsForecastByDate(date: string): Promise<PrevotsF
     createdAtMs,
     updatedAtMs,
     adminId: data.adminId ?? undefined,
+    xUrl: data.xUrl ?? undefined,
+    instagramUrl: data.instagramUrl ?? undefined,
   };
 }
 
@@ -90,6 +94,8 @@ export async function savePrevotsForecast(forecast: PrevotsForecastInput, adminI
     date: forecast.date,
     polygons: polygonsToFirestore(forecast.polygons),
     adminId,
+    xUrl: forecast.xUrl ?? null,
+    instagramUrl: forecast.instagramUrl ?? null,
     updatedAt: serverTimestamp(),
   };
   if (forecast.id) {

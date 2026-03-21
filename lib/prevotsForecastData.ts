@@ -16,4 +16,6 @@ export interface PrevotsForecast {
   createdAtMs?: number;
   updatedAtMs?: number;
   adminId?: string;
+  xUrl?: string;
+  instagramUrl?: string;
 }
