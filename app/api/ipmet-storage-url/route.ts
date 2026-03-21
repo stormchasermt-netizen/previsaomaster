@@ -1,4 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as admin from 'firebase-admin';
+
+// Inicializa o Admin SDK do Firebase para contornar problemas de permissão (401) no comando LIST.
+// No Firebase App Hosting / Vercel, isso usa a Service Account padrão por debaixo dos panos.
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp();
+  } catch (error) {
+    console.error('Erro ao inicializar firebase-admin:', error);
+  }
+}
 
 const STORAGE_BUCKET = 'studio-4398873450-7cc8f.firebasestorage.app';
 const IPMET_PREFIX = 'ipmet-bauru';
@@ -10,21 +21,20 @@ function buildDownloadUrl(filePath: string): string {
 }
 
 /**
- * Usa a API REST do Google Cloud Storage para listar objetos com um prefixo.
- * Retorna os nomes (paths) dos objetos encontrados.
+ * Usa o SDK admin do Firebase para listar arquivos do Storage.
+ * Bypassa a restrição de "public list" garantindo que sempre ache os arquivos.
  */
 async function listStorageObjects(prefix: string): Promise<string[]> {
-  const url = `https://storage.googleapis.com/storage/v1/b/${STORAGE_BUCKET}/o?prefix=${encodeURIComponent(prefix)}&maxResults=10`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const items = data.items as { name: string }[] | undefined;
-    if (!items || items.length === 0) return [];
-    return items
-      .map((item) => item.name)
-      .filter((name) => name.endsWith('.png'));
-  } catch {
+    const bucket = admin.storage().bucket(STORAGE_BUCKET);
+    const [files] = await bucket.getFiles({ prefix, maxResults: 15 });
+    
+    if (!files || files.length === 0) return [];
+    return files
+      .map(f => f.name)
+      .filter(name => name.endsWith('.png'));
+  } catch (error) {
+    console.error('Erro no admin.storage().getFiles:', error);
     return [];
   }
 }
