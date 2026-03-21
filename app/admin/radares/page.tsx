@@ -129,6 +129,7 @@ export default function AdminRadaresPage() {
   const [cropLeft, setCropLeft] = useState<number>(0);
   const [cropRight, setCropRight] = useState<number>(0);
   const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
+  const [superRes, setSuperRes] = useState<boolean>(false);
 
   const loadConfigs = async () => {
     setLoading(true);
@@ -272,6 +273,7 @@ export default function AdminRadaresPage() {
     setCropBottom(existing?.cropConfig?.bottom ?? 0);
     setCropLeft(existing?.cropConfig?.left ?? 0);
     setCropRight(existing?.cropConfig?.right ?? 0);
+    setSuperRes(existing?.superRes ?? false);
     setPreviewMinutesAgo(0);
     setPreviewDateTime('');
     setPanelOpen(true);
@@ -334,6 +336,7 @@ export default function AdminRadaresPage() {
     setCropBottom(existing?.cropConfig?.bottom ?? 0);
     setCropLeft(existing?.cropConfig?.left ?? 0);
     setCropRight(existing?.cropConfig?.right ?? 0);
+    setSuperRes(existing?.superRes ?? false);
     setPreviewMinutesAgo(0);
     setPreviewDateTime('');
     setPanelOpen(true);
@@ -401,6 +404,7 @@ export default function AdminRadaresPage() {
         customBounds: useCustomBounds && customBounds ? customBounds : undefined,
         chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
         cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
+        superRes: superRes || undefined,
       });
       addToast('Posição salva automaticamente.', 'success');
       await loadConfigs();
@@ -419,6 +423,7 @@ export default function AdminRadaresPage() {
         customBounds: useCustomBounds && customBounds ? customBounds : undefined,
         chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
         cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
+        superRes: superRes || undefined,
       });
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
@@ -761,6 +766,7 @@ export default function AdminRadaresPage() {
         customBounds: useCustomBounds && customBounds ? customBounds : null,
         chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : null,
         cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : null,
+        superRes: superRes || undefined,
       });
       addToast('Configuração salva.', 'success');
       await loadConfigs();
@@ -779,6 +785,7 @@ export default function AdminRadaresPage() {
         customBounds: useCustomBounds && customBounds ? customBounds : undefined,
         chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
         cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
+        superRes: superRes || undefined,
       });
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
@@ -1259,6 +1266,23 @@ export default function AdminRadaresPage() {
                 </div>
 
               </div>
+
+              {/* Super Res — Doppler Velocity Denoising */}
+              <div className="mt-4 p-3 rounded-lg border border-purple-500/30 bg-purple-900/20">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={superRes}
+                    onChange={(e) => setSuperRes(e.target.checked)}
+                    className="w-5 h-5 rounded accent-purple-500 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-purple-300 font-bold text-sm">⚡ Super Res</span>
+                    <p className="text-slate-400 text-xs mt-0.5">Pipeline de 3 estágios para limpar ruído do Doppler (velocidade). Aplica máscara de refletividade, remove clusters isolados e corrige outliers internos.</p>
+                  </div>
+                </label>
+              </div>
+
               {/* ==== FIM ESTÚDIO ==== */}
 
               <div className="flex gap-2 pt-4">

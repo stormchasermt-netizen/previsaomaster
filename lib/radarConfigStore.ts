@@ -47,6 +47,8 @@ export interface RadarConfig {
   chromaKeyDeltaThreshold?: number;
   /** Margens de corte relativas da imagem crua (0 a 1). Ex: {top:0, bottom:0.25} */
   cropConfig?: { top: number; bottom: number; left: number; right: number };
+  /** Super Res: pipeline de 3 estágios para limpar ruído do Doppler (velocidade). */
+  superRes?: boolean;
   updatedAtMs?: number;
 }
 
@@ -81,6 +83,7 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
     customBounds: cb && typeof cb.north === 'number' ? { north: cb.north, south: cb.south, east: cb.east, west: cb.west } : undefined,
     chromaKeyDeltaThreshold: typeof data.chromaKeyDeltaThreshold === 'number' ? data.chromaKeyDeltaThreshold : undefined,
     cropConfig: cr && typeof cr.top === 'number' ? { top: cr.top, bottom: cr.bottom, left: cr.left, right: cr.right } : undefined,
+    superRes: typeof data.superRes === 'boolean' ? data.superRes : undefined,
     updatedAtMs,
   };
 }
@@ -108,6 +111,7 @@ export async function saveRadarConfig(config: Omit<RadarConfig, 'id'> & { id?: s
     customBounds: config.customBounds ?? null,
     chromaKeyDeltaThreshold: config.chromaKeyDeltaThreshold ?? null,
     cropConfig: config.cropConfig ?? null,
+    superRes: config.superRes ?? null,
     updatedAt: serverTimestamp(),
   };
   const id = config.id || config.stationSlug;

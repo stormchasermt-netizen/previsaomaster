@@ -36,7 +36,7 @@ import { fetchRadarConfigs, saveRadarConfig, type RadarConfig } from '@/lib/rada
 import { groupRadarsByLocation } from '@/lib/radarGrouping';
 import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
-import { filterRadarImageFromUrl, filterClimatempoRadarImage } from '@/lib/radarImageFilter';
+import { filterRadarImageFromUrl, filterClimatempoRadarImage, filterDopplerSuperRes } from '@/lib/radarImageFilter';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
 
@@ -1554,6 +1554,25 @@ export default function AoVivoPage() {
           noiseFiltered = true;
           const currentSrc = img.src;
           const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
+
+          // Super Res: pipeline especial para Doppler (velocidade)
+          if (productType === 'velocidade' && cfg?.superRes && dr.type === 'cptec') {
+            // Busca a URL de reflectividade (ppicz) do mesmo radar/timestamp para usar como máscara
+            const loadedEntry = urlsToTry[tryIndex - 1];
+            const refTs12 = loadedEntry?.ts12 ?? nominalTs;
+            const refUrl = buildNowcastingPngUrl(dr.station as CptecRadarStation, refTs12, 'reflectividade');
+            const [refProxy] = getRadarUrlsWithFallback(refUrl);
+            
+            filterDopplerSuperRes(currentSrc, refProxy).then((filteredSrc) => {
+              if (filteredSrc && img.src === currentSrc) {
+                img.onload = null;
+                img.onerror = null;
+                img.src = filteredSrc;
+              }
+            }).catch(() => { /* exibe sem filtro */ });
+            return;
+          }
+
           const filterAction = isClimatempo 
             ? filterClimatempoRadarImage(currentSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig) 
             : filterRadarImageFromUrl(currentSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig);
