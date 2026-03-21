@@ -290,6 +290,8 @@ export default function AoVivoPage() {
   const [radarEffectiveSource, setRadarEffectiveSource] = useState<Record<string, 'cptec' | 'redemet'>>({});
   /** Toggle HD (REDEMET) / Super Res (CPTEC) */
   const [radarSourceMode, setRadarSourceMode] = useState<'superres' | 'hd'>('superres');
+  /** Super Res local toggle (filtro doppler ativado pelo usuario no sidebar) */
+  const [superResEnabled, setSuperResEnabled] = useState(false);
   /** Radar keys que têm imagem REDEMET disponível */
   const [redemetAvailableKeys, setRedemetAvailableKeys] = useState<Set<string>>(new Set());
   /** URLs REDEMET encontradas por radarKey */
@@ -1612,7 +1614,7 @@ export default function AoVivoPage() {
           const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
 
           // Super Res: pipeline especial para Doppler (velocidade)
-          if (productType === 'velocidade' && cfg?.superRes && dr.type === 'cptec') {
+          if (productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec') {
             // Busca a URL de reflectividade (ppicz) do mesmo radar/timestamp para usar como máscara
             const loadedEntry = urlsToTry[tryIndex - 1];
             const refTs12 = loadedEntry?.ts12 ?? nominalTs;
@@ -2274,6 +2276,21 @@ export default function AoVivoPage() {
               </button>
             </div>
               </div>
+              {/* Toggle Super Res (Doppler) */}
+              {radarProductType === 'velocidade' && (
+                <div className="mt-1">
+                  <label className="flex items-center gap-3 py-2 cursor-pointer group">
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${superResEnabled ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
+                      {superResEnabled && <Check className="w-3 h-3 text-black" />}
+                    </div>
+                    <input type="checkbox" checked={superResEnabled} onChange={() => setSuperResEnabled(!superResEnabled)} className="hidden" />
+                    <div>
+                      <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Super Res</span>
+                      <p className="text-[9px] text-slate-500 mt-0.5">Remove ruido do Doppler</p>
+                    </div>
+                  </label>
+                </div>
+              )}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Opacidade</label>
               <input

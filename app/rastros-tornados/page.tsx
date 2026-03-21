@@ -52,6 +52,7 @@ import {
 } from '../../lib/argentinaRadarStations';
 import { fetchRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
 import { hasRedemetFallback, getRedemetArea } from '../../lib/redemetRadar';
+import { filterDopplerSuperRes } from '../../lib/radarImageFilter';
 import {
   fetchRastrosProfile,
   saveRastrosProfile,
@@ -439,6 +440,8 @@ export default function RastrosTornadosPage() {
   const [radarConfigs, setRadarConfigs] = useState<RadarConfig[]>([]);
   /** Tipo de produto quando usando padrão Nowcasting PNG (radarStationId sem WMS). */
   const [radarProductType, setRadarProductType] = useState<'reflectividade' | 'velocidade'>('reflectividade');
+  /** Super Res local toggle (filtro doppler) */
+  const [superResEnabled, setSuperResEnabled] = useState(false);
   const goesOverlayRef = useRef<any>(null);
   const radarOverlayRef = useRef<any>(null);
   const radarTimelineOverlaysRef = useRef<any[]>([]);
@@ -2018,6 +2021,26 @@ export default function RastrosTornadosPage() {
         const src = urlsToTry[tryIndex - 1]?.source ?? 'cptec';
         setRadarImageSource(src);
         if (src === 'cptec') setCptecAvailable(true);
+        // Super Res Doppler filter
+        if (radarProductType === 'velocidade' && superResEnabled && radarStation && !isArgentinaRadar) {
+          const cptecSt = radarStation as CptecRadarStation;
+          const currentTs = radarTimestamps[radarFrameIdx];
+          if (currentTs) {
+            const refTs12 = currentTs.slice(0, 12);
+            const refUrl = buildNowcastingPngUrl(cptecSt, refTs12, 'reflectividade');
+            const refProxy = getProxiedRadarUrl(refUrl);
+            filterDopplerSuperRes(img.src, refProxy).then((filteredSrc) => {
+              if (filteredSrc) {
+                img.onload = () => showImage();
+                img.onerror = () => showImage(); // fallback: show original
+                img.src = filteredSrc;
+              } else {
+                showImage();
+              }
+            }).catch(() => showImage());
+            return;
+          }
+        }
         showImage();
       };
       divEl.appendChild(img);
@@ -2045,7 +2068,7 @@ export default function RastrosTornadosPage() {
       radarOverlayRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [radarVisible, selectedTrack?.id, radarOpacity, selectedTrack?.radarWmsUrl, selectedTrack?.radarStationId, radarStation, radarConfigs, radarTimestamps, radarFrameIdx, radarProductType, radarSourceMode]);
+  }, [radarVisible, selectedTrack?.id, radarOpacity, selectedTrack?.radarWmsUrl, selectedTrack?.radarStationId, radarStation, radarConfigs, radarTimestamps, radarFrameIdx, radarProductType, radarSourceMode, superResEnabled]);
 
   // Overlay de radar na timeline (quando período ≤ 3 dias)
   useEffect(() => {
@@ -2940,6 +2963,15 @@ export default function RastrosTornadosPage() {
                           <button type="button" onClick={() => setRadarProductType('reflectividade')} className={`flex-1 px-2 py-1 rounded text-xs ${radarProductType === 'reflectividade' ? 'bg-cyan-500/40 text-cyan-200' : 'bg-slate-700 text-slate-300'}`}>Reflet.</button>
                           <button type="button" onClick={() => setRadarProductType('velocidade')} className={`flex-1 px-2 py-1 rounded text-xs ${radarProductType === 'velocidade' ? 'bg-cyan-500/40 text-cyan-200' : 'bg-slate-700 text-slate-300'}`}>Doppler</button>
                         </div>
+                        {radarProductType === 'velocidade' && (
+                          <label className="flex items-center gap-2 mt-1 cursor-pointer group">
+                            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${superResEnabled ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
+                              {superResEnabled && <Check className="w-2.5 h-2.5 text-black" />}
+                            </div>
+                            <input type="checkbox" checked={superResEnabled} onChange={() => setSuperResEnabled(!superResEnabled)} className="hidden" />
+                            <span className="text-xs text-slate-300 group-hover:text-white">Super Res</span>
+                          </label>
+                        )}
                         {radarTimelineTimestamps.length > 0 && (
                           <div className="pt-2 border-t border-slate-600 space-y-1">
                             <input type="range" min={0} max={radarTimelineTimestamps.length - 1} value={radarTimelineIndex} onChange={(e) => setRadarTimelineIndex(parseInt(e.target.value, 10) || 0)} className="w-full accent-cyan-500" />
@@ -3528,6 +3560,16 @@ export default function RastrosTornadosPage() {
                       </div>
                     )}
                     {radarError && <p className="text-xs text-red-400">{radarError}</p>}
+                    {/* Super Res toggle (popup radar section) */}
+                    {radarVisible && radarProductType === 'velocidade' && (
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${superResEnabled ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
+                          {superResEnabled && <Check className="w-2.5 h-2.5 text-black" />}
+                        </div>
+                        <input type="checkbox" checked={superResEnabled} onChange={() => setSuperResEnabled(!superResEnabled)} className="hidden" />
+                        <span className="text-xs text-slate-300 group-hover:text-white">Super Res (remove ruido)</span>
+                      </label>
+                    )}
                     {radarImageSource && !radarError && !(cptecAvailable && redemetAvailable) && (
                       <p className="text-xs text-slate-400">Fonte: {radarImageSource === 'cptec' ? 'CPTEC (Super Res)' : 'REDEMET (HD)'}</p>
                     )}
