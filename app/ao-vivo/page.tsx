@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -224,6 +224,62 @@ export default function AoVivoPage() {
   const [sliderMinutesAgo, setSliderMinutesAgo] = useState(0);
   /** Modo único: só horários com imagem (slider discreto). null = mosaico ou não carregado. */
   const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
+
+  // Controle de Animação
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Lógica de Animação Automática (Play/Pause)
+  useEffect(() => {
+    if (isPlaying) {
+      if (!playIntervalRef.current) {
+        playIntervalRef.current = setInterval(() => {
+          setSliderMinutesAgo((prev) => {
+            if (!validSliderMinutesAgo || validSliderMinutesAgo.length === 0) return prev;
+            // O validSliderMinutesAgo está ordenado [Mais Antigo, ..., Mais Recente]
+            const currentIndex = validSliderMinutesAgo.indexOf(prev);
+            if (currentIndex < 0) return validSliderMinutesAgo[0]; 
+            
+            const nextIndex = currentIndex + 1;
+            if (nextIndex >= validSliderMinutesAgo.length) {
+              return validSliderMinutesAgo[0]; // Reset loop
+            }
+            return validSliderMinutesAgo[nextIndex];
+          });
+        }, 800); // 800ms por frame
+      }
+    } else {
+      if (playIntervalRef.current) {
+        clearInterval(playIntervalRef.current);
+        playIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (playIntervalRef.current) {
+        clearInterval(playIntervalRef.current);
+        playIntervalRef.current = null;
+      }
+    };
+  }, [isPlaying, validSliderMinutesAgo]);
+
+  const handleSkipBack = useCallback(() => {
+    if (!validSliderMinutesAgo || validSliderMinutesAgo.length === 0) return;
+    setSliderMinutesAgo((prev) => {
+      const currentIndex = validSliderMinutesAgo.indexOf(prev);
+      if (currentIndex <= 0) return validSliderMinutesAgo[0];
+      return validSliderMinutesAgo[currentIndex - 1]; 
+    });
+  }, [validSliderMinutesAgo]);
+
+  const handleSkipForward = useCallback(() => {
+    if (!validSliderMinutesAgo || validSliderMinutesAgo.length === 0) return;
+    setSliderMinutesAgo((prev) => {
+      const currentIndex = validSliderMinutesAgo.indexOf(prev);
+      if (currentIndex >= validSliderMinutesAgo.length - 1) return validSliderMinutesAgo[validSliderMinutesAgo.length - 1];
+      return validSliderMinutesAgo[currentIndex + 1]; 
+    });
+  }, [validSliderMinutesAgo]);
+
   const [sliderValidVerifying, setSliderValidVerifying] = useState(false);
   /** Localização obrigatória para ao-vivo (presença em tempo real e posicionamento no mapa) */
   /** Radares cuja imagem mais recente não foi encontrada (ex: 404) */
@@ -2060,33 +2116,35 @@ export default function AoVivoPage() {
         />
 
         {/* Header: Menu | Título central (radar + horário) */}
-        <header className="relative z-20 flex items-center gap-3 px-3 py-2.5 bg-[#0F131C]/80 backdrop-blur-md border-b border-white/10 flex-shrink-0 shadow-lg">
-              <button
-                type="button"
-            onClick={() => setSideMenuOpen(true)}
-            className="p-2 -ml-1 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
-            aria-label="Abrir menu"
-          >
-            <Menu className="w-6 h-6" />
-              </button>
-          {/* Visitas do dia */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-500/15 border border-slate-500/30">
-            <span className="text-xs font-bold text-slate-300 tabular-nums">{todayVisitCount}</span>
-            <span className="text-[10px] text-slate-400/80 uppercase tracking-wider">visitas hoje</span>
+        <header className="relative z-20 flex items-center justify-between px-2 sm:px-3 py-1.5 sm:py-2.5 bg-[#0F131C]/80 backdrop-blur-md border-b border-white/10 flex-shrink-0 shadow-lg">
+          <div className="flex items-center gap-1.5 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setSideMenuOpen(true)}
+              className="p-1 sm:p-2 -ml-1 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
+              aria-label="Abrir menu"
+            >
+              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
+            </button>
+            {/* Visitas do dia */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-500/15 border border-slate-500/30 whitespace-nowrap">
+              <span className="text-xs font-bold text-slate-300 tabular-nums">{todayVisitCount}</span>
+              <span className="text-[9px] sm:text-[10px] text-slate-400/80 uppercase tracking-wider hidden sm:inline">visitas hoje</span>
+            </div>
+            {/* Contador de visitantes online */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 whitespace-nowrap">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+              </span>
+              <span className="text-xs font-bold text-emerald-300 tabular-nums">{onlineUsers.length}</span>
+              <span className="text-[9px] sm:text-[10px] text-emerald-400/80 uppercase tracking-wider hidden sm:inline">online</span>
+            </div>
           </div>
-          {/* Contador de visitantes online */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-            </span>
-            <span className="text-xs font-bold text-emerald-300 tabular-nums">{onlineUsers.length}</span>
-            <span className="text-[10px] text-emerald-400/80 uppercase tracking-wider">online</span>
-          </div>
-          <div className="flex-1 min-w-0 text-center">
-            <p className="text-sm font-black tracking-wider text-white truncate uppercase">{headerTitle.name}</p>
-            <p className="text-[10px] tracking-widest text-cyan-400/80 uppercase font-medium mt-0.5">
-              {headerTitle.time ? `Última imagem: ${headerTitle.time} (local)` : 'Carregando…'}
+          <div className="flex-1 min-w-0 text-center flex flex-col items-center justify-center -ml-2 sm:-ml-0">
+            <p className="text-[10px] sm:text-sm font-black tracking-wider text-white truncate uppercase max-w-[120px] sm:max-w-none">{headerTitle.name}</p>
+            <p className="text-[9px] sm:text-[10px] tracking-widest text-cyan-400/80 uppercase font-medium mt-0 sm:mt-0.5 max-w-[130px] sm:max-w-none truncate">
+              <span className="hidden sm:inline">Última imagem: </span>{headerTitle.time ? `${headerTitle.time} (local)` : 'Carregando…'}
             </p>
             {focusedRadarKey && (
               <button
@@ -2096,27 +2154,29 @@ export default function AoVivoPage() {
                   setRadarMode('mosaico');
                   setSelectedIndividualRadars(new Set());
                 }}
-                className="mt-1.5 text-[10px] px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/40"
+                className="mt-1 sm:mt-1.5 text-[8px] sm:text-[10px] px-2 py-0.5 sm:py-1 rounded bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 border border-cyan-500/40"
               >
                 Ver mosaico
               </button>
             )}
-            </div>
-              <button
-            onClick={() => setShowReportsOnMap((v) => !v)}
-            className={`relative p-2 rounded-lg transition-all transform hover:scale-105 ${showReportsOnMap ? 'text-amber-400 bg-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
-            title="Relatos de hoje"
-          >
-            <AlertTriangle className="w-5 h-5" />
-            {stormReports.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center text-[8px] font-bold bg-red-500 text-white rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]">
-                {stormReports.length}
-              </span>
-            )}
-              </button>
-          <Link href="/" className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all transform hover:scale-105" aria-label="Voltar">
-            <ChevronLeft className="w-5 h-5" />
-          </Link>
+          </div>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button
+              onClick={() => setShowReportsOnMap((v) => !v)}
+              className={`relative p-1.5 sm:p-2 rounded-lg transition-all transform hover:scale-105 ${showReportsOnMap ? 'text-amber-400 bg-amber-400/10' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
+              title="Relatos de hoje"
+            >
+              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
+              {stormReports.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 sm:w-4 sm:h-4 flex items-center justify-center text-[7px] sm:text-[8px] font-bold bg-red-500 text-white rounded-full shadow-[0_0_8px_rgba(239,68,68,0.8)]">
+                  {stormReports.length}
+                </span>
+              )}
+            </button>
+            <Link href="/" className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all transform hover:scale-105" aria-label="Voltar">
+              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+            </Link>
+          </div>
         </header>
 
         {/* Menu lateral (drawer) */}
@@ -2726,90 +2786,124 @@ export default function AoVivoPage() {
             </div>
           )}
 
-          {/* Slider de tempo — efeito neon */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] px-4 py-3 rounded-2xl bg-[#0A0E17]/90 backdrop-blur-xl border border-cyan-500/20 shadow-[0_0_30px_rgba(6,182,212,0.15),0_8px_32px_rgba(0,0,0,0.6)] pointer-events-auto group/slider">
-            {sliderMinutesAgo > 60 && !validSliderMinutesAgo && (
-              <p className="text-[9px] text-amber-400/90 mb-2 text-center font-bold tracking-wider uppercase">
-                Voltar além de 1h se tornará recurso premium em breve.
-              </p>
-            )}
-            {sliderValidVerifying && (
-              <div className="flex items-center gap-2 text-xs text-slate-400 mb-2 justify-center">
-                <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
-                Verificando imagens disponíveis…
-              </div>
-            )}
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-black tracking-widest text-slate-500 flex-shrink-0 w-12 uppercase">
-                {historicalTimestampOverride
-                  ? `-${sliderMinutesAgo >= 60 ? `${Math.floor(sliderMinutesAgo / 60)}h${sliderMinutesAgo % 60 ? String(sliderMinutesAgo % 60).padStart(2, '0') : ''}` : `${sliderMinutesAgo}m`}`
-                  : sliderMinutesAgo >= maxSliderMinutesAgo
-                    ? (maxSliderMinutesAgo >= 1440 ? '-24h' : '00:00')
-                    : sliderMinutesAgo >= 60 ? `-${Math.floor(sliderMinutesAgo / 60)}h` : `-${sliderMinutesAgo}m`}
-              </span>
-              <div className="flex-1 flex flex-col gap-0 relative">
-                <div className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-800 overflow-hidden pointer-events-none">
-                  <div 
-                    className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-300 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.8)] transition-all duration-150"
-                    style={{ width: validSliderMinutesAgo && validSliderMinutesAgo.length > 1
-                      ? `${(Math.max(0, validSliderMinutesAgo.indexOf(sliderMinutesAgo)) / Math.max(1, validSliderMinutesAgo.length - 1)) * 100}%`
-                      : `${((maxSliderMinutesAgo - sliderMinutesAgo) / maxSliderMinutesAgo) * 100}%` }}
-                  />
+          {/* Slider de tempo e botões de play — Otimizados para mobile e desktop */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] pointer-events-auto flex flex-col gap-2 z-10">
+            {/* Bloco do Slider de tempo */}
+            <div className="w-full px-3 py-2 sm:px-4 sm:py-3 rounded-xl sm:rounded-2xl bg-[#0A0E17]/90 backdrop-blur-xl border border-cyan-500/20 shadow-[0_0_30px_rgba(6,182,212,0.15),0_8px_32px_rgba(0,0,0,0.6)] group/slider">
+              {sliderMinutesAgo > 60 && !validSliderMinutesAgo && (
+                <p className="text-[8px] sm:text-[9px] text-amber-400/90 mb-1.5 sm:mb-2 text-center font-bold tracking-wider uppercase">
+                  Voltar além de 1h se tornará recurso premium em breve.
+                </p>
+              )}
+              {sliderValidVerifying && (
+                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-slate-400 mb-1.5 sm:mb-2 justify-center">
+                  <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin flex-shrink-0" />
+                  Verificando imagens disponíveis…
                 </div>
-                {validSliderMinutesAgo && validSliderMinutesAgo.length > 1 && !sliderValidVerifying ? (
+              )}
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-[9px] sm:text-[10px] font-black tracking-widest text-slate-500 flex-shrink-0 w-10 sm:w-12 uppercase">
+                  {historicalTimestampOverride
+                    ? `-${sliderMinutesAgo >= 60 ? `${Math.floor(sliderMinutesAgo / 60)}h${sliderMinutesAgo % 60 ? String(sliderMinutesAgo % 60).padStart(2, '0') : ''}` : `${sliderMinutesAgo}m`}`
+                    : sliderMinutesAgo >= maxSliderMinutesAgo
+                      ? (maxSliderMinutesAgo >= 1440 ? '-24h' : '00:00')
+                      : sliderMinutesAgo >= 60 ? `-${Math.floor(sliderMinutesAgo / 60)}h` : `-${sliderMinutesAgo}m`}
+                </span>
+                <div className="flex-1 flex flex-col gap-0 relative">
+                  <div className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-800 overflow-hidden pointer-events-none">
+                    <div 
+                      className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-300 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.8)] transition-all duration-150"
+                      style={{ width: validSliderMinutesAgo && validSliderMinutesAgo.length > 1
+                        ? `${(Math.max(0, validSliderMinutesAgo.indexOf(sliderMinutesAgo)) / Math.max(1, validSliderMinutesAgo.length - 1)) * 100}%`
+                        : `${((maxSliderMinutesAgo - sliderMinutesAgo) / maxSliderMinutesAgo) * 100}%` }}
+                    />
+                  </div>
+                  {validSliderMinutesAgo && validSliderMinutesAgo.length > 1 && !sliderValidVerifying ? (
+                    <input
+                      type="range"
+                      min="0"
+                      max={validSliderMinutesAgo.length - 1}
+                      step="1"
+                      value={Math.max(0, validSliderMinutesAgo.indexOf(sliderMinutesAgo))}
+                      onChange={(e) => {
+                        setIsPlaying(false);
+                        const val = parseInt(e.target.value, 10);
+                        setSliderMinutesAgo(validSliderMinutesAgo[val] ?? 0);
+                      }}
+                      className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 sm:[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-3 sm:[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-3 sm:[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
+                      title={sliderMinutesAgo === 0 ? 'Ao vivo' : `${sliderMinutesAgo} min atrás`}
+                    />
+                  ) : (
                   <input
                     type="range"
                     min="0"
-                    max={validSliderMinutesAgo.length - 1}
-                    step="1"
-                    // Array está: [Mais Antigo, ..., Mais Recente]
-                    // Valor 0 = Esquerda = Mais Antigo. Valor Max = Direita = Mais Recente.
-                    value={Math.max(0, validSliderMinutesAgo.indexOf(sliderMinutesAgo))}
+                    max={maxSliderMinutesAgo}
+                    step={historicalTimestampOverride ? 6 : 5}
+                    value={maxSliderMinutesAgo - sliderMinutesAgo}
                     onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setSliderMinutesAgo(validSliderMinutesAgo[val] ?? 0);
+                      setIsPlaying(false);
+                      setSliderMinutesAgo(maxSliderMinutesAgo - parseInt(e.target.value, 10));
                     }}
-                    className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
-                    title={sliderMinutesAgo === 0 ? 'Ao vivo' : `${sliderMinutesAgo} min atrás`}
+                    disabled={sliderValidVerifying}
+                    className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 sm:[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-3 sm:[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-3 sm:[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
+                    title={sliderMinutesAgo === 0 ? 'Ao vivo' : sliderMinutesAgo >= maxSliderMinutesAgo ? (maxSliderMinutesAgo >= 1440 ? '24h atrás' : 'Meia-noite') : `${sliderMinutesAgo} min atrás`}
                   />
-                ) : (
-                <input
-                  type="range"
-                  min="0"
-                  max={maxSliderMinutesAgo}
-                  step={historicalTimestampOverride ? 6 : 5}
-                  value={maxSliderMinutesAgo - sliderMinutesAgo}
-                  onChange={(e) => setSliderMinutesAgo(maxSliderMinutesAgo - parseInt(e.target.value, 10))}
-                  disabled={sliderValidVerifying}
-                  className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
-                  title={sliderMinutesAgo === 0 ? 'Ao vivo' : sliderMinutesAgo >= maxSliderMinutesAgo ? (maxSliderMinutesAgo >= 1440 ? '24h atrás' : 'Meia-noite') : `${sliderMinutesAgo} min atrás`}
-                />
-                )}
-                <div className="text-center leading-none mt-1">
-                  <span className="text-sm font-black tracking-widest text-cyan-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]">
-                    {(() => {
-                      const ts = effectiveRadarTimestamp;
-                      const d = new Date(Date.UTC(
-                        parseInt(ts.slice(0, 4), 10),
-                        parseInt(ts.slice(4, 6), 10) - 1,
-                        parseInt(ts.slice(6, 8), 10),
-                        parseInt(ts.slice(8, 10), 10),
-                        parseInt(ts.slice(10, 12), 10)
-                      ));
-                      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                    })()}
-                  </span>
+                  )}
+                  <div className="text-center leading-none mt-1">
+                    <span className="text-[10px] sm:text-sm font-black tracking-widest text-cyan-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]">
+                      {(() => {
+                        const ts = effectiveRadarTimestamp;
+                        const d = new Date(Date.UTC(
+                          parseInt(ts.slice(0, 4), 10),
+                          parseInt(ts.slice(4, 6), 10) - 1,
+                          parseInt(ts.slice(6, 8), 10),
+                          parseInt(ts.slice(8, 10), 10),
+                          parseInt(ts.slice(10, 12), 10)
+                        ));
+                        return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                      })()}
+                    </span>
+                  </div>
                 </div>
+                <span className={`text-[8px] sm:text-[10px] font-black tracking-widest flex-shrink-0 w-12 sm:w-14 text-right uppercase ${
+                  historicalTimestampOverride
+                    ? 'text-amber-400'
+                    : sliderMinutesAgo === 0 ? 'text-emerald-400 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'text-slate-600'
+                }`}>
+                  {historicalTimestampOverride
+                    ? `${historicalTimestampOverride.slice(8, 10)}:${historicalTimestampOverride.slice(10, 12)}`
+                    : sliderMinutesAgo === 0 ? '● LIVE' : 'Ao vivo'}
+                </span>
               </div>
-              <span className={`text-[10px] font-black tracking-widest flex-shrink-0 w-14 text-right uppercase ${
-                historicalTimestampOverride
-                  ? 'text-amber-400'
-                  : sliderMinutesAgo === 0 ? 'text-emerald-400 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'text-slate-600'
-              }`}>
-                {historicalTimestampOverride
-                  ? `${historicalTimestampOverride.slice(8, 10)}:${historicalTimestampOverride.slice(10, 12)}`
-                  : sliderMinutesAgo === 0 ? '● LIVE' : 'Ao vivo'}
-              </span>
+            </div>
+
+            {/* Bloco de Botões de Controle da Animação */}
+            <div className="flex justify-center items-center gap-4 py-1">
+              <button
+                onClick={() => { setIsPlaying(false); handleSkipBack(); }}
+                title="Voltar 1 imagem"
+                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
+              >
+                <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                title={isPlaying ? "Pausar" : "Iniciar animação"}
+                className={`p-3 sm:p-4 rounded-full border-2 transition-all hover:scale-110 shadow-[0_0_15px_rgba(6,182,212,0.3)] backdrop-blur-md ${
+                  isPlaying 
+                    ? 'bg-amber-500/90 border-amber-400/80 text-black hover:bg-amber-400' 
+                    : 'bg-cyan-600 border-cyan-400 text-white hover:bg-cyan-500'
+                }`}
+              >
+                {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-1" />}
+              </button>
+              <button
+                onClick={() => { setIsPlaying(false); handleSkipForward(); }}
+                title="Avançar 1 imagem"
+                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
+              >
+                <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
             </div>
           </div>
           </div>{/* fecha div pointer-events-none */}
