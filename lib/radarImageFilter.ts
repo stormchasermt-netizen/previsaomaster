@@ -86,6 +86,7 @@ export async function filterRadarImageFromUrl(imageUrl: string): Promise<string 
 /**
  * Processa pixels específicos do radar da Climatempo (Porto Alegre).
  * Remove terra (bege), oceano (azul), bordas (preto) e fundo branco.
+ * Usa lógica de Saturação (Delta) rigorosa, preservando apenas as cores puras e intensas (neon) das tempestades.
  */
 function filterClimatempoPixels(data: Uint8ClampedArray): void {
   for (let i = 0; i < data.length; i += 4) {
@@ -96,13 +97,28 @@ function filterClimatempoPixels(data: Uint8ClampedArray): void {
 
     if (a === 0) continue;
 
-    const isBege = r > 200 && g > 190 && b > 150 && b < 220 && Math.abs(r - g) < 30; // Terra
-    const isAzul = r > 140 && r < 200 && g > 180 && g < 230 && b > 200; // Oceano
-    const isEscuro = r < 80 && g < 80 && b < 80; // Linhas de divisa e círculo
-    const isBranco = r > 235 && g > 235 && b > 235; // Fundos de painel
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
 
-    if (isBege || isAzul || isEscuro || isBranco) {
+    // Se a cor for muito lavada, cinza, branca, preta, bege, ou azul claro, o Delta será baixo.
+    // Chuvas são representadas pelas cores RGB quase puras (Ciano, Verde Limão, Amarelo, Vermelho, Magenta) cujo Delta de saturação passa de 100.
+    if (delta < 60) {
       data[i + 3] = 0;
+      continue;
+    }
+
+    // Filtra as linhas de municípios (que são um amarelo queimado/mostarda ou marrom)
+    // Mostarda/Marrom costuma ter R alto, G alto, mas B baixo.
+    if (r > 130 && r < 210 && g > 110 && g < 190 && b < 100) {
+      data[i + 3] = 0;
+      continue;
+    }
+    
+    // Filtro para o azul escuro/cinza esverdeado das rodovias
+    if (r < 100 && g < 120 && b < 120 && delta < 80) {
+      data[i + 3] = 0;
+      continue;
     }
   }
 }
@@ -135,9 +151,17 @@ export async function filterClimatempoRadarImage(imageUrl: string): Promise<stri
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
 
-    // Recorta a legenda no canto inferior direito (largura 40%, altura 25%)
+    // 1. Apaga a borda branca sólida de 2 pixels em todos os cantos da imagem
+    const bw = 2;
+    ctx.clearRect(0, 0, canvas.width, bw); // Topo
+    ctx.clearRect(0, canvas.height - bw, canvas.width, bw); // Fundo
+    ctx.clearRect(0, 0, bw, canvas.height); // Esquerda
+    ctx.clearRect(canvas.width - bw, 0, bw, canvas.height); // Direita
+
+    // 2. Recorta a legenda no canto inferior direito
     ctx.clearRect(canvas.width * 0.6, canvas.height * 0.75, canvas.width * 0.4, canvas.height * 0.25);
-    // Recorta a label do canto superior esquerdo (largura 40%, altura 10%)
+    
+    // 3. Recorta a label "150 km from the radar" no canto superior esquerdo
     ctx.clearRect(0, 0, canvas.width * 0.4, canvas.height * 0.1);
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
