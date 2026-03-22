@@ -344,41 +344,51 @@ function applyBlobFilter(data: Uint8ClampedArray, w: number, h: number, minSize:
 }
 
 /**
- * Estágio 3 — Filtro de Mediana (Diferentes Kernels).
- * Suaviza a imagem preservando bordas. Usado na Zona A (3x3) e Zona B (5x5).
+ * Estágio 3 — Filtro Bilateral.
+ * Suaviza a imagem sem borrar bordas de alto contraste (como couplets).
+ * sigmaSpace: alcance espacial do desfoque.
+ * sigmaColor: quanta diferença de cor é necessária para "borrar" o pixel.
  */
-function applyMedianFilter(data: Uint8ClampedArray, w: number, h: number, kernelSize: number): void {
+function applyBilateralFilter(data: Uint8ClampedArray, w: number, h: number, sigmaSpace: number, sigmaColor: number): void {
   const copy = new Uint8ClampedArray(data);
-  const radius = Math.floor(kernelSize / 2);
+  const radius = Math.round(sigmaSpace * 1.5);
+  const spaceCoeff = -0.5 / (sigmaSpace * sigmaSpace);
+  const colorCoeff = -0.5 / (sigmaColor * sigmaColor);
 
   for (let y = radius; y < h - radius; y++) {
     for (let x = radius; x < w - radius; x++) {
       const ci = (y * w + x) * 4;
       if (copy[ci + 3] === 0) continue;
 
-      const rValues: number[] = [];
-      const gValues: number[] = [];
-      const bValues: number[] = [];
+      const r0 = copy[ci], g0 = copy[ci + 1], b0 = copy[ci + 2];
+      let norm = 0;
+      let rSum = 0, gSum = 0, bSum = 0;
 
       for (let dy = -radius; dy <= radius; dy++) {
         for (let dx = -radius; dx <= radius; dx++) {
           const ni = ((y + dy) * w + (x + dx)) * 4;
-          if (copy[ni + 3] > 0) {
-            rValues.push(copy[ni]);
-            gValues.push(copy[ni + 1]);
-            bValues.push(copy[ni + 2]);
-          }
+          if (copy[ni + 3] === 0) continue;
+
+          const r1 = copy[ni], g1 = copy[ni+1], b1 = copy[ni+2];
+          
+          // Distância espacial ao quadrado
+          const distSq = dx * dx + dy * dy;
+          // Diferença de cor ao quadrado (Euclidiana no espaço RGB)
+          const colorDistSq = (r1 - r0)*(r1 - r0) + (g1 - g0)*(g1 - g0) + (b1 - b0)*(b1 - b0);
+          
+          const weight = Math.exp(distSq * spaceCoeff + colorDistSq * colorCoeff);
+          
+          rSum += r1 * weight;
+          gSum += g1 * weight;
+          bSum += b1 * weight;
+          norm += weight;
         }
       }
 
-      if (rValues.length > 0) {
-        rValues.sort((a, b) => a - b);
-        gValues.sort((a, b) => a - b);
-        bValues.sort((a, b) => a - b);
-        const mid = Math.floor(rValues.length / 2);
-        data[ci] = rValues[mid];
-        data[ci + 1] = gValues[mid];
-        data[ci + 2] = bValues[mid];
+      if (norm > 0) {
+        data[ci] = Math.round(rSum / norm);
+        data[ci + 1] = Math.round(gSum / norm);
+        data[ci + 2] = Math.round(bSum / norm);
       }
     }
   }
@@ -489,10 +499,11 @@ export async function filterDopplerSuperRes(
     const { data: velImgData, width: w, height: h } = velRes;
     const velData = velImgData.data;
 
-    // 1. Criar Máscara de Couplet (Trava de Segurança)
-    const coupletMask = getCoupletMask(velData, w, h);
+    // 1. Remoção de Pequenos Contornos Baseada em Tamanho (Peneira)
+    // Remove blobs < 4 pixels (ruído granular isolado)
+    applyBlobFilter(velData, w, h, 4);
 
-    // 2. Se houver refletividade, separar Zona A (<10dBZ) e Zona B (>=10dBZ)
+    // 2. Se houver refletividade, separar Zona A e Zona B para Bilateral inteligente
     if (refRes) {
       const { data: refImgData, width: refW, height: refH } = refRes;
       const refData = refImgData.data;
@@ -513,26 +524,26 @@ export async function filterDopplerSuperRes(
              const rr = refData[ri], rg = refData[ri+1], rb = refData[ri+2];
              const rMax = Math.max(rr, rg, rb);
              const rMin = Math.min(rr, rg, rb);
-             // Se delta > 40 ou cores quentes (dBZ > 10 aprox), é Zona B
              if (rMax - rMin > 40 || rr > 180) isZoneB = true;
           }
 
           if (isZoneB) {
-            zoneAData[vi + 3] = 0; // Apaga da A
+            zoneAData[vi + 3] = 0;
           } else {
-            zoneBData[vi + 3] = 0; // Apaga da B
+            zoneBData[vi + 3] = 0;
           }
         }
       }
 
-      // Filtrar Zona A (Ar Limpo) - Median 3x3 suave
-      applyMedianFilter(zoneAData, w, h, 3);
-      // Filtrar Zona B (Tempestade) - Median 5x5 agressivo
-      applyMedianFilter(zoneBData, w, h, 5);
+      // 3. Aplicar Filtro Bilateral
+      // Zona A (Fraca): Filtro Bilateral suave (sigmaColor alto preserva menos, sigmaSpace baixo corre pouco)
+      applyBilateralFilter(zoneAData, w, h, 1.5, 45);
+      
+      // Zona B (Tempestade): Filtro Bilateral preciso (sigmaColor baixo para NÃO borras couplets)
+      applyBilateralFilter(zoneBData, w, h, 2.5, 25);
 
-      // Merge das zonas respeitando a trava de Couplet
+      // Merge das zonas
       for (let i = 0; i < w * h; i++) {
-        if (coupletMask[i]) continue; // Não toca em Couplets
         const vi = i * 4;
         if (zoneBData[vi + 3] > 0) {
             velData[vi] = zoneBData[vi];
@@ -545,22 +556,11 @@ export async function filterDopplerSuperRes(
         }
       }
     } else {
-      // Sem refletividade, aplica filtro padrão preservando couplets
-      const filtered = new Uint8ClampedArray(velData);
-      applyMedianFilter(filtered, w, h, 3);
-      for (let i = 0; i < w * h; i++) {
-        if (coupletMask[i]) continue;
-        const vi = i * 4;
-        velData[vi] = filtered[vi];
-        velData[vi + 1] = filtered[vi + 1];
-        velData[vi + 2] = filtered[vi + 2];
-      }
+      // Sem refletividade, aplica bilateral padrão equilibrado
+      applyBilateralFilter(velData, w, h, 2.0, 30);
     }
 
-    // Limpeza final de ilhas (Despeckle)
-    applyBlobFilter(velData, w, h, 3);
-    
-    // Hole Filling para fechar buracos internos
+    // Hole Filling final para fechar pequenos buracos pontuais
     applyHoleFilling(velData, w, h);
 
     const canvas = document.createElement('canvas');
@@ -571,7 +571,7 @@ export async function filterDopplerSuperRes(
     ctx.putImageData(velImgData, 0, 0);
     return canvas.toDataURL('image/png');
   } catch (err) {
-    console.error("Super Res Error:", err);
+    console.error("Super Res v4 Error:", err);
     return null;
   }
 }
