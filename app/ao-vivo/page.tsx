@@ -334,6 +334,8 @@ export default function AoVivoPage() {
   const [redemetAvailableKeys, setRedemetAvailableKeys] = useState<Set<string>>(new Set());
   /** URLs REDEMET encontradas por radarKey */
   const [redemetFoundUrls, setRedemetFoundUrls] = useState<Record<string, string>>({});
+  /** Nowcasting offline: detectado quando muitos radares falham ao carregar */
+  const [nowcastingOffline, setNowcastingOffline] = useState(false);
   /** Menu lateral aberto (hambúrguer) */
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   /** Split: 1 = painel único, 2 = Refletividade|Doppler lado a lado, 4 = grade 2x2 (simplificado por ora) */
@@ -1505,6 +1507,15 @@ export default function AoVivoPage() {
       let urlsToTry: UrlEntry[] = [];
       let redemetFindPromise: Promise<string | null> | null = null;
       let ipmetStoragePromise: Promise<string | null> | null = null;
+      let storageFallbackPromise: Promise<string | null> | null = null;
+      // Preparar Storage fallback para todos radares CPTEC
+      if (dr.type === 'cptec' && dr.station.slug !== 'ipmet-bauru' && dr.station.slug !== 'usp-starnet' && dr.station.slug !== 'climatempo-poa') {
+        const fbTs12 = useFallback ? getNowMinusMinutesTimestamp12UTC(3) : timestamp;
+        storageFallbackPromise = fetch(`/api/radar-storage-fallback?radarId=${encodeURIComponent(dr.station.slug)}&ts12=${encodeURIComponent(fbTs12)}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => d?.url ?? null)
+          .catch(() => null);
+      }
       if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
         if (useFallback) {
           /** Sempre a imagem mais atual: busca do servidor IPMET */
@@ -1724,10 +1735,47 @@ export default function AoVivoPage() {
           if (!redemetAttempted && redemetFindPromise) {
             redemetAttempted = true;
             redemetFindPromise.then(redemetUrl => {
-              if (!redemetUrl) { markFailed(); return; }
+              if (!redemetUrl) {
+                // Redemet também falhou → tentar Storage
+                if (storageFallbackPromise) {
+                  storageFallbackPromise.then(storageUrl => {
+                    if (!storageUrl) { setNowcastingOffline(true); markFailed(); return; }
+                    setNowcastingOffline(true);
+                    img.onerror = () => markFailed();
+                    img.onload = () => {
+                      applyNoiseFilter();
+                      setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: timestamp }));
+                      setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
+                      setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
+                      markProcessed();
+                    };
+                    img.src = storageUrl;
+                  });
+                } else {
+                  markFailed();
+                }
+                return;
+              }
               img.onerror = () => markFailed();
               img.onload = () => { applyNoiseFilter(); onRedemetLoad(timestamp); };
               img.src = getProxiedRadarUrl(redemetUrl);
+            });
+            return;
+          }
+          // Último recurso: Storage (sem Redemet disponível)
+          if (storageFallbackPromise) {
+            storageFallbackPromise.then(storageUrl => {
+              if (!storageUrl) { setNowcastingOffline(true); markFailed(); return; }
+              setNowcastingOffline(true);
+              img.onerror = () => markFailed();
+              img.onload = () => {
+                applyNoiseFilter();
+                setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: timestamp }));
+                setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
+                setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
+                markProcessed();
+              };
+              img.src = storageUrl;
             });
             return;
           }
@@ -2226,6 +2274,41 @@ export default function AoVivoPage() {
             </Link>
           </div>
         </header>
+
+        {/* Banner de alerta: Nowcasting offline */}
+        <AnimatePresence>
+          {nowcastingOffline && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="relative z-20 bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 flex items-center justify-between gap-3 flex-shrink-0 overflow-hidden"
+            >
+              <div className="flex items-center gap-2 text-amber-300 text-xs sm:text-sm font-semibold">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>Os servidores do Nowcasting estão fora do ar. Imagens do Storage estão sendo utilizadas.</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {redemetAvailableKeys.size > 0 && (
+                  <button
+                    onClick={() => setRadarSourceMode('hd')}
+                    className="px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition-colors whitespace-nowrap"
+                  >
+                    🔄 Alternar para Redemet (LIVE)
+                  </button>
+                )}
+                <button
+                  onClick={() => setNowcastingOffline(false)}
+                  className="p-1 rounded text-amber-400/60 hover:text-amber-300 transition-colors"
+                  aria-label="Fechar alerta"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Menu lateral (drawer) */}
         <AnimatePresence>
