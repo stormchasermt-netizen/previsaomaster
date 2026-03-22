@@ -116,6 +116,7 @@ export default function AdminRadaresPage() {
   const [previewOpacity, setPreviewOpacity] = useState<number>(0.75);
   /** Lat/lng durante arraste — atualiza os inputs em tempo real. null quando não está arrastando. */
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [radarSource, setRadarSource] = useState<'cptec' | 'redemet'>('cptec');
 
   // === ESTÚDIO DE RADAR ===
   // Bounding Box (Arrasto e estiramento nas 4 pontas em vez de só centro/raio)
@@ -231,14 +232,20 @@ export default function AdminRadaresPage() {
   }
 
   /** Abre o painel para configurar um radar CPTEC */
-  const handleSelectStation = (station: CptecRadarStation) => {
-    const existing = configs.find((c) => c.stationSlug === station.slug);
-    const interval = existing?.updateIntervalMinutes ?? station.updateIntervalMinutes ?? 6;
+  const handleSelectStation = (station: CptecRadarStation, source: 'cptec' | 'redemet' = 'cptec') => {
+    const slug = source === 'redemet' ? `${station.slug}-redemet` : station.slug;
+    const existing = configs.find((c) => c.id === slug || c.stationSlug === slug);
+    const interval = existing?.updateIntervalMinutes ?? station.updateIntervalMinutes ?? 10;
+    
+    setRadarSource(source);
 
     const isIpmet = station.slug === 'ipmet-bauru';
     let template: string;
     if (isIpmet) {
       template = existing?.urlTemplate || IPMET_STATIC_URL;
+    } else if (source === 'redemet') {
+      const area = getRedemetArea(station.slug)!;
+      template = buildRedemetPngUrl(area, '{ts12}');
     } else {
       const ts12 = getSampleTs12(interval);
       const defaultUrl = buildNowcastingPngUrl(station, ts12);
@@ -250,7 +257,7 @@ export default function AdminRadaresPage() {
     }
 
     const initialUrl = isIpmet ? IPMET_STATIC_URL : buildRadarPngUrl(template, getSampleTs12(interval));
-    const urlsToTry = isIpmet ? [] : buildLatestImageUrls(station, template);
+    const urlsToTry = (isIpmet || source === 'redemet') ? [] : buildLatestImageUrls(station, template);
     setSelectedStation({ type: 'cptec', station });
     setConfig(existing || null);
     setUrlTemplate(template);
@@ -262,7 +269,7 @@ export default function AdminRadaresPage() {
     setRangeKm(existing?.rangeKm ?? station.rangeKm);
     setRotationDegrees(existing?.rotationDegrees ?? 0);
     setPreviewOpacity(existing?.opacity ?? 0.75);
-    setPreviewImageUrl(isIpmet ? initialUrl : (urlsToTry[0]?.url ?? initialUrl));
+    setPreviewImageUrl(isIpmet ? initialUrl : (source === 'redemet' ? getProxiedRadarUrl(initialUrl) : (urlsToTry[0]?.url ?? initialUrl)));
     setPreviewUrlsToTry(urlsToTry);
     setLoadingPreview(true);
     setLiveCenter(null);
@@ -383,6 +390,8 @@ export default function AdminRadaresPage() {
     const slug: string = selectedStation.type === 'cptec'
       ? (s as CptecRadarStation).slug
       : `argentina:${(s as ArgentinaRadarStation).id}`;
+    const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : slug;
+    
     const isIpmet = selectedStation.type === 'cptec' && (s as CptecRadarStation).slug === 'ipmet-bauru';
     const computedBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function'
       ? calculateRadarBoundsGeodesic(lat, lng, rangeKm)
@@ -390,9 +399,9 @@ export default function AdminRadaresPage() {
     setSaving(true);
     try {
       await saveRadarConfig({
-        id: config?.id || slug,
+        id,
         stationSlug: slug,
-        name: s.name,
+        name: s.name + (radarSource === 'redemet' ? ' (Redemet)' : ''),
         urlTemplate: urlTemplate.trim(),
         bounds: computedBounds,
         lat,
@@ -408,29 +417,12 @@ export default function AdminRadaresPage() {
       });
       addToast('Posição salva automaticamente.', 'success');
       await loadConfigs();
-      setConfig(configs.find((c) => c.stationSlug === slug) || {
-        id: slug,
-        stationSlug: slug,
-        name: s.name,
-        urlTemplate: urlTemplate.trim(),
-        bounds: computedBounds,
-        lat,
-        lng,
-        rangeKm,
-        updateIntervalMinutes: updateIntervalMinutes,
-        rotationDegrees: rotationDegrees,
-        opacity: previewOpacity,
-        customBounds: useCustomBounds && customBounds ? customBounds : undefined,
-        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
-        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
-        superRes: superRes || undefined,
-      });
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
     } finally {
       setSaving(false);
     }
-  }, [selectedStation, urlTemplate, config, rangeKm, updateIntervalMinutes, rotationDegrees, previewOpacity, configs, addToast]);
+  }, [selectedStation, radarSource, urlTemplate, config, rangeKm, updateIntervalMinutes, rotationDegrees, previewOpacity, configs, addToast]);
 
   /** Marcador draggable do ícone de radar — arrastar apenas o ícone define lat/lng (o mapa não se move) */
   useEffect(() => {
@@ -745,6 +737,8 @@ export default function AdminRadaresPage() {
     const slug: string = selectedStation.type === 'cptec'
       ? (s as CptecRadarStation).slug
       : `argentina:${(s as ArgentinaRadarStation).id}`;
+    const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : slug;
+
     const isIpmet = selectedStation.type === 'cptec' && (s as CptecRadarStation).slug === 'ipmet-bauru';
     const computedBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function'
       ? calculateRadarBoundsGeodesic(centerLat, centerLng, rangeKm)
@@ -752,9 +746,9 @@ export default function AdminRadaresPage() {
     setSaving(true);
     try {
       await saveRadarConfig({
-        id: config?.id || slug,
+        id,
         stationSlug: slug,
-        name: s.name,
+        name: s.name + (radarSource === 'redemet' ? ' (Redemet)' : ''),
         urlTemplate: urlTemplate.trim(),
         bounds: computedBounds,
         lat: centerLat,
@@ -763,30 +757,13 @@ export default function AdminRadaresPage() {
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
         opacity: previewOpacity,
-        customBounds: useCustomBounds && customBounds ? customBounds : null,
-        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : null,
-        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : null,
+        customBounds: (useCustomBounds && customBounds) ? customBounds : undefined,
+        chromaKeyDeltaThreshold: (chromaKeyDeltaThreshold ?? 0) > 0 ? chromaKeyDeltaThreshold : undefined,
+        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
         superRes: superRes || undefined,
       });
       addToast('Configuração salva.', 'success');
       await loadConfigs();
-      setConfig(configs.find((c) => c.stationSlug === slug) || {
-        id: slug,
-        stationSlug: slug,
-        name: s.name,
-        urlTemplate: urlTemplate.trim(),
-        bounds: computedBounds,
-        lat: centerLat,
-        lng: centerLng,
-        rangeKm,
-        updateIntervalMinutes: updateIntervalMinutes,
-        rotationDegrees: rotationDegrees,
-        opacity: previewOpacity,
-        customBounds: useCustomBounds && customBounds ? customBounds : undefined,
-        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
-        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
-        superRes: superRes || undefined,
-      });
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
     } finally {
@@ -978,13 +955,31 @@ export default function AdminRadaresPage() {
           <div className="absolute inset-0 bg-black/50 z-20 pointer-events-none" aria-hidden />
           <div className="absolute top-0 right-0 bottom-0 w-full max-w-md bg-slate-900 border-l border-slate-700 shadow-2xl z-30 flex flex-col animate-in slide-in-from-right duration-200">
             <div className="flex items-center justify-between flex-shrink-0 p-3 border-b border-slate-700">
-              <h3 className="font-semibold text-slate-200 flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                {selectedStation.station.name}
-                {selectedStation.type === 'argentina' && (
-                  <span className="text-xs font-normal text-slate-500">(Argentina)</span>
+              <div className="flex flex-col">
+                <h3 className="font-semibold text-slate-200 flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  {selectedStation.station.name}
+                  {selectedStation.type === 'argentina' && (
+                    <span className="text-xs font-normal text-slate-500">(Argentina)</span>
+                  )}
+                </h3>
+                {selectedStation.type === 'cptec' && hasRedemetFallback(selectedStation.station.slug) && (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => handleSelectStation(selectedStation.station, 'cptec')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition-colors ${radarSource === 'cptec' ? 'bg-cyan-500 text-black' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                    >
+                      NORMAL (CPTEC)
+                    </button>
+                    <button
+                      onClick={() => handleSelectStation(selectedStation.station, 'redemet')}
+                      className={`px-3 py-1 rounded text-xs font-bold transition-colors ${radarSource === 'redemet' ? 'bg-cyan-500 text-black' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                    >
+                      HD (REDEMET)
+                    </button>
+                  </div>
                 )}
-              </h3>
+              </div>
               <button type="button" onClick={handleClose} className="p-2 text-slate-400 hover:text-white rounded-lg">
                 <X className="w-5 h-5" />
               </button>

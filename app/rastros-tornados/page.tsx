@@ -1845,8 +1845,14 @@ export default function RastrosTornadosPage() {
 
     const useWms = !!selectedTrack.radarWmsUrl?.trim();
     const isArgentinaRadar = radarStation && !('slug' in radarStation);
-    const radarCfg = radarStation
-      ? radarConfigs.find((c) => c.stationSlug === (isArgentinaRadar ? `argentina:${radarStation.id}` : (radarStation as CptecRadarStation).slug))
+    let radarCfgSlug = radarStation
+      ? (isArgentinaRadar ? `argentina:${radarStation.id}` : (radarStation as CptecRadarStation).slug)
+      : null;
+    if (radarCfgSlug === 'santiago' && radarSourceMode === 'hd') {
+      radarCfgSlug = 'santiago-redemet';
+    }
+    const radarCfg = radarCfgSlug
+      ? radarConfigs.find((c) => c.id === radarCfgSlug || c.stationSlug === radarCfgSlug)
       : null;
     /** Para radares PPI CPTEC (Chapecó, Santiago): sempre usar buildNowcastingPngUrl. */
     const useNowcastingPng = radarStation && !isArgentinaRadar && (radarStation as CptecRadarStation).product === 'ppi';
@@ -1899,8 +1905,7 @@ export default function RastrosTornadosPage() {
       const ts12 = ts.slice(0, 12);
       url = buildNowcastingPngUrl(cptecStation, ts12, radarProductType);
       hasRedemetFb = hasRedemetFallback(cptecStation.slug);
-      const hdSantiago = radarSourceMode === 'hd' && cptecStation.slug === 'santiago';
-      bounds = getRadarBounds() ?? getRadarImageBounds(cptecStation, hdSantiago ? 400 : undefined);
+      bounds = getRadarBounds() ?? getRadarImageBounds(cptecStation);
       urlsToTry = radarSourceMode === 'hd' ? [] : [{ url: getProxiedRadarUrl(url), source: 'cptec' }];
       if (hasRedemetFb) {
         const area = getRedemetArea(cptecStation.slug)!;
@@ -1925,10 +1930,6 @@ export default function RastrosTornadosPage() {
         east: radarCfg.bounds.ne.lng,
         west: radarCfg.bounds.sw.lng,
       };
-      if (hdSantiago && cptecSt) {
-        const hb = getRadarImageBounds(cptecSt, 400);
-        bounds = { north: hb.north, south: hb.south, east: hb.east, west: hb.west };
-      }
       urlsToTry = radarSourceMode === 'hd' ? [] : [{ url: getProxiedRadarUrl(url), source: 'cptec' }];
       if (hasRedemetFb && cptecSt) {
         const area = getRedemetArea(cptecSt.slug)!;
@@ -2027,9 +2028,10 @@ export default function RastrosTornadosPage() {
         // Fire-and-forget: salvar imagem no Storage para cache
         const currentTs = radarTimestamps[radarFrameIdx];
         if (currentTs) {
-          const radarSlug = radarStation && !isArgentinaRadar
+          let radarSlug = radarStation && !isArgentinaRadar
             ? (radarStation as CptecRadarStation).slug
             : radarStation ? `argentina_${(radarStation as ArgentinaRadarStation).id}` : null;
+          if (radarSlug && src === 'redemet') radarSlug = `${radarSlug}-redemet`;
           if (radarSlug) cacheRadarImage(img.src, radarSlug, currentTs.slice(0, 12), radarProductType);
         }
         // Super Res Doppler filter
@@ -2114,7 +2116,11 @@ export default function RastrosTornadosPage() {
         }
       }
 
-      const cfg = radarConfigs.find((c) => c.stationSlug === station.slug);
+      let timelineCfgSlug = station.slug;
+      if (timelineCfgSlug === 'santiago' && radarSourceMode === 'hd') {
+        timelineCfgSlug = 'santiago-redemet';
+      }
+      const cfg = radarConfigs.find((c) => c.id === timelineCfgSlug || c.stationSlug === timelineCfgSlug);
       const latLngBounds = cfg
         ? new google.maps.LatLngBounds(cfg.bounds.sw, cfg.bounds.ne)
         : (usedSource === 'redemet' ? getRadarImageBounds(station as CptecRadarStation, 400) : getRadarImageBounds(station as CptecRadarStation));

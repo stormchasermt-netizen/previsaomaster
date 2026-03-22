@@ -838,7 +838,11 @@ export default function AoVivoPage() {
         if (isUspStarnet) {
           return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
         }
-        const cfg = radarConfigs.find((c) => c.stationSlug === dr.station.slug);
+        let configSlug = dr.station.slug;
+        if (dr.station.slug === 'santiago' && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
+          configSlug = 'santiago-redemet';
+        }
+        const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
         if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
           const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
           const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
@@ -1681,8 +1685,11 @@ export default function AoVivoPage() {
     ));
     radars.forEach((dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
-      const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
-      const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
+      let configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+      if (dr.type === 'cptec' && dr.station.slug === 'santiago' && radarSourceMode === 'hd') {
+        configSlug = 'santiago-redemet';
+      }
+      const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
       const rotationDeg = cfg?.rotationDegrees ?? 0;
       const effectiveOpacity = cfg?.opacity ?? opacity;
       type UrlEntry = { url: string; ts12: string; source: 'cptec' | 'redemet' };
@@ -1811,10 +1818,7 @@ export default function AoVivoPage() {
         ? { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west } 
         : getBoundsForDisplayRadar(dr);
 
-      if (radarSourceMode === 'hd' && dr.type === 'cptec' && dr.station.slug === 'santiago') {
-        const hb = getRadarImageBounds(dr.station, 400);
-        bounds = cfg?.customBounds ? bounds : { north: hb.north, south: hb.south, east: hb.east, west: hb.west };
-      }
+      // Removido fallback hardcoded de santiago hd pois agora usa config santiago-redemet
       const latLngBounds = new google.maps.LatLngBounds(
         { lat: bounds.south, lng: bounds.west },
         { lat: bounds.north, lng: bounds.east }
@@ -1992,7 +1996,8 @@ export default function AoVivoPage() {
             setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: loaded.source }));
           }
           // Fire-and-forget: salvar imagem no Storage para cache
-          const slug = dr.type === 'cptec' ? dr.station.slug : `argentina_${dr.station.id}`;
+          let slug = dr.type === 'cptec' ? dr.station.slug : `argentina_${dr.station.id}`;
+          if (loaded?.source === 'redemet') slug = `${slug}-redemet`;
           cacheRadarImage(img.src, slug, effectiveTs12, productType);
           setFailedRadars((prev) => {
             const next = new Set(prev);
