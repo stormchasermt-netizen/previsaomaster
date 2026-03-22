@@ -331,6 +331,8 @@ function getStaticMapPreviewUrl(maptype: string): string {
 
 export default function RastrosTornadosPage() {
   const { t } = useTranslation();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const router = useRouter();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -473,6 +475,14 @@ export default function RastrosTornadosPage() {
   const [imageMappingMode, setImageMappingMode] = useState<'none' | 'before' | 'after'>('none');
   const imageRectRef = useRef<any>(null);
   const [isSavingImageBounds, setIsSavingImageBounds] = useState(false);
+
+  // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
+  const parseCoord = (val: string): number => {
+    if (!val) return 0;
+    const sanitized = val.toString().replace(',', '.').replace(/[^\d.-]/g, '');
+    const num = parseFloat(sanitized);
+    return isNaN(num) ? 0 : num;
+  };
   const handleOpenRadarEdit = () => {
     if (!selectedTrack) return;
     
@@ -2941,6 +2951,14 @@ export default function RastrosTornadosPage() {
     };
   }, [mapReady, measureMode]);
 
+  if (!isMounted) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#0A0E17] text-slate-500">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-[#0A0E17] text-white overflow-hidden">
       {/* Modal de onboarding (localização, nome, tipo) — ao entrar em Rastros */}
@@ -4759,11 +4777,11 @@ export default function RastrosTornadosPage() {
                      <div className="grid grid-cols-2 gap-2">
                        <div className="space-y-1">
                          <span className="text-[10px] text-slate-500 uppercase">Latitude</span>
-                         <input type="number" step={0.000001} value={editRadarLat} onChange={e => setEditRadarLat(parseFloat(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-cyan-300" />
+                         <input type="text" value={editRadarLat} onChange={e => setEditRadarLat(parseCoord(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-cyan-300" />
                        </div>
                        <div className="space-y-1">
                          <span className="text-[10px] text-slate-500 uppercase">Longitude</span>
-                         <input type="number" step={0.000001} value={editRadarLng} onChange={e => setEditRadarLng(parseFloat(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-cyan-300" />
+                         <input type="text" value={editRadarLng} onChange={e => setEditRadarLng(parseCoord(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-cyan-300" />
                        </div>
                      </div>
                    </div>

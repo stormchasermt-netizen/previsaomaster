@@ -131,6 +131,7 @@ export default function AdminRastrosTornadosPage() {
   const [drawPrevotsMode, setDrawPrevotsMode] = useState(false);
   const [drawPrevotsLevel, setDrawPrevotsLevel] = useState<PrevotsLevel>(1);
   const [brazilBoundary, setBrazilBoundary] = useState<BrazilForClip | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [baseMapId, setBaseMapId] = useState<BaseMapId>('satellite');
   const [showBaseMapGallery, setShowBaseMapGallery] = useState(false);
@@ -141,6 +142,14 @@ export default function AdminRastrosTornadosPage() {
   const [appliedEndDate, setAppliedEndDate] = useState('');
   const [imageMappingMode, setImageMappingMode] = useState<'none' | 'before' | 'after'>('none');
   const rectInstanceRef = useRef<any>(null);
+
+  // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
+  const parseCoord = (val: string): number => {
+    if (!val) return 0;
+    const sanitized = val.toString().replace(',', '.').replace(/[^\d.-]/g, '');
+    const num = parseFloat(sanitized);
+    return isNaN(num) ? 0 : num;
+  };
 
   const filteredTracks = React.useMemo(() => {
     if (!appliedStartDate && !appliedEndDate) return tracks;
@@ -176,6 +185,7 @@ export default function AdminRastrosTornadosPage() {
   };
 
   useEffect(() => {
+    setIsMounted(true);
     if (!user || (user.type !== 'admin' && user.type !== 'superadmin')) {
       router.push('/');
       return;
@@ -221,10 +231,11 @@ export default function AdminRastrosTornadosPage() {
     const q = mapSearchQuery.trim();
     if (!q) return;
 
-    const latLonMatch = q.match(/^\s*(-?\d+\.?\d*)\s*[,;\s]\s*(-?\d+\.?\d*)\s*$/);
+    // Regex melhorado: aceita ponto ou vírgula como separador decimal
+    const latLonMatch = q.match(/^\s*(-?\d+[.,]?\d*)\s*[,;\s]\s*(-?\d+[.,]?\d*)\s*$/);
     if (latLonMatch) {
-      const lat = parseFloat(latLonMatch[1]);
-      const lng = parseFloat(latLonMatch[2]);
+      const lat = parseCoord(latLonMatch[1]);
+      const lng = parseCoord(latLonMatch[2]);
       if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
         map.panTo({ lat, lng });
         map.setZoom(14);
@@ -1232,6 +1243,14 @@ export default function AdminRastrosTornadosPage() {
     }
   };
 
+  if (!isMounted) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-slate-950 text-slate-500">
+        <Loader2 className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 flex flex-col bg-slate-950 text-white z-40">
       {/* Header */}
@@ -1655,10 +1674,10 @@ export default function AdminRastrosTornadosPage() {
                       )}
                       <input type="url" value={beforeImage} onChange={(e) => setBeforeImage(e.target.value)} placeholder="Ou cole a URL da imagem Antes" className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm" />
                       <div className="grid grid-cols-4 gap-1 text-xs">
-                        <input type="number" step="any" placeholder="NE lat" value={beforeImageBounds?.ne?.lat ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: { lat: parseFloat(e.target.value) || 0, lng: b?.ne?.lng ?? 0 }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
-                        <input type="number" step="any" placeholder="NE lng" value={beforeImageBounds?.ne?.lng ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: { lat: b?.ne?.lat ?? 0, lng: parseFloat(e.target.value) || 0 }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
-                        <input type="number" step="any" placeholder="SW lat" value={beforeImageBounds?.sw?.lat ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: parseFloat(e.target.value) || 0, lng: b?.sw?.lng ?? 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
-                        <input type="number" step="any" placeholder="SW lng" value={beforeImageBounds?.sw?.lng ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: b?.sw?.lat ?? 0, lng: parseFloat(e.target.value) || 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="NE lat" value={beforeImageBounds?.ne?.lat ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: { lat: parseCoord(e.target.value), lng: b?.ne?.lng ?? 0 }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="NE lng" value={beforeImageBounds?.ne?.lng ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: { lat: b?.ne?.lat ?? 0, lng: parseCoord(e.target.value) }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="SW lat" value={beforeImageBounds?.sw?.lat ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: parseCoord(e.target.value), lng: b?.sw?.lng ?? 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="SW lng" value={beforeImageBounds?.sw?.lng ?? ''} onChange={(e) => setBeforeImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: b?.sw?.lat ?? 0, lng: parseCoord(e.target.value) } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
                       </div>
                       <p className="text-slate-500 text-xs">KMZ: imagem e coordenadas extraídas automaticamente. GeoTIFF também suportado.</p>
                     </div>
@@ -1698,10 +1717,10 @@ export default function AdminRastrosTornadosPage() {
                       )}
                       <input type="url" value={afterImage} onChange={(e) => setAfterImage(e.target.value)} placeholder="Ou cole a URL da imagem Depois" className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm" />
                       <div className="grid grid-cols-4 gap-1 text-xs">
-                        <input type="number" step="any" placeholder="NE lat" value={afterImageBounds?.ne?.lat ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: { lat: parseFloat(e.target.value) || 0, lng: b?.ne?.lng ?? 0 }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
-                        <input type="number" step="any" placeholder="NE lng" value={afterImageBounds?.ne?.lng ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: { lat: b?.ne?.lat ?? 0, lng: parseFloat(e.target.value) || 0 }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
-                        <input type="number" step="any" placeholder="SW lat" value={afterImageBounds?.sw?.lat ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: parseFloat(e.target.value) || 0, lng: b?.sw?.lng ?? 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
-                        <input type="number" step="any" placeholder="SW lng" value={afterImageBounds?.sw?.lng ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: b?.sw?.lat ?? 0, lng: parseFloat(e.target.value) || 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="NE lat" value={afterImageBounds?.ne?.lat ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: { lat: parseCoord(e.target.value), lng: b?.ne?.lng ?? 0 }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="NE lng" value={afterImageBounds?.ne?.lng ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: { lat: b?.ne?.lat ?? 0, lng: parseCoord(e.target.value) }, sw: b?.sw ?? { lat: 0, lng: 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="SW lat" value={afterImageBounds?.sw?.lat ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: parseCoord(e.target.value), lng: b?.sw?.lng ?? 0 } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
+                        <input type="text" placeholder="SW lng" value={afterImageBounds?.sw?.lng ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: b?.sw?.lat ?? 0, lng: parseCoord(e.target.value) } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
                       </div>
                       <p className="text-slate-500 text-xs">KMZ: imagem e coordenadas extraídas automaticamente. GeoTIFF também suportado.</p>
                     </div>
