@@ -1022,12 +1022,23 @@ export default function AdminRastrosTornadosPage() {
             resampleMethod: 'bilinear',
           } as any) as unknown as ArrayLike<number>;
 
+          // NoData value support
+          let noData: number | null = null;
+          try {
+            const nd = (image as any).getGDALNoData?.();
+            if (nd !== null && isFinite(nd)) noData = nd;
+          } catch {}
+
           const mins = Array<number>(nSamples).fill(Infinity);
           const maxs = Array<number>(nSamples).fill(-Infinity);
           for (let i = 0; i < pixelCount; i++) {
             for (let c = 0; c < nSamples; c++) {
               const v = Number((rasters as any)[i * nSamplesRaw + c]);
-              if (!isFinite(v)) continue;
+              if (!isFinite(v) || v === noData) continue;
+              // Ignore absolute 0 for min/max calculation if noData is not defined, 
+              // as it is the most common background value for satellite images
+              if (noData === null && v === 0) continue; 
+              
               if (v < mins[c]) mins[c] = v;
               if (v > maxs[c]) maxs[c] = v;
             }
@@ -1047,11 +1058,26 @@ export default function AdminRastrosTornadosPage() {
           const imgData = ctx.createImageData(w, h);
 
           for (let i = 0; i < pixelCount; i++) {
+            const isAnyNoData = nSamples >= 3 && 
+              (Number((rasters as any)[i * nSamplesRaw]) === (noData ?? 0) && 
+               Number((rasters as any)[i * nSamplesRaw + 1]) === (noData ?? 0) && 
+               Number((rasters as any)[i * nSamplesRaw + 2]) === (noData ?? 0));
+
+            if (isAnyNoData) {
+              imgData.data[i * 4] = 0;
+              imgData.data[i * 4 + 1] = 0;
+              imgData.data[i * 4 + 2] = 0;
+              imgData.data[i * 4 + 3] = 0;
+              continue;
+            }
+
             if (nSamples >= 3) {
               imgData.data[i * 4] = norm(Number((rasters as any)[i * nSamplesRaw]), 0);
               imgData.data[i * 4 + 1] = norm(Number((rasters as any)[i * nSamplesRaw + 1]), 1);
               imgData.data[i * 4 + 2] = norm(Number((rasters as any)[i * nSamplesRaw + 2]), 2);
-              imgData.data[i * 4 + 3] = nSamples >= 4 ? norm(Number((rasters as any)[i * nSamplesRaw + 3]), 3) : 255;
+              // Only use 4th band as Alpha if it's likely to be an RGBA image (exactly 4 bands)
+              // For multi-spectral (e.g. Landsat with 11 bands), force opaque (255)
+              imgData.data[i * 4 + 3] = nSamplesRaw === 4 ? norm(Number((rasters as any)[i * nSamplesRaw + 3]), 3) : 255;
             } else {
               const v = norm(Number((rasters as any)[i * nSamplesRaw]), 0);
               imgData.data[i * 4] = v;
