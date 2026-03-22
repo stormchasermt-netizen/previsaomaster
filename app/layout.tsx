@@ -1,10 +1,6 @@
-import './globals.css';
-import '@/lib/i18n';
-import 'react-image-crop/dist/ReactCrop.css';
-import type { Metadata } from 'next';
-import Script from 'next/script';
 import { Providers } from './providers';
 import AppLayout from '@/components/Layout';
+import I18nClient from '@/components/i18n-client';
 
 export const metadata: Metadata = {
   title: 'Previsão Master',
@@ -28,9 +24,11 @@ export default function RootLayout({
     <html lang="pt-BR" className="dark">
       <body>
         <Providers>
-          <AppLayout>
-            {children}
-          </AppLayout>
+          <I18nClient>
+            <AppLayout>
+              {children}
+            </AppLayout>
+          </I18nClient>
         </Providers>
         <Script src="/turf.min.js" strategy="beforeInteractive" />
         <Script
