@@ -1192,6 +1192,9 @@ export default function RastrosTornadosPage() {
     setRadarTimestamps([]);
     setRadarFrameIdx(0);
     setRadarStation(null);
+    setCptecAvailable(false);
+    setRedemetAvailable(false);
+    setRadarImageSource(null);
 
     if (track.radarWmsUrl?.trim()) {
       // WMS (SIGMA): usar URL cadastrada manualmente; bounds vêm do radar, não do rastro
@@ -1263,6 +1266,21 @@ export default function RastrosTornadosPage() {
       setRadarTimestamps(ts);
       setRadarFrameIdx(findClosestRadarFrameIdx(ts, track.time));
       setRadarsWithin300km([]);
+
+      // Prova proativa para Santiago
+      if (station.slug === 'santiago') {
+        const probeIdx = findClosestRadarFrameIdx(ts, track.time);
+        const probeTs12 = ts[probeIdx].slice(0, 12);
+        const cptecUrl = buildNowcastingPngUrl(station, probeTs12, 'reflectividade');
+        probeRadarImageExists(getProxiedRadarUrl(cptecUrl)).then(setCptecAvailable);
+        const area = getRedemetArea('santiago');
+        if (area) {
+          fetch(`/api/radar-redemet-find?area=${area}&ts12=${probeTs12}&historical=true`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.url) setRedemetAvailable(true); });
+        }
+      }
+
       setRadarLoading(false);
       return;
     }
@@ -1362,7 +1380,23 @@ export default function RastrosTornadosPage() {
     setRadarsWithin300km(radars);
     setRadarStation(preferred || radars[0]);
     setRadarTimestamps(ts);
-    setRadarFrameIdx(findClosestRadarFrameIdx(ts, track.time));
+    const initialIdx = findClosestRadarFrameIdx(ts, track.time);
+    setRadarFrameIdx(initialIdx);
+
+    // Prova proativa para Santiago quando selecionado via centroid
+    const st = preferred || radars[0];
+    if (st && 'slug' in st && st.slug === 'santiago') {
+      const probeTs12 = ts[initialIdx].slice(0, 12);
+      const cptecUrl = buildNowcastingPngUrl(st as CptecRadarStation, probeTs12, 'reflectividade');
+      probeRadarImageExists(getProxiedRadarUrl(cptecUrl)).then(setCptecAvailable);
+      const area = getRedemetArea('santiago');
+      if (area) {
+        fetch(`/api/radar-redemet-find?area=${area}&ts12=${probeTs12}&historical=true`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => { if (d?.url) setRedemetAvailable(true); });
+      }
+    }
+
     setRadarLoading(false);
   };
 
@@ -1986,9 +2020,19 @@ export default function RastrosTornadosPage() {
       const showError = () => {
         img.style.display = 'none';
         if (divEl) divEl.style.display = 'none';
-        const errMsg = useWms ? 'Falha ao carregar imagem de radar (WMS).'
-          : (usePng || useNowcastingPng) ? 'Falha ao carregar imagem PNG (CPTEC/REDEMET).'
-          : 'Falha ao carregar imagem do SIGMA.';
+        let errMsg = 'Falha ao carregar imagem.';
+        if (useWms) errMsg = 'Falha ao carregar radar (WMS).';
+        else if (useSigma) errMsg = 'Falha ao carregar radar (SIGMA).';
+        else if (useNowcastingPng || usePng) {
+          if (radarStation && 'slug' in radarStation && (radarStation as any).slug === 'santiago') {
+            errMsg = `Falha ao carregar radar de Santiago (${radarSourceMode === 'hd' ? 'HD/Redemet' : 'Super Res/CPTEC'}).`;
+            if (cptecAvailable && redemetAvailable) {
+              errMsg = 'Falha ao carregar radar de Santiago (ambas as fontes CPTEC/Redemet falharam).';
+            }
+          } else {
+            errMsg = 'Falha ao carregar imagem PNG (CPTEC/REDEMET).';
+          }
+        }
         setRadarError(errMsg);
         setRadarImageSource(null);
       };
@@ -2006,13 +2050,14 @@ export default function RastrosTornadosPage() {
           redemetFindPromise.then(redemetUrl => {
             if (!redemetUrl) { showError(); return; }
             img.onerror = () => showError();
-            img.onload = () => {
-              setRadarError(null);
-              setRadarImageSource('redemet');
-              setRedemetAvailable(true);
-              if (radarSourceMode !== 'hd') setRadarSourceMode('hd');
-              showImage();
-            };
+              img.onload = () => {
+                setRadarError(null);
+                setRadarImageSource('redemet');
+                setRedemetAvailable(true);
+                // Não forçar radarSourceMode para 'hd' se estivermos apenas tentando um fallback.
+                // Mas se for Santiago e CPTEC falhou, mantemos o modo atual.
+                showImage();
+              };
             img.src = getProxiedRadarUrl(redemetUrl);
           });
           return;
@@ -3537,7 +3582,7 @@ export default function RastrosTornadosPage() {
                         <span className="w-8 text-right shrink-0">{Math.round(radarOpacity * 100)}%</span>
                       </div>
                     )}
-                    {radarVisible && ( (cptecAvailable && redemetAvailable) || (radarStation && !('id' in radarStation) && hasRedemetFallback((radarStation as any).slug)) ) && (
+                    {radarVisible && (cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && radarStation.slug === 'santiago') && (
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-500 mr-1">Fonte:</span>
                         <button
@@ -3575,7 +3620,7 @@ export default function RastrosTornadosPage() {
                         <span className="text-xs text-slate-300 group-hover:text-white">Super Res (remove ruido)</span>
                       </label>
                     )}
-                    {radarImageSource && !radarError && !( (cptecAvailable && redemetAvailable) || (radarStation && !('id' in radarStation) && hasRedemetFallback((radarStation as any).slug)) ) && (
+                    {radarImageSource && !radarError && !(cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && radarStation.slug === 'santiago') && (
                       <p className="text-xs text-slate-400">Fonte: {radarImageSource === 'cptec' ? 'CPTEC (Super Res)' : 'REDEMET (HD)'}</p>
                     )}
                   </div>
