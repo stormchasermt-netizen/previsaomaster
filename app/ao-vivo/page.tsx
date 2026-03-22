@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -408,6 +408,7 @@ export default function AoVivoPage() {
 
   /** Nowcasting offline: detectado quando muitos radares falham ao carregar */
   const [nowcastingOffline, setNowcastingOffline] = useState(false);
+  const [minimizedNowcastingOffline, setMinimizedNowcastingOffline] = useState(false);
   /** Filtro de ruído de refletividade ativo (Super Res refletividade) — default: true */
   const [reflectivityFilterEnabled, setReflectivityFilterEnabled] = useState(true);
   /** Menu lateral aberto (hambúrguer) */
@@ -2008,6 +2009,7 @@ export default function AoVivoPage() {
         ov.getPanes()?.overlayLayer?.appendChild(divEl);
         tryNext();
       };
+      ov.getBounds = () => latLngBounds;
       ov.draw = () => {
         if (!divEl) return;
         const proj = ov.getProjection();
@@ -2167,6 +2169,7 @@ export default function AoVivoPage() {
       divEl.appendChild(inner);
       ov.getPanes()?.overlayLayer?.appendChild(divEl);
     };
+    ov.getBounds = () => latLngBounds;
     ov.draw = () => {
       if (!divEl) return;
       const proj = ov.getProjection();
@@ -2479,14 +2482,19 @@ export default function AoVivoPage() {
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="relative z-20 bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 flex items-center justify-between gap-3 flex-shrink-0 overflow-hidden"
+              className={`relative z-20 bg-amber-500/20 border-b border-amber-500/40 px-4 flex items-center justify-between gap-3 flex-shrink-0 overflow-hidden ${minimizedNowcastingOffline ? 'py-1' : 'py-2'}`}
             >
-              <div className="flex items-center gap-2 text-amber-300 text-xs sm:text-sm font-semibold">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>Os servidores do Nowcasting estão fora do ar. Imagens do Storage estão sendo utilizadas.</span>
+              <div 
+                className="flex items-center gap-2 text-amber-300 font-semibold cursor-pointer select-none overflow-hidden"
+                onClick={() => isDesktop ? null : setMinimizedNowcastingOffline(!minimizedNowcastingOffline)}
+              >
+                <AlertTriangle className={`flex-shrink-0 ${minimizedNowcastingOffline ? 'w-3 h-3' : 'w-4 h-4'}`} />
+                <span className={`${minimizedNowcastingOffline ? 'text-[9px]' : 'text-xs sm:text-sm'}`}>
+                  {minimizedNowcastingOffline ? 'Nowcasting offline (Storage ativo)' : 'Os servidores do Nowcasting estão fora do ar. Imagens do Storage estão sendo utilizadas.'}
+                </span>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                {redemetAvailableKeys.size > 0 && (
+                {!minimizedNowcastingOffline && redemetAvailableKeys.size > 0 && (
                   <button
                     onClick={() => setRadarSourceMode('hd')}
                     className="px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition-colors whitespace-nowrap"
@@ -2494,19 +2502,28 @@ export default function AoVivoPage() {
                     {t('live_show_redemet')}
                   </button>
                 )}
+                {!minimizedNowcastingOffline && (
+                  <button
+                    onClick={toggleAnimationSpeed}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0A0E17]/80 border border-white/10 text-slate-400 shadow-lg transition-all hover:text-white hover:border-cyan-500/40"
+                    title={t('live_animation_speed')}
+                  >
+                    <span className="font-bold text-[10px] uppercase">{t('live_animation_speed')}: {animationSpeedMultiplier}x</span>
+                  </button>
+                )}
                 <button
-                  onClick={toggleAnimationSpeed}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0A0E17]/80 border border-white/10 text-slate-400 shadow-lg transition-all hover:text-white hover:border-cyan-500/40"
-                  title={t('live_animation_speed')}
+                  onClick={() => setMinimizedNowcastingOffline(!minimizedNowcastingOffline)}
+                  className="p-1 rounded text-amber-400/60 hover:text-amber-300 transition-colors sm:hidden"
+                  aria-label={minimizedNowcastingOffline ? "Expandir" : "Minimizar"}
                 >
-                  <span className="font-bold text-[10px] uppercase">{t('live_animation_speed')}: {animationSpeedMultiplier}x</span>
+                  {minimizedNowcastingOffline ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-4 h-4" />}
                 </button>
                 <button
                   onClick={() => setNowcastingOffline(false)}
                   className="p-1 rounded text-amber-400/60 hover:text-amber-300 transition-colors"
                   aria-label="Fechar alerta"
                 >
-                  <X className="w-4 h-4" />
+                  <X className={`${minimizedNowcastingOffline ? 'w-3 h-3' : 'w-4 h-4'}`} />
                 </button>
               </div>
             </motion.div>

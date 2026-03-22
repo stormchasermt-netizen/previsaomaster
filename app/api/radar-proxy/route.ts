@@ -26,8 +26,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid url' }, { status: 400 });
   }
 
-  if (!ALLOWED_HOSTS.includes(parsed.hostname)) {
-    return NextResponse.json({ error: 'Host not allowed' }, { status: 403 });
+  if (!ALLOWED_HOSTS.includes(parsed.hostname) || url.includes('radar-proxy')) {
+    return NextResponse.json({ error: 'Host not allowed or recursive call' }, { status: 403 });
   }
 
   const isRedemet = ['redemet.decea.mil.br', 'estatico-redemet.decea.mil.br'].includes(parsed.hostname);

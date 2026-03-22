@@ -91,7 +91,8 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
   const html = await res.text();
 
   // Pattern from user: old/radar/.*?\.png
-  const regex = /old\/radar\/.*?\.png/;
+  // Make it specific to the requested area to avoid grabbing other radars (like 'be')
+  const regex = new RegExp(`old/radar/.*?/${area}/.*?\\.png`);
   const match = html.match(regex);
   
   if (!match?.[0]) {

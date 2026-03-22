@@ -37,10 +37,10 @@ const NO_REDEMET: Set<string> = new Set([
 
 /**
  * Verifica se o radar CPTEC tem fallback REDEMET.
+ * Usuário solicitou usar Redemet APENAS para Santiago.
  */
 export function hasRedemetFallback(slug: string): boolean {
-  if (NO_REDEMET.has(slug)) return false;
-  return slug in CPTEC_TO_REDEMET;
+  return slug === 'santiago';
 }
 
 /**
