@@ -139,6 +139,8 @@ export default function AdminRastrosTornadosPage() {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [appliedStartDate, setAppliedStartDate] = useState('');
   const [appliedEndDate, setAppliedEndDate] = useState('');
+  const [imageMappingMode, setImageMappingMode] = useState<'none' | 'before' | 'after'>('none');
+  const rectInstanceRef = useRef<any>(null);
 
   const filteredTracks = React.useMemo(() => {
     if (!appliedStartDate && !appliedEndDate) return tracks;
@@ -340,7 +342,10 @@ export default function AdminRastrosTornadosPage() {
       const bounds = makeBounds(afterImageBounds);
       const overlay = createImageOverlay(afterUrl, bounds, overlayAfterOpacity);
       overlayAfterRef.current = overlay;
-      map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      // Somente faz fitBounds se não estiver no modo de mapeamento (para não atrapalhar o usuário editando)
+      if (imageMappingMode === 'none') {
+        map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      }
     }
 
     return () => {
@@ -353,7 +358,99 @@ export default function AdminRastrosTornadosPage() {
         overlayAfterRef.current = null;
       }
     };
-  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity]);
+  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode]);
+
+  // Gerenciamento do Retângulo de Mapeamento de Imagem
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReady) return;
+    const map = mapInstanceRef.current;
+
+    // Se o modo for 'none', remove o retângulo
+    if (imageMappingMode === 'none') {
+      if (rectInstanceRef.current) {
+        rectInstanceRef.current.setMap(null);
+        rectInstanceRef.current = null;
+      }
+      return;
+    }
+
+    const currentBounds = imageMappingMode === 'before' ? beforeImageBounds : afterImageBounds;
+    const setBounds = imageMappingMode === 'before' ? setBeforeImageBounds : setAfterImageBounds;
+    const setShowOverlay = imageMappingMode === 'before' ? setShowOverlayBefore : setShowOverlayAfter;
+
+    // Ativa o overlay da imagem correspondente para feedback visual
+    setShowOverlay(true);
+
+    let initialBounds;
+    if (currentBounds) {
+      initialBounds = {
+        north: Math.max(currentBounds.ne.lat, currentBounds.sw.lat),
+        south: Math.min(currentBounds.ne.lat, currentBounds.sw.lat),
+        east: Math.max(currentBounds.ne.lng, currentBounds.sw.lng),
+        west: Math.min(currentBounds.ne.lng, currentBounds.sw.lng),
+      };
+    } else {
+      // Se não tem bounds, cria um retângulo padrão no centro do mapa
+      const center = map.getCenter();
+      const lat = center.lat();
+      const lng = center.lng();
+      const offset = 0.01;
+      initialBounds = {
+        north: lat + offset,
+        south: lat - offset,
+        east: lng + offset,
+        west: lng - offset,
+      };
+      // Define os bounds iniciais no estado para que o overlay apareça
+      setBounds({
+        ne: { lat: initialBounds.north, lng: initialBounds.east },
+        sw: { lat: initialBounds.south, lng: initialBounds.west }
+      });
+    }
+
+    if (rectInstanceRef.current) {
+      rectInstanceRef.current.setMap(null);
+    }
+
+    const rect = new google.maps.Rectangle({
+      bounds: initialBounds,
+      editable: true,
+      draggable: true,
+      map: map,
+      strokeColor: imageMappingMode === 'before' ? '#fbbf24' : '#10b981',
+      strokeOpacity: 0.8,
+      strokeWeight: 2,
+      fillColor: imageMappingMode === 'before' ? '#fbbf24' : '#10b981',
+      fillOpacity: 0.1,
+      zIndex: 200,
+    });
+
+    rectInstanceRef.current = rect;
+
+    const updateBoundsState = () => {
+      const b = rect.getBounds();
+      if (!b) return;
+      const ne = b.getNorthEast();
+      const sw = b.getSouthWest();
+      setBounds({
+        ne: { lat: ne.lat(), lng: ne.lng() },
+        sw: { lat: sw.lat(), lng: sw.lng() },
+      });
+    };
+
+    rect.addListener('bounds_changed', updateBoundsState);
+    rect.addListener('dragend', updateBoundsState);
+
+    // Ajusta o zoom para ver o retângulo
+    map.fitBounds(initialBounds, { top: 100, right: 100, bottom: 100, left: 100 });
+
+    return () => {
+      if (rectInstanceRef.current) {
+        rectInstanceRef.current.setMap(null);
+        rectInstanceRef.current = null;
+      }
+    };
+  }, [imageMappingMode, mapReady]);
 
   // Desenhar todos os rastros no mapa (exceto o que está sendo editado); clique abre edição
   useEffect(() => {
@@ -1535,6 +1632,14 @@ export default function AdminRastrosTornadosPage() {
                           <input type="checkbox" checked={showOverlayBefore} onChange={(e) => setShowOverlayBefore(e.target.checked)} className="rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500" />
                           Mostrar Antes no mapa
                         </label>
+                        <button
+                          type="button"
+                          onClick={() => setImageMappingMode(imageMappingMode === 'before' ? 'none' : 'before')}
+                          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${imageMappingMode === 'before' ? 'bg-amber-500 text-black border-amber-400' : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600'}`}
+                        >
+                          <Layers className="w-4 h-4" />
+                          {imageMappingMode === 'before' ? 'Concluir Ajuste' : 'Ajustar no Mapa'}
+                        </button>
                       </div>
                       {showOverlayBefore && (
                         <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -1570,6 +1675,14 @@ export default function AdminRastrosTornadosPage() {
                           <input type="checkbox" checked={showOverlayAfter} onChange={(e) => setShowOverlayAfter(e.target.checked)} className="rounded border-slate-500 bg-slate-800 text-amber-500 focus:ring-amber-500" />
                           Mostrar Depois no mapa
                         </label>
+                        <button
+                          type="button"
+                          onClick={() => setImageMappingMode(imageMappingMode === 'after' ? 'none' : 'after')}
+                          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${imageMappingMode === 'after' ? 'bg-emerald-500 text-black border-emerald-400' : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600'}`}
+                        >
+                          <Layers className="w-4 h-4" />
+                          {imageMappingMode === 'after' ? 'Concluir Ajuste' : 'Ajustar no Mapa'}
+                        </button>
                       </div>
                       {showOverlayAfter && (
                         <div className="flex items-center gap-2 text-xs text-slate-400">

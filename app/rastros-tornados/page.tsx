@@ -470,6 +470,9 @@ export default function RastrosTornadosPage() {
   const [editRadarCustomBounds, setEditRadarCustomBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null);
   const [useEditCustomBounds, setUseEditCustomBounds] = useState(false);
   const [isSavingRadarEdit, setIsSavingRadarEdit] = useState(false);
+  const [imageMappingMode, setImageMappingMode] = useState<'none' | 'before' | 'after'>('none');
+  const imageRectRef = useRef<any>(null);
+  const [isSavingImageBounds, setIsSavingImageBounds] = useState(false);
   const handleOpenRadarEdit = () => {
     if (!selectedTrack) return;
     
@@ -710,6 +713,8 @@ export default function RastrosTornadosPage() {
   const trackImageGroundOverlayRef = useRef<any>(null);
   const overlayBeforeRef = useRef<any>(null);
   const overlayAfterRef = useRef<any>(null);
+  const [tempBeforeImageBounds, setTempBeforeImageBounds] = useState<{ ne: { lat: number; lng: number }; sw: { lat: number; lng: number } } | null>(null);
+  const [tempAfterImageBounds, setTempAfterImageBounds] = useState<{ ne: { lat: number; lng: number }; sw: { lat: number; lng: number } } | null>(null);
   const knownTrackIdsRef = useRef<Set<string>>(new Set());
   const initialTracksLoadedRef = useRef(false);
 
@@ -2006,8 +2011,17 @@ export default function RastrosTornadosPage() {
 
     const beforeUrl = selectedTrack.beforeImage?.trim();
     const afterUrl = selectedTrack.afterImage?.trim();
-    const hasBeforeBounds = selectedTrack.beforeImageBounds && beforeUrl;
-    const hasAfterBounds = selectedTrack.afterImageBounds && afterUrl;
+    
+    // Bounds ativos: se estiver mapeando, usa os temporários; senão, os do rastro
+    const activeBeforeBounds = (imageMappingMode === 'before' && tempBeforeImageBounds) 
+      ? tempBeforeImageBounds 
+      : selectedTrack.beforeImageBounds;
+    const activeAfterBounds = (imageMappingMode === 'after' && tempAfterImageBounds) 
+      ? tempAfterImageBounds 
+      : selectedTrack.afterImageBounds;
+
+    const hasBeforeBounds = activeBeforeBounds && beforeUrl;
+    const hasAfterBounds = activeAfterBounds && afterUrl;
 
     if (trackImageOverlayVisible && selectedTrack.trackImage?.trim() && selectedTrack.trackImageBounds) {
       const bounds = makeBounds(selectedTrack.trackImageBounds);
@@ -2016,14 +2030,22 @@ export default function RastrosTornadosPage() {
       map.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
     }
     if (overlayBeforeVisible && hasBeforeBounds) {
-      const bounds = makeBounds(selectedTrack.beforeImageBounds!);
+      const bounds = makeBounds(activeBeforeBounds!);
       const overlay = createImageOverlayView(beforeUrl!, bounds, map, overlayBeforeOpacity);
       overlayBeforeRef.current = overlay;
+      // Somente fitBounds inicial se não estiver mapeando
+      if (imageMappingMode === 'none') {
+        map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      }
     }
     if (overlayAfterVisible && hasAfterBounds) {
-      const bounds = makeBounds(selectedTrack.afterImageBounds!);
+      const bounds = makeBounds(activeAfterBounds!);
       const overlay = createImageOverlayView(afterUrl!, bounds, map, overlayAfterOpacity);
       overlayAfterRef.current = overlay;
+      // Somente fitBounds inicial se não estiver mapeando
+      if (imageMappingMode === 'none') {
+        map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      }
     }
 
     return () => {
@@ -2040,7 +2062,116 @@ export default function RastrosTornadosPage() {
         overlayAfterRef.current = null;
       }
     };
-  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity]);
+  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode, tempBeforeImageBounds, tempAfterImageBounds]);
+
+  // Gerenciamento do Retângulo de Mapeamento de Imagem (Main Page - Admin Only)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReady || imageMappingMode === 'none') {
+      if (imageRectRef.current) {
+        imageRectRef.current.setMap(null);
+        imageRectRef.current = null;
+      }
+      return;
+    }
+
+    const map = mapInstanceRef.current;
+    const isBefore = imageMappingMode === 'before';
+    const currentBounds = isBefore 
+      ? (tempBeforeImageBounds || selectedTrack?.beforeImageBounds) 
+      : (tempAfterImageBounds || selectedTrack?.afterImageBounds);
+
+    let initialBounds;
+    if (currentBounds) {
+      initialBounds = {
+        north: Math.max(currentBounds.ne.lat, currentBounds.sw.lat),
+        south: Math.min(currentBounds.ne.lat, currentBounds.sw.lat),
+        east: Math.max(currentBounds.ne.lng, currentBounds.sw.lng),
+        west: Math.min(currentBounds.ne.lng, currentBounds.sw.lng),
+      };
+    } else {
+      const center = map.getCenter();
+      const lat = center.lat();
+      const lng = center.lng();
+      const offset = 0.01;
+      initialBounds = {
+        north: lat + offset, south: lat - offset,
+        east: lng + offset, west: lng - offset,
+      };
+    }
+
+    if (imageRectRef.current) imageRectRef.current.setMap(null);
+
+    const rect = new google.maps.Rectangle({
+      bounds: initialBounds,
+      editable: true,
+      draggable: true,
+      map: map,
+      strokeColor: isBefore ? '#fbbf24' : '#10b981',
+      strokeOpacity: 0.8,
+      strokeWeight: 2,
+      fillColor: isBefore ? '#fbbf24' : '#10b981',
+      fillOpacity: 0.1,
+      zIndex: 3000,
+    });
+
+    imageRectRef.current = rect;
+
+    const updateTempBounds = () => {
+      const b = rect.getBounds();
+      if (!b) return;
+      const ne = b.getNorthEast();
+      const sw = b.getSouthWest();
+      const newBounds = {
+        ne: { lat: ne.lat(), lng: ne.lng() },
+        sw: { lat: sw.lat(), lng: sw.lng() },
+      };
+      if (isBefore) setTempBeforeImageBounds(newBounds);
+      else setTempAfterImageBounds(newBounds);
+    };
+
+    rect.addListener('bounds_changed', updateTempBounds);
+    rect.addListener('dragend', updateTempBounds);
+
+    map.fitBounds(initialBounds, { top: 100, right: 100, bottom: 100, left: 100 });
+
+    return () => {
+      if (imageRectRef.current) {
+        imageRectRef.current.setMap(null);
+        imageRectRef.current = null;
+      }
+    };
+  }, [imageMappingMode, mapReady, selectedTrack?.id]);
+
+  const handleSaveImageBounds = async () => {
+    if (!selectedTrack || !user || imageMappingMode === 'none') return;
+    setIsSavingImageBounds(true);
+    try {
+      const isBefore = imageMappingMode === 'before';
+      const updatedBounds = isBefore ? tempBeforeImageBounds : tempAfterImageBounds;
+      
+      if (!updatedBounds) {
+        setIsSavingImageBounds(false);
+        return;
+      }
+
+      const updatedTrack: TornadoTrack = {
+        ...selectedTrack,
+        beforeImageBounds: isBefore ? updatedBounds : selectedTrack.beforeImageBounds,
+        afterImageBounds: !isBefore ? updatedBounds : selectedTrack.afterImageBounds,
+      };
+
+      await saveTornadoTrack(updatedTrack, user.uid);
+      
+      setSelectedTrack(updatedTrack);
+      setTracks(prev => prev.map(t => t.id === updatedTrack.id ? updatedTrack : t));
+      setImageMappingMode('none');
+      addToast('Limites da imagem salvos com sucesso.', 'success');
+    } catch (e: any) {
+      addToast(`Erro ao salvar limites: ${e.message}`, 'error');
+    } finally {
+      setIsSavingImageBounds(false);
+    }
+  };
 
   // GOES-16 overlay: desenha o frame atual recortado na área do tornado (NASA GIBS)
   useEffect(() => {
@@ -3581,6 +3712,40 @@ export default function RastrosTornadosPage() {
                               {overlayBeforeVisible ? 'Remover overlay' : 'Ver Antes no mapa'}
                             </button>
                           )}
+                          {user?.type === 'admin' && (
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              {imageMappingMode === 'before' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveImageBounds}
+                                    disabled={isSavingImageBounds}
+                                    className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1"
+                                  >
+                                    {isSavingImageBounds ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                    Salvar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setImageMappingMode('none'); setTempBeforeImageBounds(null); }}
+                                    className="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-[10px] font-bold"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => { setImageMappingMode('before'); setOverlayBeforeVisible(true); }}
+                                  disabled={imageMappingMode !== 'none'}
+                                  className="px-2 py-0.5 rounded border border-amber-500/50 text-amber-400 hover:bg-amber-500/10 text-[10px] font-bold flex items-center gap-1 disabled:opacity-50"
+                                >
+                                  <Layers className="w-3 h-3" />
+                                  Ajustar bounds
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                         {overlayBeforeVisible && selectedTrack.beforeImageBounds && (
                           <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -3616,6 +3781,40 @@ export default function RastrosTornadosPage() {
                             >
                               {overlayAfterVisible ? 'Remover overlay' : 'Ver Depois no mapa'}
                             </button>
+                          )}
+                          {user?.type === 'admin' && (
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              {imageMappingMode === 'after' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveImageBounds}
+                                    disabled={isSavingImageBounds}
+                                    className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1"
+                                  >
+                                    {isSavingImageBounds ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                                    Salvar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setImageMappingMode('none'); setTempAfterImageBounds(null); }}
+                                    className="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-[10px] font-bold"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => { setImageMappingMode('after'); setOverlayAfterVisible(true); }}
+                                  disabled={imageMappingMode !== 'none'}
+                                  className="px-2 py-0.5 rounded border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 text-[10px] font-bold flex items-center gap-1 disabled:opacity-50"
+                                >
+                                  <Layers className="w-3 h-3" />
+                                  Ajustar bounds
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                         {overlayAfterVisible && selectedTrack.afterImageBounds && (
