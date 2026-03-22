@@ -438,6 +438,13 @@ export default function RastrosTornadosPage() {
   const [radarFrameIdx, setRadarFrameIdx] = useState(0);
   const [radarLoading, setRadarLoading] = useState(false);
   const [radarPlaying, setRadarPlaying] = useState(false);
+  
+  // Arraste do Editor de Radar
+  const radarEditDraggingRef = useRef(false);
+  const radarEditDragOffsetRef = useRef({ x: 0, y: 0 });
+  const radarEditRef = useRef<HTMLDivElement>(null);
+  const [radarEditPosition, setRadarEditPosition] = useState<{ x: number; y: number }>({ x: 400, y: 100 });
+  const [radarEditMinimized, setRadarEditMinimized] = useState(false);
   /** Estação selecionada (CPTEC ou Argentina); null se usar WMS. */
   const [radarStation, setRadarStation] = useState<CptecRadarStation | ArgentinaRadarStation | null>(null);
   /** Radares dentro de 350 km (CPTEC + Argentina, para dropdown) */
@@ -480,6 +487,12 @@ export default function RastrosTornadosPage() {
     setUseEditCustomBounds(!!selectedTrack.radarCustomBounds);
     
     setIsRadarEditMode(true);
+    setRadarEditMinimized(false);
+    
+    // Posicionar o painel à direita ao abrir, se estiver muito longe
+    const containerWidth = mapContainerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    const panelWidth = 384;
+    setRadarEditPosition({ x: Math.max(16, containerWidth - panelWidth - 16), y: 80 });
   };
 
   const handleSaveRadarEdit = async () => {
@@ -582,6 +595,69 @@ export default function RastrosTornadosPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRadarEditMode, useEditCustomBounds, editRadarLat, editRadarLng, editRadarRangeKm, editRadarCustomBounds]);
+
+  const clampRadarEditPosition = useCallback((x: number, y: number) => {
+    const containerRect = mapContainerRef.current?.getBoundingClientRect();
+    const panelEl = radarEditRef.current;
+    const panelWidth = panelEl ? panelEl.getBoundingClientRect().width : 384;
+    const panelHeight = panelEl ? panelEl.getBoundingClientRect().height : 500;
+    const margin = 12;
+    const containerWidth = containerRect?.width ?? window.innerWidth;
+    const containerHeight = containerRect?.height ?? window.innerHeight;
+    const maxX = Math.max(margin, containerWidth - panelWidth - margin);
+    const maxY = Math.max(margin, containerHeight - panelHeight - margin);
+    return {
+      x: Math.min(Math.max(x, margin), maxX),
+      y: Math.min(Math.max(y, margin), maxY),
+    };
+  }, []);
+
+  const handleRadarEditPointerMove = useCallback((e: PointerEvent) => {
+    if (!radarEditDraggingRef.current) return;
+    e.preventDefault();
+    const containerRect = mapContainerRef.current?.getBoundingClientRect();
+    const pointerX = e.clientX - (containerRect?.left ?? 0);
+    const pointerY = e.clientY - (containerRect?.top ?? 0);
+    const nextX = pointerX - radarEditDragOffsetRef.current.x;
+    const nextY = pointerY - radarEditDragOffsetRef.current.y;
+    setRadarEditPosition(clampRadarEditPosition(nextX, nextY));
+  }, [clampRadarEditPosition]);
+
+  const stopRadarEditDrag = useCallback(() => {
+    if (!radarEditDraggingRef.current) return;
+    radarEditDraggingRef.current = false;
+    document.body.style.userSelect = '';
+    window.removeEventListener('pointermove', handleRadarEditPointerMove);
+    window.removeEventListener('pointerup', stopRadarEditDrag);
+    window.removeEventListener('pointercancel', stopRadarEditDrag);
+  }, [handleRadarEditPointerMove]);
+
+  const startRadarEditDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !radarEditRef.current) return;
+    // Não arrastar se clicar em botões ou inputs
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input')) return;
+    
+    e.preventDefault();
+    const containerRect = mapContainerRef.current?.getBoundingClientRect();
+    const containerLeft = containerRect?.left ?? 0;
+    const containerTop = containerRect?.top ?? 0;
+    const rect = radarEditRef.current.getBoundingClientRect();
+    const panelLeft = rect.left - containerLeft;
+    const panelTop = rect.top - containerTop;
+    const pointerX = e.clientX - containerLeft;
+    const pointerY = e.clientY - containerTop;
+    
+    radarEditDragOffsetRef.current = {
+      x: pointerX - panelLeft,
+      y: pointerY - panelTop,
+    };
+    radarEditDraggingRef.current = true;
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', handleRadarEditPointerMove);
+    window.addEventListener('pointerup', stopRadarEditDrag);
+    window.addEventListener('pointercancel', stopRadarEditDrag);
+  };
   const goesOverlayRef = useRef<any>(null);
   const radarOverlayRef = useRef<any>(null);
   const radarTimelineOverlaysRef = useRef<any[]>([]);
@@ -4402,21 +4478,34 @@ export default function RastrosTornadosPage() {
         </aside>
       </div>
 
-      {/* Painel de Edição de Radar (Admin) */}
+      {/* Painel de Edição de Radar (Admin) - Floating and Draggable */}
       {isRadarEditMode && selectedTrack && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden flex flex-col shadow-2xl">
-              <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-800/50">
-                <div className="flex items-center gap-2">
-                  <Radar className="w-5 h-5 text-cyan-400" />
-                  <h3 className="font-bold text-white">Editar Radar (Rastro)</h3>
-                </div>
-                <button onClick={() => setIsRadarEditMode(false)} className="p-1 hover:bg-slate-700 rounded-full transition-colors text-slate-400 hover:text-white">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-slate-900/50 max-h-[80vh]">
+        <div 
+          ref={radarEditRef}
+          style={{ left: radarEditPosition.x, top: radarEditPosition.y }}
+          className={`fixed z-[100] w-[320px] sm:w-[384px] overflow-hidden flex flex-col shadow-2xl bg-slate-900 border border-slate-700 rounded-2xl transition-shadow duration-200 ${radarEditDraggingRef.current ? 'shadow-cyan-500/20 ring-1 ring-cyan-500/30' : ''}`}
+        >
+          <div 
+            onPointerDown={startRadarEditDrag}
+            className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-800 bg-slate-800/50 cursor-move"
+          >
+            <div className="flex items-center gap-2">
+              <Radar className="w-4 h-4 sm:w-5 h-5 text-cyan-400" />
+              <h3 className="font-bold text-white text-xs sm:text-sm">Editar Radar (Rastro)</h3>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setRadarEditMinimized(!radarEditMinimized)} className="p-1 hover:bg-slate-700 rounded-full transition-colors text-slate-400 hover:text-white" title={radarEditMinimized ? "Expandir" : "Minimizar"}>
+                {radarEditMinimized ? <ChevronDown className="w-4 h-4 sm:w-5 h-5" /> : <ChevronUp className="w-4 h-4 sm:w-5 h-5" />}
+              </button>
+              <button onClick={() => setIsRadarEditMode(false)} className="p-1 hover:bg-slate-700 rounded-full transition-colors text-slate-400 hover:text-white" title="Fechar">
+                <X className="w-4 h-4 sm:w-5 h-5" />
+              </button>
+            </div>
+          </div>
+          
+          {!radarEditMinimized && (
+            <>
+              <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-slate-900/50 max-h-[70vh]">
                 <div className="space-y-4">
                    <div className="space-y-2">
                      <div className="flex justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold">
@@ -4535,7 +4624,8 @@ export default function RastrosTornadosPage() {
                   Salvar
                 </button>
               </div>
-           </div>
+            </>
+          )}
         </div>
       )}
     </div>
