@@ -527,74 +527,93 @@ export default function RastrosTornadosPage() {
     }
   };
 
-  // Marcador draggable do radar e Rectangle para Bounds no modo edição (Admin)
+  // Gerenciamento do Marcador e Retângulo de Radar (Admin)
   useEffect(() => {
-    if (!mapInstanceRef.current || !isRadarEditMode || !selectedTrack) return;
+    if (!mapInstanceRef.current || !isRadarEditMode) {
+      if (radarMarkerRef.current) { radarMarkerRef.current.setMap(null); radarMarkerRef.current = null; }
+      if (radarRectRef.current) { radarRectRef.current.setMap(null); radarRectRef.current = null; }
+      return;
+    }
+
     const map = mapInstanceRef.current;
-    
-    const marker = new google.maps.Marker({
-      map,
-      position: { lat: editRadarLat, lng: editRadarLng },
-      draggable: true,
-      icon: {
-        url: '/radar-icon.svg',
-        scaledSize: new google.maps.Size(32, 32),
-        anchor: new google.maps.Point(16, 16),
-      },
-      title: 'Arraste para posicionar o radar',
-      zIndex: 2000,
-    });
-    
-    marker.addListener('dragend', () => {
-      const pos = marker.getPosition();
-      if (pos) {
-        setEditRadarLat(pos.lat());
-        setEditRadarLng(pos.lng());
-      }
-    });
 
-    let rect: any = null;
-    if (useEditCustomBounds) {
-      const initialBounds = editRadarCustomBounds || (() => {
-        const b = calculateRadarBounds(editRadarLat, editRadarLng, editRadarRangeKm);
-        return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
-      })();
-
-      rect = new google.maps.Rectangle({
+    // Criar ou Atualizar Marcador do Centro
+    if (!radarMarkerRef.current) {
+      radarMarkerRef.current = new google.maps.Marker({
         map,
-        bounds: {
-          north: initialBounds.north,
-          south: initialBounds.south,
-          east: initialBounds.east,
-          west: initialBounds.west,
-        },
-        editable: true,
         draggable: true,
-        fillOpacity: 0.1,
-        strokeColor: '#fbbf24',
-        strokeWeight: 2,
-        zIndex: 1900,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#22d3ee',
+          fillOpacity: 1,
+          strokeWeight: 2,
+          strokeColor: '#0e7490',
+          scale: 10,
+        },
+        title: 'Arraste para posicionar o radar',
+        label: { text: 'R', color: '#ffffff', fontSize: '10px', fontWeight: 'bold' },
+        zIndex: 2000,
       });
-      
-      rect.addListener('bounds_changed', () => {
-        const b = rect.getBounds();
-        if (b) {
-          setEditRadarCustomBounds({
-            north: b.getNorthEast().lat(),
-            south: b.getSouthWest().lat(),
-            east: b.getNorthEast().lng(),
-            west: b.getSouthWest().lng(),
-          });
+
+      radarMarkerRef.current.addListener('drag', () => {
+        const pos = radarMarkerRef.current.getPosition();
+        if (pos) {
+          setEditRadarLat(pos.lat());
+          setEditRadarLng(pos.lng());
         }
       });
     }
+    radarMarkerRef.current.setPosition({ lat: editRadarLat, lng: editRadarLng });
+
+    // Criar ou Atualizar Retângulo de Bounds
+    if (useEditCustomBounds) {
+      if (!radarRectRef.current) {
+        const initialBounds = editRadarCustomBounds || (() => {
+          const b = calculateRadarBounds(editRadarLat, editRadarLng, editRadarRangeKm);
+          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+        })();
+
+        radarRectRef.current = new google.maps.Rectangle({
+          map,
+          bounds: { 
+            north: initialBounds.north, 
+            south: initialBounds.south, 
+            east: initialBounds.east, 
+            west: initialBounds.west 
+          },
+          editable: true,
+          draggable: true,
+          fillOpacity: 0.1,
+          strokeColor: '#fbbf24',
+          strokeWeight: 2,
+          zIndex: 1900,
+        });
+
+        radarRectRef.current.addListener('bounds_changed', () => {
+          const b = radarRectRef.current.getBounds();
+          if (b) {
+            setEditRadarCustomBounds({
+              north: b.getNorthEast().lat(),
+              south: b.getSouthWest().lat(),
+              east: b.getNorthEast().lng(),
+              west: b.getSouthWest().lng(),
+            });
+          }
+        });
+      }
+    } else {
+      if (radarRectRef.current) {
+        radarRectRef.current.setMap(null);
+        radarRectRef.current = null;
+      }
+    }
 
     return () => {
-      marker.setMap(null);
-      if (rect) rect.setMap(null);
+      // Opcional: não remover no cleanup se quisermos manter a instância viva entre renders curtos,
+      // mas como o unmount do componente ou mudança de isRadarEditMode importa, tratamos no início do effect.
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRadarEditMode, useEditCustomBounds, editRadarLat, editRadarLng, editRadarRangeKm, editRadarCustomBounds]);
+  }, [isRadarEditMode, useEditCustomBounds, editRadarLat, editRadarLng]); 
+  // Nota: tiramos editRadarCustomBounds da dep para evitar loop infinito com o listener de bounds_changed
 
   const clampRadarEditPosition = useCallback((x: number, y: number) => {
     const containerRect = mapContainerRef.current?.getBoundingClientRect();
@@ -658,6 +677,8 @@ export default function RastrosTornadosPage() {
     window.addEventListener('pointerup', stopRadarEditDrag);
     window.addEventListener('pointercancel', stopRadarEditDrag);
   };
+  const radarMarkerRef = useRef<any>(null);
+  const radarRectRef = useRef<any>(null);
   const goesOverlayRef = useRef<any>(null);
   const radarOverlayRef = useRef<any>(null);
   const radarTimelineOverlaysRef = useRef<any[]>([]);
