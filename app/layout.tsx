@@ -1,3 +1,7 @@
+import './globals.css';
+import 'react-image-crop/dist/ReactCrop.css';
+import type { Metadata } from 'next';
+import Script from 'next/script';
 import { Providers } from './providers';
 import AppLayout from '@/components/Layout';
 import I18nClient from '@/components/i18n-client';
