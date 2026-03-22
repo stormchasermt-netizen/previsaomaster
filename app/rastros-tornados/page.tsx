@@ -1507,13 +1507,13 @@ export default function RastrosTornadosPage() {
       setRadarFrameIdx(findClosestRadarFrameIdx(ts, track.time));
       setRadarsWithin300km([]);
 
-      // Prova proativa para Santiago
-      if (station.slug === 'santiago') {
+      // Prova proativa para Santiago e Morro da Igreja
+      if (station.slug === 'santiago' || station.slug === 'morroigreja') {
         const probeIdx = findClosestRadarFrameIdx(ts, track.time);
         const probeTs12 = ts[probeIdx].slice(0, 12);
         const cptecUrl = buildNowcastingPngUrl(station, probeTs12, 'reflectividade');
         probeRadarImageExists(getProxiedRadarUrl(cptecUrl)).then(setCptecAvailable);
-        const area = getRedemetArea('santiago');
+        const area = getRedemetArea(station.slug);
         if (area) {
           fetch(`/api/radar-redemet-find?area=${area}&ts12=${probeTs12}&historical=true`)
             .then(r => r.ok ? r.json() : null)
@@ -1625,11 +1625,11 @@ export default function RastrosTornadosPage() {
 
     // Prova proativa para Santiago quando selecionado via centroid
     const st = preferred || radars[0];
-    if (st && 'slug' in st && st.slug === 'santiago') {
+    if (st && 'slug' in st && (st.slug === 'santiago' || st.slug === 'morroigreja')) {
       const probeTs12 = ts[initialIdx].slice(0, 12);
       const cptecUrl = buildNowcastingPngUrl(st as CptecRadarStation, probeTs12, 'reflectividade');
       probeRadarImageExists(getProxiedRadarUrl(cptecUrl)).then(setCptecAvailable);
-      const area = getRedemetArea('santiago');
+      const area = getRedemetArea(st.slug);
       if (area) {
         fetch(`/api/radar-redemet-find?area=${area}&ts12=${probeTs12}&historical=true`)
           .then(r => r.ok ? r.json() : null)
@@ -2248,8 +2248,8 @@ export default function RastrosTornadosPage() {
     let radarCfgSlug = radarStation
       ? (isArgentinaRadar ? `argentina:${radarStation.id}` : (radarStation as CptecRadarStation).slug)
       : null;
-    if (radarCfgSlug === 'santiago' && radarSourceMode === 'hd') {
-      radarCfgSlug = 'santiago-redemet';
+    if ((radarCfgSlug === 'santiago' || radarCfgSlug === 'morroigreja') && radarSourceMode === 'hd') {
+      radarCfgSlug = `${radarCfgSlug}-redemet`;
     }
     const radarCfg = radarCfgSlug
       ? radarConfigs.find((c) => c.id === radarCfgSlug || c.stationSlug === radarCfgSlug)
@@ -2341,7 +2341,8 @@ export default function RastrosTornadosPage() {
       url = buildRadarPngUrl(radarCfg.urlTemplate, ts12);
       const cptecSt = radarStation && !isArgentinaRadar ? radarStation as CptecRadarStation : null;
       hasRedemetFb = !!cptecSt && hasRedemetFallback(cptecSt.slug);
-      const hdSantiago = radarSourceMode === 'hd' && cptecSt?.slug === 'santiago';
+      const isHdRadar = (cptecSt?.slug === 'santiago' || cptecSt?.slug === 'morroigreja');
+      const hdSourceActive = radarSourceMode === 'hd' && isHdRadar;
       bounds = {
         north: radarCfg.bounds.ne.lat,
         south: radarCfg.bounds.sw.lat,
@@ -2414,10 +2415,11 @@ export default function RastrosTornadosPage() {
         if (useWms) errMsg = 'Falha ao carregar radar (WMS).';
         else if (useSigma) errMsg = 'Falha ao carregar radar (SIGMA).';
         else if (useNowcastingPng || usePng) {
-          if (radarStation && 'slug' in radarStation && (radarStation as any).slug === 'santiago') {
-            errMsg = `Falha ao carregar radar de Santiago (${radarSourceMode === 'hd' ? 'HD/Redemet' : 'Super Res/CPTEC'}).`;
+          if (radarStation && 'slug' in radarStation && ((radarStation as any).slug === 'santiago' || (radarStation as any).slug === 'morroigreja')) {
+            const stName = (radarStation as any).slug === 'santiago' ? 'Santiago' : 'Morro da Igreja';
+            errMsg = `Falha ao carregar radar de ${stName} (${radarSourceMode === 'hd' ? 'HD/Redemet' : 'Super Res/CPTEC'}).`;
             if (cptecAvailable && redemetAvailable) {
-              errMsg = 'Falha ao carregar radar de Santiago (ambas as fontes CPTEC/Redemet falharam).';
+              errMsg = `Falha ao carregar radar de ${stName} (ambas as fontes CPTEC/Redemet falharam).`;
             }
           } else {
             errMsg = 'Falha ao carregar imagem PNG (CPTEC/REDEMET).';
@@ -2583,8 +2585,8 @@ export default function RastrosTornadosPage() {
       }
 
       let timelineCfgSlug = station.slug;
-      if (timelineCfgSlug === 'santiago' && radarSourceMode === 'hd') {
-        timelineCfgSlug = 'santiago-redemet';
+      if ((timelineCfgSlug === 'santiago' || timelineCfgSlug === 'morroigreja') && radarSourceMode === 'hd') {
+        timelineCfgSlug = `${timelineCfgSlug}-redemet`;
       }
       const cfg = radarConfigs.find((c) => c.id === timelineCfgSlug || c.stationSlug === timelineCfgSlug);
       const latLngBounds = cfg
@@ -4081,7 +4083,7 @@ export default function RastrosTornadosPage() {
                         Editar radar
                       </button>
                     )}
-                    {radarVisible && (cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && radarStation.slug === 'santiago') && (
+                    {radarVisible && (cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && (radarStation.slug === 'santiago' || radarStation.slug === 'morroigreja')) && (
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-500 mr-1">Fonte:</span>
                         <button
@@ -4119,7 +4121,7 @@ export default function RastrosTornadosPage() {
                         <span className="text-xs text-slate-300 group-hover:text-white">Super Res (remove ruido)</span>
                       </label>
                     )}
-                    {radarImageSource && !radarError && !(cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && radarStation.slug === 'santiago') && (
+                    {radarImageSource && !radarError && !(cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && (radarStation.slug === 'santiago' || radarStation.slug === 'morroigreja')) && (
                       <p className="text-xs text-slate-400">Fonte: {radarImageSource === 'cptec' ? 'CPTEC (Super Res)' : 'REDEMET (HD)'}</p>
                     )}
                   </div>

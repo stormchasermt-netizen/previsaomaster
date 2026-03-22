@@ -40,7 +40,7 @@ const NO_REDEMET: Set<string> = new Set([
  * Usuário solicitou usar Redemet APENAS para Santiago.
  */
 export function hasRedemetFallback(slug: string): boolean {
-  return slug === 'santiago';
+  return slug === 'santiago' || slug === 'morroigreja';
 }
 
 /**
