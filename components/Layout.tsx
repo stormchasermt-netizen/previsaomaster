@@ -108,10 +108,16 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
 
       {/* HEADER — oculto em páginas de tela cheia (rastros-tornados, jogar) para não sobrepor o mapa */}
       {!isFullScreenPage && (
-      <header className="sticky top-0 z-40 bg-[#0B0F19]/80 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5 shadow-lg shadow-black/20">
+      <header className={clsx(
+          "sticky top-0 z-40 px-6 h-16 flex items-center justify-between border-b transition-colors backdrop-blur-md",
+          isDarkMode ? "bg-[#0B0F19]/80 border-white/5 shadow-lg shadow-black/20" : "bg-white/60 border-black/5"
+      )}>
          <div className="flex items-center gap-4">
-             <Link href="/" prefetch={false} className="text-xs font-bold tracking-widest text-slate-300 hover:text-white uppercase flex items-center gap-2 transition-colors">
-                <CloudLightning className="h-5 w-5 text-cyan-400" /> 
+             <Link href="/" prefetch={false} className={clsx(
+                 "text-xs font-bold tracking-widest uppercase flex items-center gap-2 transition-colors",
+                 isDarkMode ? "text-slate-300 hover:text-white" : "text-black hover:opacity-70"
+             )}>
+                <CloudLightning className="h-5 w-5 text-cyan-500" /> 
                 <span className="hidden sm:inline">{t('app_title')}</span>
              </Link>
          </div>
