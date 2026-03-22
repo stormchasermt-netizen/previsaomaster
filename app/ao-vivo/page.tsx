@@ -336,6 +336,8 @@ export default function AoVivoPage() {
   const [redemetFoundUrls, setRedemetFoundUrls] = useState<Record<string, string>>({});
   /** Nowcasting offline: detectado quando muitos radares falham ao carregar */
   const [nowcastingOffline, setNowcastingOffline] = useState(false);
+  /** Filtro de ruído de refletividade ativo (Super Res refletividade) — default: true */
+  const [reflectivityFilterEnabled, setReflectivityFilterEnabled] = useState(true);
   /** Menu lateral aberto (hambúrguer) */
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   /** Split: 1 = painel único, 2 = Refletividade|Doppler lado a lado, 4 = grade 2x2 (simplificado por ora) */
@@ -1657,6 +1659,12 @@ export default function AoVivoPage() {
           const currentSrc = img.src;
           const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
 
+          // Se o filtro de refletividade está desativado E é reflectividade, pula o filtro
+          if (productType === 'reflectividade' && !reflectivityFilterEnabled) {
+            markProcessed();
+            return;
+          }
+
           // Super Res: pipeline especial para Doppler (velocidade)
           if (productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec') {
             // Busca a URL de reflectividade (ppicz) do mesmo radar/timestamp para usar como máscara
@@ -1832,7 +1840,7 @@ export default function AoVivoPage() {
       ov.setMap(map);
       overlaysArr.push(ov);
     });
-  }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode, superResEnabled]);
+  }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode, superResEnabled, reflectivityFilterEnabled]);
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
@@ -2801,6 +2809,18 @@ export default function AoVivoPage() {
               <svg className="w-5 h-5 transition-transform group-hover/btn:rotate-180 duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
+            </button>
+            {/* Botão Super Res / Normal (Refletividade) */}
+            <button
+              onClick={() => setReflectivityFilterEnabled(prev => !prev)}
+              className={`text-[9px] sm:text-[10px] font-bold px-2.5 py-1.5 rounded-xl backdrop-blur-md shadow-lg transition-all duration-200 border ${
+                reflectivityFilterEnabled
+                  ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/30'
+                  : 'bg-amber-500/20 border-amber-400/50 text-amber-200 hover:bg-amber-500/30'
+              }`}
+              title={reflectivityFilterEnabled ? 'Clique para desativar filtro de ruído (Normal)' : 'Clique para ativar filtro de ruído (Super Res)'}
+            >
+              {reflectivityFilterEnabled ? '✨ Super Res' : '📡 Normal'}
             </button>
             {redemetAvailableKeys.size > 0 && (
               <div className="flex gap-1 mt-1">
