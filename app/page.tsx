@@ -1,8 +1,9 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import { CloudLightning, Gamepad2, Wind, Radio, Download, ExternalLink } from 'lucide-react';
+import { CloudLightning, Gamepad2, Wind, Radio, Download, HelpCircle, BookOpen, Mail } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { ParticleBackground } from '@/components/ParticleBackground';
 import { useTranslation } from 'react-i18next';
 
 export default function Home() {
@@ -11,8 +12,11 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen relative overflow-hidden bg-transparent selection:bg-cyan-500/30">
       
+      {/* Partículas verdes e vermelhas que seguem o mouse */}
+      <ParticleBackground />
+
       {/* Header Interno (Minimal de acordo com imagem) */}
-      <nav className="w-full px-6 py-6 flex items-center justify-between relative z-20 max-w-7xl mx-auto items-baseline">
+      <nav className="w-full px-6 py-6 flex items-center justify-between relative z-20 max-w-7xl mx-auto">
         <div className="flex items-center gap-2 group cursor-pointer">
             <CloudLightning className="w-6 h-6 text-black" />
             <span className="font-bold text-lg tracking-tight">Previsão Master</span>
@@ -49,12 +53,9 @@ export default function Home() {
             transition={{ delay: 0.2, duration: 0.5 }}
             className="max-w-2xl"
         >
-            <h2 className="text-3xl md:text-5xl font-bold text-black mb-6 leading-tight">
-                Você foi autenticado com sucesso.
+            <h2 className="text-2xl md:text-4xl font-bold text-black/80 mb-10 leading-tight">
+                O maior hub de meteorologia da América do Sul.
             </h2>
-            <p className="text-black/60 text-base md:text-lg mb-10 font-medium max-w-lg mx-auto">
-                Prepare-se para testar suas habilidades de previsão de tempestades severas.
-            </p>
 
             {/* Ações Principais (Pill Shaped) */}
             <div className="flex flex-wrap justify-center gap-4 mb-20">
@@ -70,13 +71,13 @@ export default function Home() {
                 </Link>
                 <Link href="/ao-vivo">
                     <button className="bg-black text-white px-8 py-4 rounded-full font-bold flex items-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.15)] group">
-                        <Radio className="w-5 h-5 group-pulse" /> Modo Ao Vivo
+                        <Radio className="w-5 h-5" /> Modo Ao Vivo
                     </button>
                 </Link>
             </div>
         </motion.div>
 
-        {/* Footer de Links Internos */}
+        {/* Footer de Links Internos com ícones Lucide profissionais */}
         <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -84,13 +85,13 @@ export default function Home() {
             className="flex items-center gap-8 text-sm font-bold text-black/70 border-t border-black/5 pt-10"
         >
             <Link href="/regras" className="flex items-center gap-2 hover:text-black transition-colors">
-                 <span>ⓘ</span> Como Funciona
+                 <HelpCircle className="w-4 h-4" /> Como Funciona
             </Link>
             <a href="#" className="flex items-center gap-2 hover:text-black transition-colors">
-                 <span>📖</span> Material de Estudo
+                 <BookOpen className="w-4 h-4" /> Material de Estudo
             </a>
             <Link href="/projeto" className="flex items-center gap-2 hover:text-black transition-colors">
-                 <span>✉</span> Projeto & Dados
+                 <Mail className="w-4 h-4" /> Projeto & Dados
             </Link>
         </motion.div>
       </main>
@@ -99,9 +100,6 @@ export default function Home() {
       <footer className="w-full py-8 text-center text-xs font-bold text-black/40">
         © 2025 Previsão Master
       </footer>
-
-      {/* Removemos o ParticleBackground aqui para ser fiel à imagem branca e limpa, 
-          mas ele pode ser reativado se o usuário desejar as partículas em cima do branco. */}
     </div>
   );
 }
