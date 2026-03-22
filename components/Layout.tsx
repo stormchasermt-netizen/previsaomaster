@@ -17,7 +17,8 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [userScores, setUserScores] = useState<PrevisaoScore[]>([]);
   
-  // Settings State (Mock)
+  // Settings & Theme State
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [musicEnabled, setMusicEnabled] = useState(true);
 
@@ -73,24 +74,33 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
   const bestScore = validGames.length > 0 ? Math.max(...validGames.map(s => s.finalScore)) : 0;
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-white font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
+    <div className={clsx(
+        "min-h-screen font-sans selection:bg-cyan-500/30 relative overflow-x-hidden transition-colors duration-300",
+        isDarkMode ? "bg-[#0B0F19] text-white dark" : "bg-white text-black"
+    )}>
       
       {/* BACKGROUND IMAGE WITH BLUR */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-          {/* Ambient Glow Effects */}
-          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
-          <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
+           {/* Ambient Glow Effects (Lower opacity in light mode) */}
+          <div className={clsx("absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none", isDarkMode ? "bg-blue-600/10" : "bg-blue-400/5")} />
+          <div className={clsx("absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full blur-[120px] pointer-events-none", isDarkMode ? "bg-purple-600/10" : "bg-purple-400/5")} />
 
-          {/* Image Layer - Custom User Image */}
+          {/* Image Layer - New Image from User */}
           <div 
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat blur-[6px] scale-105 opacity-60 mix-blend-luminosity"
+            className={clsx(
+                "absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-700",
+                isDarkMode ? "blur-[6px] scale-105 opacity-60 mix-blend-luminosity" : "opacity-90"
+            )}
             style={{ 
-                backgroundImage: "url('https://raw.githubusercontent.com/stormchasermt-netizen/App-de-previs-o/650647f85f02f514b2864389435d07746a07038a/WhatsApp%20Image%202026-02-10%20at%2009.48.58.jpeg')" 
+                backgroundImage: "url('https://raw.githubusercontent.com/stormchasermt-netizen/main/2fe3f12651522e5692b3bd958731fe0ae5edf4e7/remova_todos_os_202603212216.png')" 
             }}
           ></div>
 
-          {/* Dark Overlay for Text Readability */}
-          <div className="absolute inset-0 bg-[#0B0F19]/80 backdrop-blur-[2px]"></div>
+          {/* Dark Overlay for Text Readability (Conditional) */}
+          <div className={clsx(
+              "absolute inset-0 transition-colors duration-500",
+              isDarkMode ? "bg-[#0B0F19]/80 backdrop-blur-[2px]" : "bg-white/40"
+          )}></div>
           
           {/* Lightning Flash Layer (Kept for effect) */}
           <div className="absolute inset-0 z-0 bg-white opacity-0 animate-lightning pointer-events-none mix-blend-overlay"></div>
@@ -144,7 +154,18 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
                 )}
             </div>
 
-            <Link href="/projeto" prefetch={false} className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors" title={t('nav_project')}>
+             <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className={clsx(
+                    "p-2 rounded-lg transition-colors",
+                    isDarkMode ? "text-yellow-400 hover:bg-white/5" : "text-slate-600 hover:bg-black/5"
+                )}
+                title={isDarkMode ? "Modo Claro" : "Modo Escuro"}
+             >
+                {isDarkMode ? <span className="text-lg">☀️</span> : <span className="text-lg">🌙</span>}
+             </button>
+
+            <Link href="/projeto" prefetch={false} className={clsx("p-2 rounded-lg transition-colors", isDarkMode ? "text-slate-400 hover:text-cyan-400 hover:bg-white/5" : "text-slate-600 hover:text-cyan-600 hover:bg-black/5")} title={t('nav_project')}>
               <Mail className="w-5 h-5" />
             </Link>
             {!user ? (
