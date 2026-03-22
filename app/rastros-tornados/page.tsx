@@ -4,8 +4,9 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { BeforeAfterCompare } from '@/components/BeforeAfterCompare';
 import { updatePresence, removePresence, subscribeToPresence, type PresenceData } from '@/lib/presence';
 import { MAP_STYLE_DARK, LOCATION_REQUEST_EXCLUDED_UIDS } from '../../lib/constants';
@@ -26,7 +27,7 @@ import {
   type FScale,
   type Season,
 } from '../../lib/tornadoTracksData';
-import { fetchTornadoTracks } from '../../lib/tornadoTracksStore';
+import { fetchTornadoTracks, saveTornadoTrack } from '../../lib/tornadoTracksStore';
 import { fetchPrevotsForecastByDate } from '@/lib/prevotsForecastStore';
 import type { PrevotsForecast } from '@/lib/prevotsForecastData';
 import {
@@ -41,6 +42,8 @@ import {
   generateRadarTimestampsForDateRange,
   generateUnifiedTimelineTimestamps,
   getNearestRadarTimestamp,
+  calculateRadarBounds,
+  calculateRadarBoundsGeodesic,
   type CptecRadarStation,
 } from '../../lib/cptecRadarStations';
 import {
@@ -53,7 +56,7 @@ import {
 } from '../../lib/argentinaRadarStations';
 import { fetchRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
 import { hasRedemetFallback, getRedemetArea } from '../../lib/redemetRadar';
-import { filterDopplerSuperRes } from '../../lib/radarImageFilter';
+import { filterDopplerSuperRes, filterRadarImageFromUrl } from '../../lib/radarImageFilter';
 import { cacheRadarImage } from '../../lib/radarCacheClient';
 import {
   fetchRastrosProfile,
@@ -445,6 +448,140 @@ export default function RastrosTornadosPage() {
   const [radarProductType, setRadarProductType] = useState<'reflectividade' | 'velocidade'>('reflectividade');
   /** Super Res local toggle (filtro doppler) */
   const [superResEnabled, setSuperResEnabled] = useState(false);
+
+  const [isRadarEditMode, setIsRadarEditMode] = useState(false);
+  const [editRadarLat, setEditRadarLat] = useState<number>(0);
+  const [editRadarLng, setEditRadarLng] = useState<number>(0);
+  const [editRadarRangeKm, setEditRadarRangeKm] = useState<number>(250);
+  const [editRadarRotation, setEditRadarRotation] = useState<number>(0);
+  const [editRadarOpacity, setEditRadarOpacity] = useState<number>(0.75);
+  const [editRadarChromaKey, setEditRadarChromaKey] = useState<number>(0);
+  const [editRadarCropTop, setEditRadarCropTop] = useState<number>(0);
+  const [editRadarCropBottom, setEditRadarCropBottom] = useState<number>(0);
+  const [editRadarCropLeft, setEditRadarCropLeft] = useState<number>(0);
+  const [editRadarCropRight, setEditRadarCropRight] = useState<number>(0);
+  const [editRadarCustomBounds, setEditRadarCustomBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null);
+  const [useEditCustomBounds, setUseEditCustomBounds] = useState(false);
+  const [isSavingRadarEdit, setIsSavingRadarEdit] = useState(false);
+  const handleOpenRadarEdit = () => {
+    if (!selectedTrack) return;
+    
+    setEditRadarLat(selectedTrack.radarLat ?? radarStation?.lat ?? 0);
+    setEditRadarLng(selectedTrack.radarLng ?? radarStation?.lng ?? 0);
+    setEditRadarRangeKm(selectedTrack.radarRangeKm ?? radarStation?.rangeKm ?? 250);
+    setEditRadarRotation(selectedTrack.radarRotation ?? 0);
+    setEditRadarOpacity(selectedTrack.radarOpacity ?? radarOpacity);
+    setEditRadarChromaKey(selectedTrack.radarChromaKey ?? 0);
+    setEditRadarCropTop(selectedTrack.radarCropTop ?? 0);
+    setEditRadarCropBottom(selectedTrack.radarCropBottom ?? 0);
+    setEditRadarCropLeft(selectedTrack.radarCropLeft ?? 0);
+    setEditRadarCropRight(selectedTrack.radarCropRight ?? 0);
+    setEditRadarCustomBounds(selectedTrack.radarCustomBounds ?? null);
+    setUseEditCustomBounds(!!selectedTrack.radarCustomBounds);
+    
+    setIsRadarEditMode(true);
+  };
+
+  const handleSaveRadarEdit = async () => {
+    if (!selectedTrack || !user) return;
+    setIsSavingRadarEdit(true);
+    try {
+      const updatedTrack: TornadoTrack = {
+        ...selectedTrack,
+        radarLat: editRadarLat,
+        radarLng: editRadarLng,
+        radarRangeKm: editRadarRangeKm,
+        radarRotation: editRadarRotation,
+        radarOpacity: editRadarOpacity,
+        radarChromaKey: editRadarChromaKey,
+        radarCropTop: editRadarCropTop,
+        radarCropBottom: editRadarCropBottom,
+        radarCropLeft: editRadarCropLeft,
+        radarCropRight: editRadarCropRight,
+        radarCustomBounds: useEditCustomBounds && editRadarCustomBounds ? editRadarCustomBounds : undefined,
+      };
+      
+      await saveTornadoTrack(updatedTrack, user.uid);
+      
+      setSelectedTrack(updatedTrack);
+      setTracks(prev => prev.map(t => t.id === updatedTrack.id ? updatedTrack : t));
+      setIsRadarEditMode(false);
+      addToast('Configurações de radar salvas para este rastro.', 'success');
+    } catch (e: any) {
+      addToast(`Erro ao salvar: ${e.message}`, 'error');
+    } finally {
+      setIsSavingRadarEdit(false);
+    }
+  };
+
+  // Marcador draggable do radar e Rectangle para Bounds no modo edição (Admin)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isRadarEditMode || !selectedTrack) return;
+    const map = mapInstanceRef.current;
+    
+    const marker = new google.maps.Marker({
+      map,
+      position: { lat: editRadarLat, lng: editRadarLng },
+      draggable: true,
+      icon: {
+        url: '/radar-icon.svg',
+        scaledSize: new google.maps.Size(32, 32),
+        anchor: new google.maps.Point(16, 16),
+      },
+      title: 'Arraste para posicionar o radar',
+      zIndex: 2000,
+    });
+    
+    marker.addListener('dragend', () => {
+      const pos = marker.getPosition();
+      if (pos) {
+        setEditRadarLat(pos.lat());
+        setEditRadarLng(pos.lng());
+      }
+    });
+
+    let rect: any = null;
+    if (useEditCustomBounds) {
+      const initialBounds = editRadarCustomBounds || (() => {
+        const b = calculateRadarBounds(editRadarLat, editRadarLng, editRadarRangeKm);
+        return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+      })();
+
+      rect = new google.maps.Rectangle({
+        map,
+        bounds: {
+          north: initialBounds.north,
+          south: initialBounds.south,
+          east: initialBounds.east,
+          west: initialBounds.west,
+        },
+        editable: true,
+        draggable: true,
+        fillOpacity: 0.1,
+        strokeColor: '#fbbf24',
+        strokeWeight: 2,
+        zIndex: 1900,
+      });
+      
+      rect.addListener('bounds_changed', () => {
+        const b = rect.getBounds();
+        if (b) {
+          setEditRadarCustomBounds({
+            north: b.getNorthEast().lat(),
+            south: b.getSouthWest().lat(),
+            east: b.getNorthEast().lng(),
+            west: b.getSouthWest().lng(),
+          });
+        }
+      });
+    }
+
+    return () => {
+      marker.setMap(null);
+      if (rect) rect.setMap(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRadarEditMode, useEditCustomBounds, editRadarLat, editRadarLng, editRadarRangeKm, editRadarCustomBounds]);
   const goesOverlayRef = useRef<any>(null);
   const radarOverlayRef = useRef<any>(null);
   const radarTimelineOverlaysRef = useRef<any[]>([]);
@@ -453,6 +590,7 @@ export default function RastrosTornadosPage() {
 
   // Online users / presença
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [showOnlineUsers, setShowOnlineUsers] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<PresenceData[]>([]);
   const [shareLocation, setShareLocation] = useState(false);
@@ -1904,6 +2042,24 @@ export default function RastrosTornadosPage() {
 
     /** Bounds centrados no radar (lat/lng + rangeKm), não no rastro. */
     const getRadarBounds = () => {
+      // Prioridade 1: Modo de Edição (Realtime)
+      if (isRadarEditMode) {
+        if (useEditCustomBounds && editRadarCustomBounds) {
+          return editRadarCustomBounds;
+        }
+        const b = calculateRadarBounds(editRadarLat, editRadarLng, editRadarRangeKm);
+        return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+      }
+
+      // Prioridade 2: Overrides salvos no rastro
+      if (selectedTrack.radarCustomBounds) {
+        return selectedTrack.radarCustomBounds;
+      }
+      if (selectedTrack.radarLat !== undefined && selectedTrack.radarLng !== undefined) {
+        const b = calculateRadarBounds(selectedTrack.radarLat, selectedTrack.radarLng, selectedTrack.radarRangeKm ?? 250);
+        return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+      }
+
       if (radarStation && radarCfg) {
         return {
           north: radarCfg.bounds.ne.lat,
@@ -2013,8 +2169,14 @@ export default function RastrosTornadosPage() {
       divEl = document.createElement('div');
       divEl.style.cssText = 'position:absolute;pointer-events:none;display:none;';
       const img = document.createElement('img');
+      const currentOpacity = isRadarEditMode ? editRadarOpacity : (selectedTrack.radarOpacity ?? radarOpacity);
+      const currentRotation = isRadarEditMode ? editRadarRotation : (selectedTrack.radarRotation ?? 0);
+      
       img.className = 'pixelated-layer';
-      img.style.cssText = `width:100%;height:100%;opacity:${radarOpacity};object-fit:fill;`;
+      img.style.cssText = `width:100%;height:100%;opacity:${currentOpacity};object-fit:fill;`;
+      if (currentRotation !== 0) {
+        img.style.transform = `rotate(${currentRotation}deg)`;
+      }
       let tryIndex = 0;
       let redemetAttempted = false;
       const showError = () => {
@@ -2050,14 +2212,12 @@ export default function RastrosTornadosPage() {
           redemetFindPromise.then(redemetUrl => {
             if (!redemetUrl) { showError(); return; }
             img.onerror = () => showError();
-              img.onload = () => {
-                setRadarError(null);
-                setRadarImageSource('redemet');
-                setRedemetAvailable(true);
-                // Não forçar radarSourceMode para 'hd' se estivermos apenas tentando um fallback.
-                // Mas se for Santiago e CPTEC falhou, mantemos o modo atual.
-                showImage();
-              };
+            img.onload = () => {
+              setRadarError(null);
+              setRadarImageSource('redemet');
+              setRedemetAvailable(true);
+              showImage();
+            };
             img.src = getProxiedRadarUrl(redemetUrl);
           });
           return;
@@ -2070,7 +2230,36 @@ export default function RastrosTornadosPage() {
         const src = urlsToTry[tryIndex - 1]?.source ?? 'cptec';
         setRadarImageSource(src);
         if (src === 'cptec') setCptecAvailable(true);
-        // Fire-and-forget: salvar imagem no Storage para cache
+
+        const currentChromaKey = isRadarEditMode ? editRadarChromaKey : (selectedTrack.radarChromaKey ?? 0);
+        const currentCrop = isRadarEditMode ? {
+          top: editRadarCropTop,
+          bottom: editRadarCropBottom,
+          left: editRadarCropLeft,
+          right: editRadarCropRight
+        } : {
+          top: selectedTrack.radarCropTop ?? 0,
+          bottom: selectedTrack.radarCropBottom ?? 0,
+          left: selectedTrack.radarCropLeft ?? 0,
+          right: selectedTrack.radarCropRight ?? 0
+        };
+
+        const applyFilters = async () => {
+          if (currentChromaKey > 0 || currentCrop.top > 0 || currentCrop.bottom > 0 || currentCrop.left > 0 || currentCrop.right > 0) {
+            try {
+              const filtered = await filterRadarImageFromUrl(img.src, currentChromaKey, currentCrop);
+              if (filtered) {
+                img.onload = () => showImage();
+                img.src = filtered;
+                return true;
+              }
+            } catch (e) {
+              console.error('Filter error', e);
+            }
+          }
+          return false;
+        };
+
         const currentTs = radarTimestamps[radarFrameIdx];
         if (currentTs) {
           let radarSlug = radarStation && !isArgentinaRadar
@@ -2079,10 +2268,9 @@ export default function RastrosTornadosPage() {
           if (radarSlug && src === 'redemet') radarSlug = `${radarSlug}-redemet`;
           if (radarSlug) cacheRadarImage(img.src, radarSlug, currentTs.slice(0, 12), radarProductType);
         }
-        // Super Res Doppler filter
+
         if (radarProductType === 'velocidade' && superResEnabled && radarStation && !isArgentinaRadar) {
           const cptecSt = radarStation as CptecRadarStation;
-          const currentTs = radarTimestamps[radarFrameIdx];
           if (currentTs) {
             const refTs12 = currentTs.slice(0, 12);
             const refUrl = buildNowcastingPngUrl(cptecSt, refTs12, 'reflectividade');
@@ -2090,16 +2278,21 @@ export default function RastrosTornadosPage() {
             filterDopplerSuperRes(img.src, refProxy).then((filteredSrc) => {
               if (filteredSrc) {
                 img.onload = () => showImage();
-                img.onerror = () => showImage(); // fallback: show original
+                img.onerror = () => showImage();
                 img.src = filteredSrc;
               } else {
-                showImage();
+                applyFilters().then(applied => { if (!applied) showImage(); });
               }
-            }).catch(() => showImage());
+            }).catch(() => {
+              applyFilters().then(applied => { if (!applied) showImage(); });
+            });
             return;
           }
         }
-        showImage();
+        
+        applyFilters().then(applied => {
+          if (!applied) showImage();
+        });
       };
       divEl.appendChild(img);
       ov.getPanes()?.overlayLayer?.appendChild(divEl);
@@ -2125,8 +2318,8 @@ export default function RastrosTornadosPage() {
       (ov as any).setMap?.(null);
       radarOverlayRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [radarVisible, selectedTrack?.id, radarOpacity, selectedTrack?.radarWmsUrl, selectedTrack?.radarStationId, radarStation, radarConfigs, radarTimestamps, radarFrameIdx, radarProductType, radarSourceMode, superResEnabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radarVisible, radarTimestamps, radarFrameIdx, radarOpacity, radarStation, radarSourceMode, radarProductType, superResEnabled, isRadarEditMode, editRadarLat, editRadarLng, editRadarRangeKm, editRadarRotation, editRadarOpacity, editRadarChromaKey, editRadarCropTop, editRadarCropBottom, editRadarCropLeft, editRadarCropRight, editRadarCustomBounds, useEditCustomBounds]);
 
   // Overlay de radar na timeline (quando período ≤ 3 dias)
   useEffect(() => {
@@ -3582,6 +3775,16 @@ export default function RastrosTornadosPage() {
                         <span className="w-8 text-right shrink-0">{Math.round(radarOpacity * 100)}%</span>
                       </div>
                     )}
+                    {radarVisible && user?.type === 'admin' && (
+                      <button
+                        type="button"
+                        onClick={handleOpenRadarEdit}
+                        className="w-full flex items-center justify-center gap-2 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-lg shadow-cyan-900/20"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        Editar radar
+                      </button>
+                    )}
                     {radarVisible && (cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && radarStation.slug === 'santiago') && (
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-500 mr-1">Fonte:</span>
@@ -4198,6 +4401,143 @@ export default function RastrosTornadosPage() {
           )}
         </aside>
       </div>
+
+      {/* Painel de Edição de Radar (Admin) */}
+      {isRadarEditMode && selectedTrack && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm overflow-hidden flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-800/50">
+                <div className="flex items-center gap-2">
+                  <Radar className="w-5 h-5 text-cyan-400" />
+                  <h3 className="font-bold text-white">Editar Radar (Rastro)</h3>
+                </div>
+                <button onClick={() => setIsRadarEditMode(false)} className="p-1 hover:bg-slate-700 rounded-full transition-colors text-slate-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-slate-900/50 max-h-[80vh]">
+                <div className="space-y-4">
+                   <div className="space-y-2">
+                     <div className="flex justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold">
+                       <span>Rotação</span>
+                       <span className="text-cyan-400 font-mono">{editRadarRotation}°</span>
+                     </div>
+                     <input type="range" min={-180} max={180} step={0.5} value={editRadarRotation} onChange={e => setEditRadarRotation(parseFloat(e.target.value))} className="w-full accent-cyan-500" />
+                   </div>
+
+                   <div className="space-y-2">
+                     <div className="flex justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold">
+                       <span>Opacidade</span>
+                       <span className="text-cyan-400 font-mono">{Math.round(editRadarOpacity * 100)}%</span>
+                     </div>
+                     <input type="range" min={0} max={1} step={0.01} value={editRadarOpacity} onChange={e => setEditRadarOpacity(parseFloat(e.target.value))} className="w-full accent-cyan-500" />
+                   </div>
+
+                   <div className="space-y-2">
+                     <div className="flex justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">
+                       <span>Centro da Antena</span>
+                       <button 
+                        onClick={() => {
+                          setEditRadarLat(radarStation?.lat || 0);
+                          setEditRadarLng(radarStation?.lng || 0);
+                        }}
+                        className="text-[10px] text-cyan-500 hover:underline"
+                       >Resetar p/ padrão</button>
+                     </div>
+                     <div className="grid grid-cols-2 gap-2">
+                       <div className="space-y-1">
+                         <span className="text-[10px] text-slate-500 uppercase">Latitude</span>
+                         <input type="number" step={0.000001} value={editRadarLat} onChange={e => setEditRadarLat(parseFloat(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-cyan-300" />
+                       </div>
+                       <div className="space-y-1">
+                         <span className="text-[10px] text-slate-500 uppercase">Longitude</span>
+                         <input type="number" step={0.000001} value={editRadarLng} onChange={e => setEditRadarLng(parseFloat(e.target.value))} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-cyan-300" />
+                       </div>
+                     </div>
+                   </div>
+
+                   <div className="space-y-2">
+                     <div className="flex justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold">
+                       <span>Raio do Radar (km)</span>
+                       <span className="text-cyan-400 font-mono">{editRadarRangeKm} km</span>
+                     </div>
+                     <input type="range" min={50} max={1000} step={1} value={editRadarRangeKm} onChange={e => setEditRadarRangeKm(parseInt(e.target.value))} className="w-full accent-cyan-500" />
+                   </div>
+
+                   <div className="pt-2 border-t border-slate-800">
+                     <div className="flex items-center justify-between mb-2">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Mapeamento Livre</span>
+                          <span className="text-[10px] text-slate-500">Desenhar área manualmente no mapa</span>
+                        </div>
+                        <input type="checkbox" checked={useEditCustomBounds} onChange={e => setUseEditCustomBounds(e.target.checked)} className="w-4 h-4 accent-cyan-500" />
+                     </div>
+                   </div>
+
+                   <div className="pt-2 border-t border-slate-800">
+                     <div className="flex items-center justify-between mb-2">
+                       <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Saturação Chroma Key</span>
+                       <span className="text-cyan-400 font-mono">{editRadarChromaKey}</span>
+                     </div>
+                     <input type="range" min={0} max={255} step={1} value={editRadarChromaKey} onChange={e => setEditRadarChromaKey(parseInt(e.target.value))} className="w-full accent-cyan-500" />
+                   </div>
+
+                   <div className="space-y-3 pt-2 border-t border-slate-800">
+                     <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mb-1">Recortes das Bordas</span>
+                     <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-slate-500 uppercase">Topo</span>
+                            <span className="text-[10px] text-cyan-500">{Math.round(editRadarCropTop * 100)}%</span>
+                          </div>
+                          <input type="range" min={0} max={1} step={0.01} value={editRadarCropTop} onChange={e => setEditRadarCropTop(parseFloat(e.target.value))} className="w-full accent-cyan-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-slate-500 uppercase">Base</span>
+                            <span className="text-[10px] text-cyan-500">{Math.round(editRadarCropBottom * 100)}%</span>
+                          </div>
+                          <input type="range" min={0} max={1} step={0.01} value={editRadarCropBottom} onChange={e => setEditRadarCropBottom(parseFloat(e.target.value))} className="w-full accent-cyan-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-slate-500 uppercase">Esquerda</span>
+                            <span className="text-[10px] text-cyan-500">{Math.round(editRadarCropLeft * 100)}%</span>
+                          </div>
+                          <input type="range" min={0} max={1} step={0.01} value={editRadarCropLeft} onChange={e => setEditRadarCropLeft(parseFloat(e.target.value))} className="w-full accent-cyan-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-slate-500 uppercase">Direita</span>
+                            <span className="text-[10px] text-cyan-500">{Math.round(editRadarCropRight * 100)}%</span>
+                          </div>
+                          <input type="range" min={0} max={1} step={0.01} value={editRadarCropRight} onChange={e => setEditRadarCropRight(parseFloat(e.target.value))} className="w-full accent-cyan-500" />
+                        </div>
+                     </div>
+                   </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-800 bg-slate-800/50 flex items-center gap-3 mt-auto">
+                <button
+                  onClick={() => setIsRadarEditMode(false)}
+                  className="flex-1 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveRadarEdit}
+                  disabled={isSavingRadarEdit}
+                  className="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold transition-all shadow-lg shadow-cyan-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isSavingRadarEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Salvar
+                </button>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 }

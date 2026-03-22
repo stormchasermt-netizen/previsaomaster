@@ -74,6 +74,19 @@ export interface TornadoTrack {
   createdAtMs?: number;
   /** Timestamp de atualização (ms) quando disponível no Firestore. */
   updatedAtMs?: number;
+
+  // Overrides de radar específicos para este rastro (Admin)
+  radarLat?: number;
+  radarLng?: number;
+  radarRangeKm?: number;
+  radarRotation?: number;
+  radarOpacity?: number;
+  radarChromaKey?: number;
+  radarCropTop?: number;
+  radarCropBottom?: number;
+  radarCropLeft?: number;
+  radarCropRight?: number;
+  radarCustomBounds?: { north: number; south: number; east: number; west: number };
 }
 
 /** Ordem da escala F (do menor ao maior número = do exterior ao interior). */

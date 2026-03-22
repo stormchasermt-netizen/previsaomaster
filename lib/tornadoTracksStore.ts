@@ -56,7 +56,7 @@ function prevotsPolygonsFromFirestore(raw: unknown): PrevotsPolygon[] {
       if (!Array.isArray(coords) || coords.length === 0) return null;
       return { level: level as 1 | 2 | 3 | 4, coordinates: coords };
     })
-    .filter((x): x is PrevotsPolygon => x != null);
+    .filter((x): x is PrevotsPolygon => x !== null);
 }
 
 function prevotsPolygonsToFirestore(prevots: PrevotsPolygon[]) {
@@ -103,6 +103,17 @@ export async function fetchTornadoTracks(): Promise<TornadoTrack[]> {
         : undefined,
       createdAtMs,
       updatedAtMs,
+      radarLat: typeof data.radarLat === 'number' ? data.radarLat : undefined,
+      radarLng: typeof data.radarLng === 'number' ? data.radarLng : undefined,
+      radarRangeKm: typeof data.radarRangeKm === 'number' ? data.radarRangeKm : undefined,
+      radarRotation: typeof data.radarRotation === 'number' ? data.radarRotation : undefined,
+      radarOpacity: typeof data.radarOpacity === 'number' ? data.radarOpacity : undefined,
+      radarChromaKey: typeof data.radarChromaKey === 'number' ? data.radarChromaKey : undefined,
+      radarCropTop: typeof data.radarCropTop === 'number' ? data.radarCropTop : undefined,
+      radarCropBottom: typeof data.radarCropBottom === 'number' ? data.radarCropBottom : undefined,
+      radarCropLeft: typeof data.radarCropLeft === 'number' ? data.radarCropLeft : undefined,
+      radarCropRight: typeof data.radarCropRight === 'number' ? data.radarCropRight : undefined,
+      radarCustomBounds: data.radarCustomBounds && typeof data.radarCustomBounds.north === 'number' ? data.radarCustomBounds : undefined,
     };
     return {
       ...baseTrack,
@@ -132,6 +143,18 @@ export async function saveTornadoTrack(track: TornadoTrackInput, adminId: string
     afterImageBounds: track.afterImageBounds || null,
     trackImage: track.trackImage || null,
     trackImageBounds: track.trackImageBounds || null,
+    // Overrides de radar
+    radarLat: track.radarLat ?? null,
+    radarLng: track.radarLng ?? null,
+    radarRangeKm: track.radarRangeKm ?? null,
+    radarRotation: track.radarRotation ?? null,
+    radarOpacity: track.radarOpacity ?? null,
+    radarChromaKey: track.radarChromaKey ?? null,
+    radarCropTop: track.radarCropTop ?? null,
+    radarCropBottom: track.radarCropBottom ?? null,
+    radarCropLeft: track.radarCropLeft ?? null,
+    radarCropRight: track.radarCropRight ?? null,
+    radarCustomBounds: track.radarCustomBounds ?? null,
     adminId,
     updatedAt: serverTimestamp(),
   };
