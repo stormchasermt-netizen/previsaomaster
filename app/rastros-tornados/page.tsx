@@ -3537,7 +3537,7 @@ export default function RastrosTornadosPage() {
                         <span className="w-8 text-right shrink-0">{Math.round(radarOpacity * 100)}%</span>
                       </div>
                     )}
-                    {radarVisible && cptecAvailable && redemetAvailable && (
+                    {radarVisible && ( (cptecAvailable && redemetAvailable) || (radarStation && !('id' in radarStation) && hasRedemetFallback((radarStation as any).slug)) ) && (
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-slate-500 mr-1">Fonte:</span>
                         <button
@@ -3575,7 +3575,7 @@ export default function RastrosTornadosPage() {
                         <span className="text-xs text-slate-300 group-hover:text-white">Super Res (remove ruido)</span>
                       </label>
                     )}
-                    {radarImageSource && !radarError && !(cptecAvailable && redemetAvailable) && (
+                    {radarImageSource && !radarError && !( (cptecAvailable && redemetAvailable) || (radarStation && !('id' in radarStation) && hasRedemetFallback((radarStation as any).slug)) ) && (
                       <p className="text-xs text-slate-400">Fonte: {radarImageSource === 'cptec' ? 'CPTEC (Super Res)' : 'REDEMET (HD)'}</p>
                     )}
                   </div>
