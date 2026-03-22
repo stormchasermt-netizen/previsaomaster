@@ -53,6 +53,7 @@ import {
 import { fetchRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
 import { hasRedemetFallback, getRedemetArea } from '../../lib/redemetRadar';
 import { filterDopplerSuperRes } from '../../lib/radarImageFilter';
+import { cacheRadarImage } from '../../lib/radarCacheClient';
 import {
   fetchRastrosProfile,
   saveRastrosProfile,
@@ -2021,6 +2022,14 @@ export default function RastrosTornadosPage() {
         const src = urlsToTry[tryIndex - 1]?.source ?? 'cptec';
         setRadarImageSource(src);
         if (src === 'cptec') setCptecAvailable(true);
+        // Fire-and-forget: salvar imagem no Storage para cache
+        const currentTs = radarTimestamps[radarFrameIdx];
+        if (currentTs) {
+          const radarSlug = radarStation && !isArgentinaRadar
+            ? (radarStation as CptecRadarStation).slug
+            : radarStation ? `argentina_${(radarStation as ArgentinaRadarStation).id}` : null;
+          if (radarSlug) cacheRadarImage(img.src, radarSlug, currentTs.slice(0, 12), radarProductType);
+        }
         // Super Res Doppler filter
         if (radarProductType === 'velocidade' && superResEnabled && radarStation && !isArgentinaRadar) {
           const cptecSt = radarStation as CptecRadarStation;
@@ -2111,6 +2120,10 @@ export default function RastrosTornadosPage() {
         img.className = 'pixelated-layer';
         img.style.cssText = `width:100%;height:100%;opacity:${radarOpacity};object-fit:fill;`;
         img.onerror = () => { if (divEl) divEl.style.display = 'none'; };
+        img.onload = () => {
+          // Fire-and-forget: salvar imagem no Storage para cache
+          cacheRadarImage(img.src, station.slug, ts12, radarProductType);
+        };
         divEl.appendChild(img);
         ov.getPanes()?.overlayLayer?.appendChild(divEl);
       };

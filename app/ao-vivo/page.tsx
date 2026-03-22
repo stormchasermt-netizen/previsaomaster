@@ -37,6 +37,7 @@ import { groupRadarsByLocation } from '@/lib/radarGrouping';
 import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
 import { filterRadarImageFromUrl, filterClimatempoRadarImage, filterDopplerSuperRes } from '@/lib/radarImageFilter';
+import { cacheRadarImage } from '@/lib/radarCacheClient';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
 
@@ -1798,13 +1799,17 @@ export default function AoVivoPage() {
           }
           applyNoiseFilter();
           const loaded = urlsToTry[tryIndex - 1];
+          const effectiveTs12 = loaded?.ts12 ?? timestamp;
           setRadarEffectiveTimestamps((prev) => ({
             ...prev,
-            [radarKey]: loaded?.ts12 ?? timestamp,
+            [radarKey]: effectiveTs12,
           }));
           if (loaded?.source) {
             setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: loaded.source }));
           }
+          // Fire-and-forget: salvar imagem no Storage para cache
+          const slug = dr.type === 'cptec' ? dr.station.slug : `argentina_${dr.station.id}`;
+          cacheRadarImage(img.src, slug, effectiveTs12, productType);
           setFailedRadars((prev) => {
             const next = new Set(prev);
             next.delete(radarKey);
