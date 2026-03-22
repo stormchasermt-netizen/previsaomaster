@@ -344,71 +344,87 @@ function applyBlobFilter(data: Uint8ClampedArray, w: number, h: number, minSize:
 }
 
 /**
- * Estágio 3 — Filtro de Moda Local.
- * Para cada pixel colorido, olha os 8 vizinhos.
- * Se o pixel central for outlier (cor totalmente diferente da maioria), substitui pela moda.
- * "Cor" é quantizada em buckets de 32 para evitar comparações exatas impossíveis.
+ * Estágio 3 — Filtro de Mediana (Diferentes Kernels).
+ * Suaviza a imagem preservando bordas. Usado na Zona A (3x3) e Zona B (5x5).
  */
-function applyLocalModeFilter(data: Uint8ClampedArray, w: number, h: number): void {
-  // Trabalha numa cópia para não contaminar leituras
+function applyMedianFilter(data: Uint8ClampedArray, w: number, h: number, kernelSize: number): void {
   const copy = new Uint8ClampedArray(data);
+  const radius = Math.floor(kernelSize / 2);
 
-  const quantize = (r: number, g: number, b: number): number => {
-    return ((r >> 5) << 10) | ((g >> 5) << 5) | (b >> 5);
-  };
-
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
+  for (let y = radius; y < h - radius; y++) {
+    for (let x = radius; x < w - radius; x++) {
       const ci = (y * w + x) * 4;
       if (copy[ci + 3] === 0) continue;
 
-      const centerQ = quantize(copy[ci], copy[ci + 1], copy[ci + 2]);
+      const rValues: number[] = [];
+      const gValues: number[] = [];
+      const bValues: number[] = [];
 
-      // Contar cores dos 8 vizinhos
-      const colorCounts = new Map<number, { count: number; r: number; g: number; b: number }>();
-      let totalNeighbors = 0;
-
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
           const ni = ((y + dy) * w + (x + dx)) * 4;
-          if (copy[ni + 3] === 0) continue;
-          totalNeighbors++;
-          const q = quantize(copy[ni], copy[ni + 1], copy[ni + 2]);
-          const existing = colorCounts.get(q);
-          if (existing) {
-            existing.count++;
-          } else {
-            colorCounts.set(q, { count: 1, r: copy[ni], g: copy[ni + 1], b: copy[ni + 2] });
+          if (copy[ni + 3] > 0) {
+            rValues.push(copy[ni]);
+            gValues.push(copy[ni + 1]);
+            bValues.push(copy[ni + 2]);
           }
         }
       }
 
-      if (totalNeighbors < 3) continue; // Poucos vizinhos, não filtra
-
-      // Encontrar a moda (cor mais frequente entre vizinhos)
-      let modeQ = centerQ;
-      let modeCount = 0;
-      let modeR = copy[ci], modeG = copy[ci + 1], modeB = copy[ci + 2];
-
-      colorCounts.forEach((info, q) => {
-        if (info.count > modeCount) {
-          modeCount = info.count;
-          modeQ = q;
-          modeR = info.r;
-          modeG = info.g;
-          modeB = info.b;
-        }
-      });
-
-      // Se o pixel central é diferente da moda e a moda domina (≥3 vizinhos), substituir
-      if (centerQ !== modeQ && modeCount >= 3) {
-        data[ci] = modeR;
-        data[ci + 1] = modeG;
-        data[ci + 2] = modeB;
+      if (rValues.length > 0) {
+        rValues.sort((a, b) => a - b);
+        gValues.sort((a, b) => a - b);
+        bValues.sort((a, b) => a - b);
+        const mid = Math.floor(rValues.length / 2);
+        data[ci] = rValues[mid];
+        data[ci + 1] = gValues[mid];
+        data[ci + 2] = bValues[mid];
       }
     }
   }
+}
+
+/**
+ * Estágio 4 — Protetor de Couplet.
+ * Detecta áreas de alto cisalhamento (verde tocando vermelho).
+ * Retorna uma máscara de pixels que NÃO devem ser filtrados/suavizados.
+ */
+function getCoupletMask(data: Uint8ClampedArray, w: number, h: number): Uint8Array {
+  const mask = new Uint8Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] === 0) continue;
+
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const isGreen = g > r && g > b;
+      const isRed = r > g && r > b;
+
+      if (!isGreen && !isRed) continue;
+
+      let foundOpposite = false;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const ni = ((y + dy) * w + (x + dx)) * 4;
+          if (data[ni + 3] === 0) continue;
+          const nr = data[ni], ng = data[ni+1], nb = data[ni+2];
+          const nIsGreen = ng > nr && ng > nb;
+          const nIsRed = nr > ng && nr > nb;
+
+          if ((isGreen && nIsRed) || (isRed && nIsGreen)) {
+            foundOpposite = true;
+            break;
+          }
+        }
+        if (foundOpposite) break;
+      }
+
+      if (foundOpposite) {
+        mask[y * w + x] = 1;
+      }
+    }
+  }
+  return mask;
 }
 
 /**
@@ -464,33 +480,89 @@ export async function filterDopplerSuperRes(
   reflectivityUrl?: string | null
 ): Promise<string | null> {
   try {
-    const velResult = await fetchImageData(velocityUrl);
-    if (!velResult) return null;
+    const [velRes, refRes] = await Promise.all([
+      fetchImageData(velocityUrl),
+      reflectivityUrl ? fetchImageData(reflectivityUrl) : Promise.resolve(null)
+    ]);
 
-    const { data: velImgData, width: w, height: h } = velResult;
+    if (!velRes) return null;
+    const { data: velImgData, width: w, height: h } = velRes;
     const velData = velImgData.data;
 
-    // Primeiro: remover ruído branco/cinza básico (mesma lógica do filtro normal)
-    filterPixels(velData);
+    // 1. Criar Máscara de Couplet (Trava de Segurança)
+    const coupletMask = getCoupletMask(velData, w, h);
 
-    // Estágio 1: Máscara de Refletividade (se disponível)
-    if (reflectivityUrl) {
-      const refResult = await fetchImageData(reflectivityUrl);
-      if (refResult) {
-        applyReflectivityMask(velData, refResult.data.data, w, h, refResult.width, refResult.height);
+    // 2. Se houver refletividade, separar Zona A (<10dBZ) e Zona B (>=10dBZ)
+    if (refRes) {
+      const { data: refImgData, width: refW, height: refH } = refRes;
+      const refData = refImgData.data;
+      const sameSize = w === refW && h === refH;
+
+      const zoneBData = new Uint8ClampedArray(velData);
+      const zoneAData = new Uint8ClampedArray(velData);
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const vi = (y * w + x) * 4;
+          const rx = sameSize ? x : Math.round((x / w) * refW);
+          const ry = sameSize ? y : Math.round((y / h) * refH);
+          const ri = (ry * refW + rx) * 4;
+
+          let isZoneB = false;
+          if (ri >= 0 && ri + 3 < refData.length && refData[ri + 3] > 0) {
+             const rr = refData[ri], rg = refData[ri+1], rb = refData[ri+2];
+             const rMax = Math.max(rr, rg, rb);
+             const rMin = Math.min(rr, rg, rb);
+             // Se delta > 40 ou cores quentes (dBZ > 10 aprox), é Zona B
+             if (rMax - rMin > 40 || rr > 180) isZoneB = true;
+          }
+
+          if (isZoneB) {
+            zoneAData[vi + 3] = 0; // Apaga da A
+          } else {
+            zoneBData[vi + 3] = 0; // Apaga da B
+          }
+        }
+      }
+
+      // Filtrar Zona A (Ar Limpo) - Median 3x3 suave
+      applyMedianFilter(zoneAData, w, h, 3);
+      // Filtrar Zona B (Tempestade) - Median 5x5 agressivo
+      applyMedianFilter(zoneBData, w, h, 5);
+
+      // Merge das zonas respeitando a trava de Couplet
+      for (let i = 0; i < w * h; i++) {
+        if (coupletMask[i]) continue; // Não toca em Couplets
+        const vi = i * 4;
+        if (zoneBData[vi + 3] > 0) {
+            velData[vi] = zoneBData[vi];
+            velData[vi + 1] = zoneBData[vi + 1];
+            velData[vi + 2] = zoneBData[vi + 2];
+        } else if (zoneAData[vi + 3] > 0) {
+            velData[vi] = zoneAData[vi];
+            velData[vi + 1] = zoneAData[vi + 1];
+            velData[vi + 2] = zoneAData[vi + 2];
+        }
+      }
+    } else {
+      // Sem refletividade, aplica filtro padrão preservando couplets
+      const filtered = new Uint8ClampedArray(velData);
+      applyMedianFilter(filtered, w, h, 3);
+      for (let i = 0; i < w * h; i++) {
+        if (coupletMask[i]) continue;
+        const vi = i * 4;
+        velData[vi] = filtered[vi];
+        velData[vi + 1] = filtered[vi + 1];
+        velData[vi + 2] = filtered[vi + 2];
       }
     }
 
-    // Estágio 2: Blob Filter (exclui pequenos clusters isolados)
-    applyBlobFilter(velData, w, h, 6);
-
-    // Estágio 3: Preencher buracos internos
+    // Limpeza final de ilhas (Despeckle)
+    applyBlobFilter(velData, w, h, 3);
+    
+    // Hole Filling para fechar buracos internos
     applyHoleFilling(velData, w, h);
 
-    // Estágio 4: Suavização Espacial
-    applyLocalModeFilter(velData, w, h);
-
-    // Renderizar resultado
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -498,8 +570,8 @@ export async function filterDopplerSuperRes(
     if (!ctx) return null;
     ctx.putImageData(velImgData, 0, 0);
     return canvas.toDataURL('image/png');
-  } catch (e) {
-    console.error('Super Res filter error:', e);
+  } catch (err) {
+    console.error("Super Res Error:", err);
     return null;
   }
 }

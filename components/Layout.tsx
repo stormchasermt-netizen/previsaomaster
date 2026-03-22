@@ -3,15 +3,18 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { CloudLightning, Settings, BarChart2, User, X, LogOut, Save, Volume2, Music, Shield, Film, Mail } from 'lucide-react';
+import { CloudLightning, Settings, BarChart2, User, X, LogOut, Save, Volume2, Music, Shield, Film, Mail, Languages } from 'lucide-react';
 import clsx from 'clsx';
+import { useTranslation } from 'react-i18next';
 import { mockStore } from '@/lib/store';
 import { PrevisaoScore } from '@/lib/types';
 
 export default function AppLayout({ children }: { children?: React.ReactNode }) {
   const { user, loginWithGoogle, updateUsername, logout } = useAuth();
+  const { t, i18n } = useTranslation();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isLangOpen, setIsLangOpen] = useState(false);
   const [userScores, setUserScores] = useState<PrevisaoScore[]>([]);
   
   // Settings State (Mock)
@@ -99,12 +102,49 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
          <div className="flex items-center gap-4">
              <Link href="/" prefetch={false} className="text-xs font-bold tracking-widest text-slate-300 hover:text-white uppercase flex items-center gap-2 transition-colors">
                 <CloudLightning className="h-5 w-5 text-cyan-400" /> 
-                <span className="hidden sm:inline">Previsão Master</span>
+                <span className="hidden sm:inline">{t('app_title')}</span>
              </Link>
          </div>
 
          <div className="flex items-center gap-2">
-            <Link href="/projeto" prefetch={false} className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors" title="Projeto e fontes de dados">
+            {/* Language Switcher */}
+            <div className="relative">
+                <button 
+                    onClick={() => setIsLangOpen(!isLangOpen)}
+                    className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors flex items-center gap-1"
+                    title="Change Language"
+                >
+                    <Languages className="w-5 h-5" />
+                    <span className="text-[10px] font-bold uppercase">{i18n.language.split('-')[0]}</span>
+                </button>
+
+                {isLangOpen && (
+                    <div className="absolute top-full right-0 mt-2 p-2 bg-[#161b22] border border-white/10 rounded-xl shadow-2xl z-50 flex flex-col gap-1 min-w-[120px]">
+                        {[
+                            { code: 'pt', label: 'Português', flag: 'https://flagcdn.com/w40/br.png' },
+                            { code: 'en', label: 'English', flag: 'https://flagcdn.com/w40/us.png' },
+                            { code: 'es', label: 'Español', flag: 'https://flagcdn.com/w40/es.png' }
+                        ].map((lang) => (
+                            <button
+                                key={lang.code}
+                                onClick={() => {
+                                    i18n.changeLanguage(lang.code);
+                                    setIsLangOpen(false);
+                                }}
+                                className={clsx(
+                                    "flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-colors w-full text-left",
+                                    i18n.language.startsWith(lang.code) ? "bg-cyan-500/20 text-cyan-400" : "hover:bg-white/5 text-slate-400"
+                                )}
+                            >
+                                <img src={lang.flag} className="w-5 h-5 rounded-full object-cover border border-white/10" alt={lang.label} />
+                                {lang.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <Link href="/projeto" prefetch={false} className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors" title={t('nav_project')}>
               <Mail className="w-5 h-5" />
             </Link>
             {!user ? (
@@ -112,8 +152,8 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
                     onClick={handleGoogleLogin}
                     className="flex items-center gap-2 bg-white text-black px-4 py-1.5 rounded-full text-sm font-bold hover:bg-cyan-50 transition-colors shadow-[0_0_15px_rgba(255,255,255,0.3)]"
                  >
-                    <img src="https://www.google.com/favicon.ico" alt="G" className="w-3 h-3" />
-                    Entrar com Google
+                     <img src="https://www.google.com/favicon.ico" alt="G" className="w-3 h-3" />
+                    {t('btn_login')}
                  </button>
             ) : (
                 <>
@@ -170,7 +210,7 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
               <div className="w-full max-w-md bg-[#161b22] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
                   <div className="flex items-center justify-between p-4 border-b border-white/5">
                       <h2 className="text-lg font-bold flex items-center gap-2">
-                          <Settings className="w-5 h-5 text-blue-400" /> Configurações
+                          <Settings className="w-5 h-5 text-blue-400" /> {t('settings_title')}
                       </h2>
                       <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5"/></button>
                   </div>

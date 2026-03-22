@@ -1,4 +1,5 @@
 import './globals.css';
+import '@/lib/i18n';
 import 'react-image-crop/dist/ReactCrop.css';
 import type { Metadata } from 'next';
 import Script from 'next/script';

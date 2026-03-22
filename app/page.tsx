@@ -2,10 +2,12 @@
 import React from 'react';
 import Link from 'next/link';
 import { CloudLightning, Radio, HelpCircle, BookOpen, Wind, Gamepad2, Mail } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, Variants } from 'framer-motion';
+import { ParticleBackground } from '@/components/ParticleBackground';
+import { useTranslation } from 'react-i18next';
 
 export default function Home() {
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
@@ -15,13 +17,24 @@ export default function Home() {
     }
   };
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+    show: { 
+        opacity: 1, 
+        y: 0, 
+        transition: { 
+            type: 'spring', 
+            stiffness: 300, 
+            damping: 24 
+        } 
+    }
   };
 
+  const { t } = useTranslation();
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] relative overflow-hidden">
+    <div className="flex flex-col items-center justify-center min-h-[80vh] relative overflow-hidden bg-black selection:bg-cyan-500/30">
+      <ParticleBackground />
       
       {/* Envelope: Projeto & Dados (transparência) */}
       <Link
@@ -47,12 +60,13 @@ export default function Home() {
           <div className="absolute inset-0 bg-white/5 rounded-full blur-xl animate-pulse" />
           <CloudLightning className="w-20 h-20 text-white relative z-10" strokeWidth={1.5} />
         </div>
-        <h1 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white via-gray-200 to-gray-500" style={{ fontFamily: 'Impact, sans-serif' }}>
-          PREVISAO MASTER
+        <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 bg-clip-text text-transparent bg-gradient-to-b from-white via-gray-200 to-gray-500 leading-tight" style={{ fontFamily: 'Impact, sans-serif' }}>
+          PREVISÃO MASTER
         </h1>
-        <p className="text-slate-400 text-lg md:text-xl font-light tracking-wide max-w-lg mx-auto">
-          Teste suas habilidades de previsao de tempestades severas
+        <p className="text-cyan-400/80 text-sm md:text-base font-bold tracking-[0.2em] uppercase mb-8">
+          {t('app_subtitle')}
         </p>
+
       </motion.div>
 
       <motion.div 
