@@ -990,47 +990,51 @@ export default function AdminRastrosTornadosPage() {
     const origH = image.getHeight();
     if (!origW || !origH) return { pngBlob: null, bounds };
 
+    const nSamplesRaw = Math.max(1, image.getSamplesPerPixel() || 1);
+    const nSamples = Math.min(nSamplesRaw, 4); // 4 no máximo para preview RGBA
+
+    // --- REGRAS DE OURO NODATA ---
+    // Extraído uma vez antes do loop de tentativas para eficiência
+    let noData: number | null = null;
+    try {
+      const fd = image.getFileDirectory() as any;
+      const nd = (image as any).getGDALNoData?.() ?? fd.GDAL_NODATA ?? fd.NoData;
+      if (nd !== null && isFinite(Number(nd))) noData = Number(nd);
+    } catch {}
+
     let pngBlob: Blob | null = null;
     try {
       // Tenta resolução total primeiro; se falhar (memória), usa fallbacks progressivos.
-      // maxDim 16384 para máxima qualidade em overlays Antes/Depois.
       const maxDimBase = 16384;
       const baseScale = Math.min(1, maxDimBase / Math.max(origW, origH, 1));
       const decodeScales = Array.from(new Set(
         [1, baseScale, baseScale * 0.75, baseScale * 0.6, baseScale * 0.45, baseScale * 0.3]
           .map((s) => Math.max(0.1, Math.min(1, s)))
       )).sort((a, b) => b - a);
+
       const decodeSizes = decodeScales.map((scale) => ({
         w: Math.max(1, Math.round(origW * scale)),
         h: Math.max(1, Math.round(origH * scale)),
       }));
-
-      const nSamplesRaw = Math.max(1, image.getSamplesPerPixel() || 1);
-      const nSamples = Math.min(nSamplesRaw, 4); // 4 no máximo para preview RGBA
 
       for (const attempt of decodeSizes) {
         try {
           const { w, h } = attempt;
           const pixelCount = w * h;
 
-          // pool: null → sem SharedArrayBuffer (evita requisito COOP/COEP)
-          const rawRasters = await image.readRasters({
-            interleave: true,
-            pool: null,
-            width: w,
-            height: h,
-            resampleMethod: 'bilinear',
-          }) as any;
+          // Carregado só quando noData !== null (economiza memória)
+          let rawRasters: any = null;
+          if (noData !== null) {
+            rawRasters = await image.readRasters({
+              interleave: true,
+              pool: null,
+              width: w,
+              height: h,
+              resampleMethod: 'bilinear',
+            }) as any;
+          }
 
-          // NoData value support from tags
-          let noData: number | null = null;
-          try {
-            const fd = image.getFileDirectory() as any;
-            const nd = (image as any).getGDALNoData?.() ?? fd.GDAL_NODATA ?? fd.NoData;
-            if (nd !== null && isFinite(Number(nd))) noData = Number(nd);
-          } catch {}
-
-          console.log(`GeoTIFF debug: bounds=${JSON.stringify(bounds)}, nSamplesRaw=${nSamplesRaw}, noData=${noData}, attempt=${w}x${h}`);
+          console.log(`GeoTIFF Admin debug: nSamplesRaw=${nSamplesRaw}, noData=${noData}, attempt=${w}x${h}`);
 
           // Use readRGB for safer 16-to-8 bit conversion and color space handling
           const rgb = await image.readRGB({
@@ -1052,7 +1056,7 @@ export default function AdminRastrosTornadosPage() {
             const g = rgb[i * 3 + 1];
             const b = rgb[i * 3 + 2];
             
-            // Check for NoData
+            // Check for NoData: Só tratamos como transparente se o arquivo declarar explicitamente
             let isNoData = false;
             if (noData !== null && rawRasters) {
               isNoData = true;
@@ -1062,12 +1066,8 @@ export default function AdminRastrosTornadosPage() {
                   break;
                 }
               }
-            } else if (noData === null && nSamplesRaw >= 3) {
-              // Only treat absolute 0,0,0 as transparent if it's typical padding
-              if (r === 0 && g === 0 && b === 0) {
-                 isNoData = true;
-              }
             }
+            // Regra de ouro: nunca assuma que preto = NoData. Removida a transparência automática de (0,0,0).
 
             imgData.data[i * 4] = r;
             imgData.data[i * 4 + 1] = g;
