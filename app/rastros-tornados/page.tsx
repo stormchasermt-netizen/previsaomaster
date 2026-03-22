@@ -2129,6 +2129,11 @@ export default function RastrosTornadosPage() {
       ov.setOpacity(radarOpacity);
       ov.setMap(map);
       radarTimelineOverlaysRef.current.push(ov);
+
+      // Fire-and-forget: salvar imagem no Storage para arquivo histórico
+      let cacheSlug = station.slug;
+      if (usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
+      cacheRadarImage(finalUrl, cacheSlug, ts12, radarProductType);
     });
 
     return () => {
