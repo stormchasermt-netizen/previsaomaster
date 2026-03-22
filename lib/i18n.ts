@@ -29,7 +29,14 @@ const resources = {
       "profile_total_score": "Pontuação Total",
       "profile_matches": "Partidas",
       "profile_best_dist": "Melhor Distância",
-      "profile_record": "Recorde Pessoal"
+      "profile_record": "Recorde Pessoal",
+      "live_reflectivity": "Refletividade",
+      "live_velocity": "Velocidade",
+      "live_animation_speed": "Velocidade da Animação",
+      "live_show_redemet": "Mostrar Redemet",
+      "live_value_reading": "Leitura de Valor",
+      "live_historical_images": "Imagens Históricas",
+      "live_back_to_live": "Voltar ao Ao Vivo"
     }
   },
   en: {
@@ -58,7 +65,14 @@ const resources = {
       "profile_total_score": "Total Score",
       "profile_matches": "Matches",
       "profile_best_dist": "Best Distance",
-      "profile_record": "Personal Best"
+      "profile_record": "Personal Best",
+      "live_reflectivity": "Reflectivity",
+      "live_velocity": "Velocity",
+      "live_animation_speed": "Animation Speed",
+      "live_show_redemet": "Show Redemet",
+      "live_value_reading": "Value Reading",
+      "live_historical_images": "Historical Images",
+      "live_back_to_live": "Back to Live"
     }
   },
   es: {
@@ -87,7 +101,14 @@ const resources = {
       "profile_total_score": "Puntuación Total",
       "profile_matches": "Partidas",
       "profile_best_dist": "Mejor Distancia",
-      "profile_record": "Récord Personal"
+      "profile_record": "Récord Personal",
+      "live_reflectivity": "Reflectividad",
+      "live_velocity": "Velocidad",
+      "live_animation_speed": "Velocidad de Animación",
+      "live_show_redemet": "Mostrar Redemet",
+      "live_value_reading": "Lectura de Valor",
+      "live_historical_images": "Imágenes Históricas",
+      "live_back_to_live": "Volver al Vivo"
     }
   }
 };

@@ -67,12 +67,19 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
   };
   if (sessionCookie) postHeaders['Cookie'] = sessionCookie;
 
-  const bodyStr = `radar%5B%5D=${encodeURIComponent(area)}&maxcappi=maxcappi&datahora=${encodeURIComponent(datahora)}`;
+  // Use the exact payload from the user's snippet
+  const params = new URLSearchParams();
+  params.append('radar[]', 'maxcappi');
+  params.append('datahora', datahora);
+  params.append('coordenadaVis[]', '1');
+  params.append('zoom', '1');
+  params.append('animar', '0');
+  params.append('radarNome', area);
 
   const res = await fetch(PLOTA_RADAR_URL, {
     method: 'POST',
     headers: postHeaders,
-    body: bodyStr,
+    body: params.toString(),
     redirect: 'follow',
     signal: AbortSignal.timeout(12_000),
   });
@@ -83,26 +90,31 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
 
   const html = await res.text();
 
-  const regex = new RegExp(
-    `carrega_radar\\s*\\(\\s*\\d+\\s*,\\s*'${area}'\\s*,\\s*'([^']+)'`,
-  );
-  const rgMatch = html.match(regex);
-  if (!rgMatch?.[1]) {
-    return {
-      url: null,
-      debug: {
-        step: 'no_match',
-        status: res.status,
-        htmlLength: html.length,
-        htmlSnippet: html.slice(0, 600),
-        datahora,
-        hasSession: !!sessionCookie,
-      },
-    };
+  // Pattern from user: old/radar/.*?\.png
+  const regex = /old\/radar\/.*?\.png/;
+  const match = html.match(regex);
+  
+  if (!match?.[0]) {
+    // Fallback if the simple regex fails, check the existing one too
+    const oldRegex = new RegExp(`carrega_radar\\s*\\(\\s*\\d+\\s*,\\s*'${area}'\\s*,\\s*'([^']+)'`);
+    const oldMatch = html.match(oldRegex);
+    if (!oldMatch?.[1]) {
+      return {
+        url: null,
+        debug: {
+          step: 'no_match',
+          status: res.status,
+          htmlLength: html.length,
+          htmlSnippet: html.slice(0, 600),
+          datahora,
+          hasSession: !!sessionCookie,
+        },
+      };
+    }
+    return { url: `${REDEMET_BASE}${oldMatch[1]}` };
   }
 
-  const path = rgMatch[1];
-  return { url: `${REDEMET_BASE}${path}` };
+  return { url: `${REDEMET_BASE}${match[0]}` };
 }
 
 export async function GET(req: NextRequest) {

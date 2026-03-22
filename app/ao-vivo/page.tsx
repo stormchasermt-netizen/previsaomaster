@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -206,7 +207,62 @@ const RADAR_ICON_UNAVAILABLE = 'data:image/svg+xml,' + encodeURIComponent(
   '</svg>'
 );
 
+const dBZ_COLORS = [
+  { hex: '#8B8589', val: -30 },
+  { hex: '#F5F5DC', val: -20 },
+  { hex: '#E5E4E2', val: -10 },
+  { hex: '#0000FF', val: 0 },
+  { hex: '#00FFFF', val: 10 },
+  { hex: '#00FF00', val: 20 },
+  { hex: '#006400', val: 30 },
+  { hex: '#FFFF00', val: 40 },
+  { hex: '#FFA500', val: 50 },
+  { hex: '#8B0000', val: 60 },
+  { hex: '#800080', val: 70 },
+  { hex: '#00CED1', val: 80 },
+  { hex: '#000000', val: 90 },
+];
+
+const VEL_COLORS = [
+  { hex: '#FF69B4', val: -60 },
+  { hex: '#00008B', val: -50 },
+  { hex: '#00FFFF', val: -40 },
+  { hex: '#E0FFFF', val: -30 },
+  { hex: '#00FF00', val: -20 },
+  { hex: '#006400', val: -10 },
+  { hex: '#A9A9A9', val: 0 },
+  { hex: '#8B0000', val: 10 },
+  { hex: '#FF0000', val: 20 },
+  { hex: '#FFA500', val: 30 },
+  { hex: '#FFFF00', val: 40 },
+  { hex: '#808000', val: 50 },
+  { hex: '#002200', val: 60 },
+];
+
+function hexToRgb(hex: string) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return { r, g, b };
+}
+
+function findClosestValue(r: number, g: number, b: number, palette: { hex: string; val: number }[]) {
+  if (r === 0 && g === 0 && b === 0) return null; // Transparent or black background (usually 0 outside data)
+  let minDiff = Infinity;
+  let closestVal: number | null = null;
+  for (const item of palette) {
+    const rgb = hexToRgb(item.hex);
+    const diff = Math.sqrt(Math.pow(r - rgb.r, 2) + Math.pow(g - rgb.g, 2) + Math.pow(b - rgb.b, 2));
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestVal = item.val;
+    }
+  }
+  return minDiff < 60 ? closestVal : null; // Threshold to avoid matching noise
+}
+
 export default function AoVivoPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { addToast } = useToast();
   const mapRef = useRef<HTMLDivElement>(null);
@@ -237,6 +293,8 @@ export default function AoVivoPage() {
   const [sliderMinutesAgo, setSliderMinutesAgo] = useState(0);
   /** Modo único: só horários com imagem (slider discreto). null = mosaico ou não carregado. */
   const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
+  const [sampledValue1, setSampledValue1] = useState<number | null>(null);
+  const [sampledValue2, setSampledValue2] = useState<number | null>(null);
 
   /** Máximo de minutos atrás: live = meia-noite até agora */
   const maxSliderMinutesAgo = useMemo(() => {
@@ -254,6 +312,15 @@ export default function AoVivoPage() {
 
   // Controle de Animação
   const [isPlaying, setIsPlaying] = useState(false);
+  const [animationSpeedMultiplier, setAnimationSpeedMultiplier] = useState(1);
+
+  const toggleAnimationSpeed = useCallback(() => {
+    setAnimationSpeedMultiplier((prev) => {
+      if (prev === 1) return 2;
+      if (prev === 2) return 5;
+      return 1;
+    });
+  }, []);
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Lógica de Animação Automática (Play/Pause)
@@ -277,7 +344,7 @@ export default function AoVivoPage() {
               return next < 0 ? maxSliderMinutesAgo : next;
             }
           });
-        }, 800); // 800ms por frame
+        }, 800 / animationSpeedMultiplier); // 800ms / multiplier por frame
       }
     } else {
       if (playIntervalRef.current) {
@@ -291,7 +358,7 @@ export default function AoVivoPage() {
         playIntervalRef.current = null;
       }
     };
-  }, [isPlaying, validSliderMinutesAgo, maxSliderMinutesAgo]);
+  }, [isPlaying, validSliderMinutesAgo, maxSliderMinutesAgo, animationSpeedMultiplier]);
 
   const handleSkipBack = useCallback(() => {
     if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
@@ -335,6 +402,10 @@ export default function AoVivoPage() {
   const [redemetAvailableKeys, setRedemetAvailableKeys] = useState<Set<string>>(new Set());
   /** URLs REDEMET encontradas por radarKey */
   const [redemetFoundUrls, setRedemetFoundUrls] = useState<Record<string, string>>({});
+  /**urls de busca do redemet para santiago */
+  const [santiagoRedemetUrl, setSantiagoRedemetUrl] = useState<string | null>(null);
+  const [santiagoRedemetLoading, setSantiagoRedemetLoading] = useState(false);
+
   /** Nowcasting offline: detectado quando muitos radares falham ao carregar */
   const [nowcastingOffline, setNowcastingOffline] = useState(false);
   /** Filtro de ruído de refletividade ativo (Super Res refletividade) — default: true */
@@ -435,6 +506,84 @@ export default function AoVivoPage() {
   const [liveViewerError, setLiveViewerError] = useState<string | null>(null);
   isStreamingRef.current = isStreaming;
 
+  const samplePixelFromOverlays = useCallback((map: any, overlays: any[], setVal: (v: number | null) => void, palette: any[]) => {
+    if (!map || overlays.length === 0) {
+      setVal(null);
+      return;
+    }
+    const center = map.getCenter();
+    const lat = center.lat();
+    const lng = center.lng();
+
+    // Encontrar o overlay que contém o centro
+    for (let i = overlays.length - 1; i >= 0; i--) {
+        const overlay = overlays[i];
+        const bounds = overlay.getBounds();
+        if (bounds.contains(center)) {
+            // Tentar obter a imagem de dentro do overlay
+            // GroundOverlay do Google Maps cria um DIV com uma imagem.
+            // Precisamos acessar o elemento DOM real ou recarregar via canvas.
+            // Como temos a URL do overlay, vamos carregar via canvas (cacheado pelo browser)
+            const url = overlay.get('url') || overlay.getUrl?.();
+            if (!url) continue;
+
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = url;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                ctx.drawImage(img, 0, 0);
+
+                const ne = bounds.getNorthEast();
+                const sw = bounds.getSouthWest();
+                
+                // Mapear lat/lng para x/y no canvas
+                const x = ((lng - sw.lng()) / (ne.lng() - sw.lng())) * img.width;
+                const y = ((ne.lat() - lat) / (ne.lat() - sw.lat())) * img.height;
+
+                const pixel = ctx.getImageData(x, y, 1, 1).data;
+                const val = findClosestValue(pixel[0], pixel[1], pixel[2], palette);
+                setVal(val);
+            };
+            return;
+        }
+    }
+    setVal(null);
+  }, []);
+
+  const handleSampleAll = useCallback(() => {
+    samplePixelFromOverlays(mapInstanceRef.current, radarOverlaysRef.current, setSampledValue1, dBZ_COLORS);
+    if (splitCount === 2) {
+        samplePixelFromOverlays(map2InstanceRef.current, radarOverlays2Ref.current, setSampledValue2, VEL_COLORS);
+    }
+  }, [samplePixelFromOverlays, splitCount]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const l1 = mapInstanceRef.current.addListener('idle', handleSampleAll);
+    const l2 = mapInstanceRef.current.addListener('zoom_changed', handleSampleAll);
+    let l3: any, l4: any;
+    if (map2Ready && map2InstanceRef.current) {
+        l3 = map2InstanceRef.current.addListener('idle', handleSampleAll);
+        l4 = map2InstanceRef.current.addListener('zoom_changed', handleSampleAll);
+    }
+    return () => {
+        google.maps.event.removeListener(l1);
+        google.maps.event.removeListener(l2);
+        if (l3) google.maps.event.removeListener(l3);
+        if (l4) google.maps.event.removeListener(l4);
+    };
+  }, [mapReady, map2Ready, handleSampleAll]);
+
+  // Atualizar valores quando os overlays mudarem (animação)
+  useEffect(() => {
+    handleSampleAll();
+  }, [sliderMinutesAgo, radarTimestamp, handleSampleAll]);
+
   /** Modal de visualização: usuário transmitindo ao vivo */
   const [liveViewerUser, setLiveViewerUser] = useState<PresenceData | null>(null);
   const [liveViewerOpen, setLiveViewerOpen] = useState(false);
@@ -478,6 +627,29 @@ export default function AoVivoPage() {
   const effectiveRadarTimestamp = historicalTimestampOverride
     ? (sliderMinutesAgo > 0 ? subtractMinutesFromTimestamp12UTC(historicalTimestampOverride, sliderMinutesAgo) : historicalTimestampOverride)
     : radarTimestamp;
+
+  const fetchSantiagoRedemet = useCallback(async () => {
+    if (santiagoRedemetLoading) return;
+    setSantiagoRedemetLoading(true);
+    try {
+      const ts12 = (historicalTimestampOverride && sliderMinutesAgo > 0) 
+        ? subtractMinutesFromTimestamp12UTC(historicalTimestampOverride, sliderMinutesAgo)
+        : effectiveRadarTimestamp;
+      const res = await fetch(`/api/radar-redemet-find?area=sg&ts12=${ts12}`);
+      const data = await res.json();
+      if (data.url) {
+        setSantiagoRedemetUrl(data.url);
+        setRadarSourceMode('hd');
+        addToast("Imagem Redemet encontrada para Santiago!", "success");
+      } else {
+        addToast("Nenhuma imagem Redemet encontrada para este horário.", "error");
+      }
+    } catch (err) {
+      addToast("Erro ao buscar no Redemet.", "error");
+    } finally {
+      setSantiagoRedemetLoading(false);
+    }
+  }, [effectiveRadarTimestamp, santiagoRedemetLoading, addToast, historicalTimestampOverride, sliderMinutesAgo]);
 
   const radarTimeLegends = useMemo(() => {
     const nominalDate = new Date(Date.UTC(
@@ -1063,8 +1235,11 @@ export default function AoVivoPage() {
           mapTypeId: 'roadmap',
           styles: MAP_STYLE_DARK,
           disableDefaultUI: false,
-          zoomControl: true,
+          zoomControl: isDesktop,
           mapTypeControl: false,
+          fullscreenControl: isDesktop,
+          streetViewControl: isDesktop,
+          rotateControl: isDesktop,
         });
         mapInstanceRef.current = map;
         setMapReady(true);
@@ -1126,6 +1301,9 @@ export default function AoVivoPage() {
         disableDefaultUI: true,
         zoomControl: false,
         mapTypeControl: false,
+        fullscreenControl: false,
+        streetViewControl: false,
+        rotateControl: false,
       });
       map2InstanceRef.current = map2;
       setMap2Ready(true);
@@ -1518,6 +1696,11 @@ export default function AoVivoPage() {
           .then(r => r.ok ? r.json() : null)
           .then(d => d?.url ?? null)
           .catch(() => null);
+      }
+
+      // Santiago manual override
+      if (dr.type === 'cptec' && dr.station.slug === 'santiago' && santiagoRedemetUrl) {
+         urlsToTry.push({ url: santiagoRedemetUrl, ts12: nominalTs, source: 'redemet' });
       }
       if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
         if (useFallback) {
@@ -2308,9 +2491,16 @@ export default function AoVivoPage() {
                     onClick={() => setRadarSourceMode('hd')}
                     className="px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition-colors whitespace-nowrap"
                   >
-                    🔄 Alternar para Redemet (LIVE)
+                    {t('live_show_redemet')}
                   </button>
                 )}
+                <button
+                  onClick={toggleAnimationSpeed}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0A0E17]/80 border border-white/10 text-slate-400 shadow-lg transition-all hover:text-white hover:border-cyan-500/40"
+                  title={t('live_animation_speed')}
+                >
+                  <span className="font-bold text-[10px] uppercase">{t('live_animation_speed')}: {animationSpeedMultiplier}x</span>
+                </button>
                 <button
                   onClick={() => setNowcastingOffline(false)}
                   className="p-1 rounded text-amber-400/60 hover:text-amber-300 transition-colors"
@@ -2673,6 +2863,17 @@ export default function AoVivoPage() {
                 <span className="text-[10px] font-semibold text-cyan-300">Refletividade</span>
               </div>
             )}
+            {/* Mira (Crosshair) */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-20">
+              <div className="relative">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-px bg-white/70 shadow-[0_0_2px_rgba(0,0,0,0.8)]" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-px bg-white/70 shadow-[0_0_2px_rgba(0,0,0,0.8)]" />
+              </div>
+            </div>
+            {/* Leitura de Valor */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white font-mono z-30">
+              {t('live_value_reading')}: {sampledValue1 !== null ? `${sampledValue1} dBZ` : '--'}
+            </div>
             {/* Legenda de cores — dBZ (Refletividade) */}
             {(splitCount === 2 || radarProductType === 'reflectividade') && (
               <div className="absolute z-20 top-2 left-2 pointer-events-none sm:top-3 sm:left-3" style={splitCount === 2 ? { top: '28px' } : undefined}>
@@ -2680,20 +2881,21 @@ export default function AoVivoPage() {
                   <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">dBZ</span>
                   <div className="flex flex-col items-center">
                     <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
-                      <div className="flex-1" style={{ background: 'transparent' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00c8ff, #0090ff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0090ff, #00ff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #80ff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #80ff00, #ffff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #cc0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc0000, #8b0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #8b0000, #ff00ff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #cc00ff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc00ff, #ffffff)' }} />
+                      <div className="flex-1" style={{ background: '#8B8589' }} />
+                      <div className="flex-1" style={{ background: '#F5F5DC' }} />
+                      <div className="flex-1" style={{ background: '#E5E4E2' }} />
+                      <div className="flex-1" style={{ background: '#0000FF' }} />
+                      <div className="flex-1" style={{ background: '#00FFFF' }} />
+                      <div className="flex-1" style={{ background: '#00FF00' }} />
+                      <div className="flex-1" style={{ background: '#006400' }} />
+                      <div className="flex-1" style={{ background: '#FFFF00' }} />
+                      <div className="flex-1" style={{ background: '#FFA500' }} />
+                      <div className="flex-1" style={{ background: '#8B0000' }} />
+                      <div className="flex-1" style={{ background: '#800080' }} />
+                      <div className="flex-1" style={{ background: '#00CED1' }} />
+                      <div className="flex-1" style={{ background: '#000000' }} />
                     </div>
-                    <div className="flex justify-between w-full mt-0.5">
+                    <div className="flex justify-between w-full mt-0.5 px-0.5">
                       {['-30','-20','-10','0','10','20','30','40','50','60','70','80','90'].map((v) => (
                         <span key={v} className="text-[6px] sm:text-[7px] text-slate-600 font-semibold leading-none">{v}</span>
                       ))}
@@ -2702,27 +2904,27 @@ export default function AoVivoPage() {
                 </div>
               </div>
             )}
-            {/* Legenda de cores — m/s (Velocidade) — single map mode */}
             {splitCount !== 2 && radarProductType === 'velocidade' && (
               <div className="absolute z-20 top-2 left-2 pointer-events-none sm:top-3 sm:left-3">
                 <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-1.5">
                   <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">m/s</span>
                   <div className="flex flex-col items-center">
                     <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff00ff, #4b0082)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #4b0082, #0000ff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0000ff, #0080ff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0080ff, #00ffff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ffff, #00ff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #e0e0e0)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #e0e0e0, #ff0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #ff8000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff8000, #ffff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #c0c000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #c0c000, #808000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #808000, #404000)' }} />
+                      <div className="flex-1" style={{ background: '#FF69B4' }} />
+                      <div className="flex-1" style={{ background: '#00008B' }} />
+                      <div className="flex-1" style={{ background: '#00FFFF' }} />
+                      <div className="flex-1" style={{ background: '#E0FFFF' }} />
+                      <div className="flex-1" style={{ background: '#00FF00' }} />
+                      <div className="flex-1" style={{ background: '#006400' }} />
+                      <div className="flex-1" style={{ background: '#A9A9A9' }} />
+                      <div className="flex-1" style={{ background: '#8B0000' }} />
+                      <div className="flex-1" style={{ background: '#FF0000' }} />
+                      <div className="flex-1" style={{ background: '#FFA500' }} />
+                      <div className="flex-1" style={{ background: '#FFFF00' }} />
+                      <div className="flex-1" style={{ background: '#808000' }} />
+                      <div className="flex-1" style={{ background: '#002200' }} />
                     </div>
-                    <div className="flex justify-between w-full mt-0.5">
+                    <div className="flex justify-between w-full mt-0.5 px-0.5">
                       {['-60','-50','-40','-30','-20','-10','0','10','20','30','40','50','60'].map((v) => (
                         <span key={v} className="text-[6px] sm:text-[7px] text-slate-600 font-semibold leading-none">{v}</span>
                       ))}
@@ -2769,22 +2971,37 @@ export default function AoVivoPage() {
                 <div className={`absolute z-10 bg-slate-900/80 px-3 py-1 pointer-events-none ${isDesktop ? 'top-0 left-0 right-0' : 'bottom-0 left-0 right-0'}`}>
                   <span className="text-[10px] font-semibold text-emerald-300">Doppler (Velocidade)</span>
                 </div>
-                {/* Legenda de cores — m/s (Velocidade) */}
+                {/* Mira (Crosshair) 2 */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-20">
+                  <div className="relative">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-px bg-white/70 shadow-[0_0_2px_rgba(0,0,0,0.8)]" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-px bg-white/70 shadow-[0_0_2px_rgba(0,0,0,0.8)]" />
+                  </div>
+                </div>
+                {/* Leitura de Valor 2 */}
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white font-mono z-30">
+                  {t('live_value_reading')}: {sampledValue2 !== null ? `${sampledValue2} m/s` : '--'}
+                </div>
                 <div className="absolute z-20 pointer-events-none" style={{ top: '28px', left: '8px' }}>
                   <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-2 py-1.5 flex items-center gap-1.5">
                     <span className="text-[10px] sm:text-xs font-bold text-slate-700 shrink-0">m/s</span>
                     <div className="flex flex-col items-center">
                         <div className="h-3 sm:h-4 rounded-sm overflow-hidden flex" style={{ width: 'clamp(120px, 25vw, 220px)' }}>
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00c8ff, #0090ff)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #0090ff, #00ff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #00ff00, #80ff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #80ff00, #ffff00)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffff00, #ffa500)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ffa500, #ff0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #ff0000, #cc0000)' }} />
-                      <div className="flex-1" style={{ background: 'linear-gradient(to right, #cc0000, #ff00ff)' }} />
+                          <div className="flex-1" style={{ background: '#FF69B4' }} />
+                          <div className="flex-1" style={{ background: '#00008B' }} />
+                          <div className="flex-1" style={{ background: '#00FFFF' }} />
+                          <div className="flex-1" style={{ background: '#E0FFFF' }} />
+                          <div className="flex-1" style={{ background: '#00FF00' }} />
+                          <div className="flex-1" style={{ background: '#006400' }} />
+                          <div className="flex-1" style={{ background: '#A9A9A9' }} />
+                          <div className="flex-1" style={{ background: '#8B0000' }} />
+                          <div className="flex-1" style={{ background: '#FF0000' }} />
+                          <div className="flex-1" style={{ background: '#FFA500' }} />
+                          <div className="flex-1" style={{ background: '#FFFF00' }} />
+                          <div className="flex-1" style={{ background: '#808000' }} />
+                          <div className="flex-1" style={{ background: '#002200' }} />
                         </div>
-                      <div className="flex justify-between w-full mt-0.5">
+                      <div className="flex justify-between w-full mt-0.5 px-0.5">
                         {['-60','-50','-40','-30','-20','-10','0','10','20','30','40','50','60'].map((v) => (
                           <span key={v} className="text-[6px] sm:text-[7px] text-slate-600 font-semibold leading-none">{v}</span>
                         ))}
@@ -2853,7 +3070,17 @@ export default function AoVivoPage() {
                 </button>
               </div>
             )}
-                  </div>
+            {focusedRadarKey === 'cptec:santiago' && failedRadars.has('cptec:santiago') && !santiagoRedemetUrl && (
+              <button
+                onClick={fetchSantiagoRedemet}
+                disabled={santiagoRedemetLoading}
+                className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/90 border border-amber-400/50 text-slate-900 font-bold text-[10px] uppercase tracking-wider backdrop-blur-md shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+              >
+                {santiagoRedemetLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Radar className="w-3.5 h-3.5" />}
+                {t('live_show_redemet')} (Santiago)
+              </button>
+            )}
+          </div>
 
           {/* Botões do lado direito (Reportar e Super Res) */}
           <div className="absolute z-50 right-2 top-[140px] pointer-events-auto flex flex-col gap-2 items-end">
@@ -3041,7 +3268,7 @@ export default function AoVivoPage() {
           )}
 
           {/* Slider de tempo e botões de play — Otimizados para mobile e desktop */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] pointer-events-auto flex flex-col gap-2 z-10">
+          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] pointer-events-auto flex flex-col gap-2 z-10 ${!isDesktop ? 'hidden' : ''}`}>
             {/* Bloco do Slider de tempo */}
             <div className="w-full px-3 py-2 sm:px-4 sm:py-3 rounded-xl sm:rounded-2xl bg-[#0A0E17]/90 backdrop-blur-xl border border-cyan-500/20 shadow-[0_0_30px_rgba(6,182,212,0.15),0_8px_32px_rgba(0,0,0,0.6)] group/slider">
               {sliderMinutesAgo > 60 && !validSliderMinutesAgo && (
@@ -3119,6 +3346,12 @@ export default function AoVivoPage() {
                     </span>
                   </div>
                 </div>
+                <button
+                  onClick={() => setAnimationSpeedMultiplier((prev) => (prev === 1 ? 2 : prev === 2 ? 5 : 1))}
+                  className="px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-[9px] sm:text-[10px] font-bold text-white transition-all flex items-center justify-center shrink-0"
+                >
+                  {animationSpeedMultiplier}x
+                </button>
                 <span className={`text-[8px] sm:text-[10px] font-black tracking-widest flex-shrink-0 w-12 sm:w-14 text-right uppercase ${
                   historicalTimestampOverride
                     ? 'text-amber-400'
@@ -3611,7 +3844,7 @@ export default function AoVivoPage() {
                 setShowAnimationMenu((v) => !v);
               }
             }}
-            className={`group/tab flex flex-col items-center gap-1 p-2.5 rounded-xl min-w-[3rem] transition-all duration-200 relative ${animationPlaying ? 'text-amber-400' : showAnimationMenu ? 'text-cyan-400' : 'text-slate-500 hover:text-white'}`}
+            className={`group/tab ${!isDesktop ? 'hidden' : 'flex'} flex-col items-center gap-1 p-2.5 rounded-xl min-w-[3rem] transition-all duration-200 relative ${animationPlaying ? 'text-amber-400' : showAnimationMenu ? 'text-cyan-400' : 'text-slate-500 hover:text-white'}`}
             title={animationPlaying ? 'Pausar animação' : 'Reproduzir animação'}
           >
             {(animationPlaying || showAnimationMenu) && (
@@ -3663,7 +3896,7 @@ export default function AoVivoPage() {
               <div className="fixed inset-0 z-30" onClick={() => setShowSplitMenu(false)} aria-hidden />
               <motion.div 
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 z-40 w-48 rounded-xl bg-[#0F131C]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] py-2 overflow-hidden"
+                className="absolute bottom-full left-1/2 md:left-1/2 -translate-x-1/2 mb-3 z-40 w-48 max-w-[90vw] rounded-xl bg-[#0F131C]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] py-2 overflow-hidden"
               >
                 <p className="px-4 py-2 text-[9px] font-bold text-cyan-400 uppercase tracking-widest bg-black/20 mb-1">Telas</p>
                 {([1, 2, 4] as const).map((n) => (

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu } from 'lucide-react';
@@ -326,6 +327,7 @@ function getStaticMapPreviewUrl(maptype: string): string {
 }
 
 export default function RastrosTornadosPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -1350,7 +1352,7 @@ export default function RastrosTornadosPage() {
       ? radarConfigs.find((c) => c.stationSlug === ('slug' in preferred ? preferred.slug : `argentina:${preferred.id}`))
       : null;
     const interval = radarCfgForInterval?.updateIntervalMinutes ?? preferred?.updateIntervalMinutes ?? 6;
-    const offset = preferred?.updateIntervalOffsetMinutes ?? 0;
+    const offset = (preferred && 'slug' in preferred) ? (preferred.updateIntervalOffsetMinutes ?? 0) : 0;
     const ts = generateRadarTimestamps(track, interval, offset);
     if (!ts.length) {
       setRadarError('Não foi possível gerar janelas de tempo para o radar.');
@@ -2091,55 +2093,34 @@ export default function RastrosTornadosPage() {
     const map = mapInstanceRef.current;
     const stations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
 
-    stations.forEach((station) => {
+    stations.forEach(async (station) => {
       const ts12 = radarTimelineMode === 'mosaico'
         ? getNearestRadarTimestamp(nominalTs, station)
         : nominalTs;
-      const url = getProxiedRadarUrl(buildNowcastingPngUrl(station, ts12, radarProductType));
+      
+      const cptecUrl = getProxiedRadarUrl(buildNowcastingPngUrl(station, ts12, radarProductType));
+      const hasRedemetFb = hasRedemetFallback(station.slug);
+      
+      let finalUrl = cptecUrl;
+      let usedSource: 'cptec' | 'redemet' = 'cptec';
+
+      // Se mode for HD ou se CPTEC falhar (visto que é timeline, vamos tentar o probate rápido ou apenas aceitar fallback)
+      if (radarSourceMode === 'hd' && hasRedemetFb) {
+        const area = getRedemetArea(station.slug);
+        const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
+        if (res?.url) {
+          finalUrl = getProxiedRadarUrl(res.url);
+          usedSource = 'redemet';
+        }
+      }
+
       const cfg = radarConfigs.find((c) => c.stationSlug === station.slug);
       const latLngBounds = cfg
-        ? new google.maps.LatLngBounds(
-            { lat: cfg.bounds.sw.lat, lng: cfg.bounds.sw.lng },
-            { lat: cfg.bounds.ne.lat, lng: cfg.bounds.ne.lng }
-          )
-        : (() => {
-            const b = getRadarImageBounds(station);
-            return new google.maps.LatLngBounds(
-              { lat: b.south, lng: b.west },
-              { lat: b.north, lng: b.east }
-            );
-          })();
+        ? new google.maps.LatLngBounds(cfg.bounds.sw, cfg.bounds.ne)
+        : (usedSource === 'redemet' ? getRadarImageBounds(station as CptecRadarStation, 400) : getRadarImageBounds(station as CptecRadarStation));
 
-      const ov = new google.maps.OverlayView();
-      let divEl: HTMLDivElement | null = null;
-      ov.onAdd = () => {
-        divEl = document.createElement('div');
-        divEl.style.cssText = 'position:absolute;pointer-events:none;';
-        const img = document.createElement('img');
-        img.src = url;
-        img.className = 'pixelated-layer';
-        img.style.cssText = `width:100%;height:100%;opacity:${radarOpacity};object-fit:fill;`;
-        img.onerror = () => { if (divEl) divEl.style.display = 'none'; };
-        img.onload = () => {
-          // Fire-and-forget: salvar imagem no Storage para cache
-          cacheRadarImage(img.src, station.slug, ts12, radarProductType);
-        };
-        divEl.appendChild(img);
-        ov.getPanes()?.overlayLayer?.appendChild(divEl);
-      };
-      ov.draw = () => {
-        if (!divEl) return;
-        const proj = ov.getProjection();
-        if (!proj) return;
-        const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
-        const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
-        if (!sw || !ne) return;
-        divEl.style.left = Math.min(sw.x, ne.x) + 'px';
-        divEl.style.top = Math.min(sw.y, ne.y) + 'px';
-        divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
-        divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
-      };
-      ov.onRemove = () => { divEl?.parentNode?.removeChild(divEl); divEl = null; };
+      const ov = new google.maps.GroundOverlay(finalUrl, latLngBounds);
+      ov.setOpacity(radarOpacity);
       ov.setMap(map);
       radarTimelineOverlaysRef.current.push(ov);
     });
@@ -2148,7 +2129,7 @@ export default function RastrosTornadosPage() {
       radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
       radarTimelineOverlaysRef.current = [];
     };
-  }, [showRadarTimelineSlider, radarTimelineMode, radarTimelineIndex, radarTimelineTimestamps, intervalRadars, timelineActiveStation, radarProductType, radarOpacity, radarConfigs]);
+  }, [showRadarTimelineSlider, radarTimelineMode, radarTimelineIndex, radarTimelineTimestamps, intervalRadars, timelineActiveStation, radarProductType, radarOpacity, radarConfigs, radarSourceMode]);
 
   // Radar play/pause
   useEffect(() => {
@@ -4136,7 +4117,7 @@ export default function RastrosTornadosPage() {
                                 </span>
                               )}
                               <div className="flex-1 min-w-0">
-                                <span className="font-bold text-white text-sm">{t.date}</span>
+                                <h3 className="font-bold text-white text-sm">{t.date}</h3>
                                 <span className="mx-1 text-slate-500">·</span>
                                 <span className="text-slate-300 text-sm">{t.locality || t.state}</span>
                                 <span className="ml-2 text-[10px] text-slate-500 uppercase font-medium">
