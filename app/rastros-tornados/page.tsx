@@ -1751,7 +1751,7 @@ export default function RastrosTornadosPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isMounted]);
 
   useEffect(() => {
     fetchRadarConfigs().then(setRadarConfigs).catch(() => {});

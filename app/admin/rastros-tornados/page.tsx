@@ -236,7 +236,7 @@ export default function AdminRastrosTornadosPage() {
     };
     initMap();
     return () => { isMounted = false; };
-  }, []);
+  }, [isMounted]);
 
   useEffect(() => {
     fetch(BRASIL_GEOJSON_URL)
