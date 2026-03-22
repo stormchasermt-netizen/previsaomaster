@@ -24,6 +24,7 @@ import {
   getTrackHeatmapPoints,
   inferCountryFromTrack,
   type TornadoTrack,
+  SecondaryImage,
   type FScale,
   type Season,
 } from '../../lib/tornadoTracksData';
@@ -396,6 +397,8 @@ export default function RastrosTornadosPage() {
   const [showBeforeAfterDialog, setShowBeforeAfterDialog] = useState(false);
   const [overlayBeforeOpacity, setOverlayBeforeOpacity] = useState(0.75);
   const [overlayAfterOpacity, setOverlayAfterOpacity] = useState(0.75);
+  const [visibleSecondaryImageIds, setVisibleSecondaryImageIds] = useState<string[]>([]);
+  const [secondaryImageOpacities, setSecondaryImageOpacities] = useState<Record<string, number>>({});
   const [polygonVisible, setPolygonVisible] = useState(true);
   const [polygonFillVisible, setPolygonFillVisible] = useState(true);
   const [prevotsOverlayVisible, setPrevotsOverlayVisible] = useState(false);
@@ -723,6 +726,7 @@ export default function RastrosTornadosPage() {
   const trackImageGroundOverlayRef = useRef<any>(null);
   const overlayBeforeRef = useRef<any>(null);
   const overlayAfterRef = useRef<any>(null);
+  const secondaryOverlaysRef = useRef<Record<string, any>>({});
   const [tempBeforeImageBounds, setTempBeforeImageBounds] = useState<{ ne: { lat: number; lng: number }; sw: { lat: number; lng: number } } | null>(null);
   const [tempAfterImageBounds, setTempAfterImageBounds] = useState<{ ne: { lat: number; lng: number }; sw: { lat: number; lng: number } } | null>(null);
   const knownTrackIdsRef = useRef<Set<string>>(new Set());
@@ -1708,18 +1712,37 @@ export default function RastrosTornadosPage() {
     const initMap = async () => {
       if (!mapRef.current) return;
       try {
-        const { Map } = await google.maps.importLibrary('maps');
-        if (!isMounted) return;
-        const map = new Map(mapRef.current, {
-          center: BRAZIL_CENTER,
-          zoom: DEFAULT_ZOOM,
-          disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeId: 'roadmap',
-          styles: MAP_STYLE_DARK,
-        });
-        mapInstanceRef.current = map;
-        setMapReady(true);
+        // Garantir que o objeto google está disponível antes de tentar importar a biblioteca
+        if (typeof window === 'undefined') return;
+        
+        const tryInit = async () => {
+          if (!(window as any).google?.maps?.importLibrary) {
+            // Se ainda não estiver pronto, espera um pouco
+            setTimeout(tryInit, 200);
+            return;
+          }
+          
+          try {
+            const { Map } = await google.maps.importLibrary('maps');
+            if (!isMounted) return;
+            const map = new Map(mapRef.current, {
+              center: BRAZIL_CENTER,
+              zoom: DEFAULT_ZOOM,
+              disableDefaultUI: true,
+              zoomControl: true,
+              mapTypeId: 'roadmap',
+              styles: MAP_STYLE_DARK,
+            });
+            console.log('RastrosTornados: Google Map initialized successfully.');
+            mapInstanceRef.current = map;
+            setMapReady(true);
+          } catch (err) {
+            console.error('Map importLibrary error:', err);
+          }
+        };
+        
+        console.log('RastrosTornados: Starting map initialization...');
+        tryInit();
       } catch (err) {
         console.error('RastrosTornados init map error', err);
       }
@@ -1911,6 +1934,8 @@ export default function RastrosTornadosPage() {
     setGoesFrameIdx(0);
     setGoesPlaying(false);
     setGoesError(null);
+    setVisibleSecondaryImageIds([]);
+    setSecondaryImageOpacities({});
     setRadarVisible(false);
     setRadarOpacity(0.75);
     setRadarError(null);
@@ -1920,6 +1945,8 @@ export default function RastrosTornadosPage() {
     setRadarsWithin300km([]);
     setRadarLoading(false);
     setRadarPlaying(false);
+    Object.values(secondaryOverlaysRef.current).forEach(ov => ov.setMap(null));
+    secondaryOverlaysRef.current = {};
     if (goesOverlayRef.current) {
       (goesOverlayRef.current as any).setMap?.(null);
       goesOverlayRef.current = null;
@@ -1999,9 +2026,12 @@ export default function RastrosTornadosPage() {
         (overlayAfterRef.current as any).setMap?.(null);
         overlayAfterRef.current = null;
       }
+      Object.values(secondaryOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
+      secondaryOverlaysRef.current = {};
       setTrackImageOverlayVisible(false);
       setOverlayBeforeVisible(false);
       setOverlayAfterVisible(false);
+      setVisibleSecondaryImageIds([]);
       return;
     }
     const map = mapInstanceRef.current;
@@ -2018,6 +2048,8 @@ export default function RastrosTornadosPage() {
       (overlayAfterRef.current as any).setMap?.(null);
       overlayAfterRef.current = null;
     }
+    Object.values(secondaryOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
+    secondaryOverlaysRef.current = {};
 
     const beforeUrl = selectedTrack.beforeImage?.trim();
     const afterUrl = selectedTrack.afterImage?.trim();
@@ -2058,6 +2090,16 @@ export default function RastrosTornadosPage() {
       }
     }
 
+    // Imagens secundárias
+    (selectedTrack.secondaryAfterImages || []).forEach(img => {
+      if (visibleSecondaryImageIds.includes(img.id) && img.url && img.bounds) {
+        const bounds = makeBounds(img.bounds);
+        const opacity = secondaryImageOpacities[img.id] ?? 0.75;
+        const overlay = createImageOverlayView(img.url, bounds, map, opacity);
+        secondaryOverlaysRef.current[img.id] = overlay;
+      }
+    });
+
     return () => {
       if (trackImageGroundOverlayRef.current) {
         (trackImageGroundOverlayRef.current as any).setMap?.(null);
@@ -2071,8 +2113,10 @@ export default function RastrosTornadosPage() {
         (overlayAfterRef.current as any).setMap?.(null);
         overlayAfterRef.current = null;
       }
+      Object.values(secondaryOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
+      secondaryOverlaysRef.current = {};
     };
-  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode, tempBeforeImageBounds, tempAfterImageBounds]);
+  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity, visibleSecondaryImageIds, secondaryImageOpacities, imageMappingMode, tempBeforeImageBounds, tempAfterImageBounds]);
 
   // Gerenciamento do Retângulo de Mapeamento de Imagem (Main Page - Admin Only)
   useEffect(() => {
@@ -2180,6 +2224,22 @@ export default function RastrosTornadosPage() {
       addToast(`Erro ao salvar limites: ${e.message}`, 'error');
     } finally {
       setIsSavingImageBounds(false);
+    }
+  };
+
+  const toggleSecondaryImage = (id: string) => {
+    setVisibleSecondaryImageIds(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      return [...prev, id];
+    });
+  };
+
+  const zoomToSecondaryImage = (img: SecondaryImage) => {
+    if (!mapInstanceRef.current || !img.bounds) return;
+    const bounds = makeBounds(img.bounds);
+    mapInstanceRef.current.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+    if (!visibleSecondaryImageIds.includes(img.id)) {
+      toggleSecondaryImage(img.id);
     }
   };
 

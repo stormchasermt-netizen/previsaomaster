@@ -36,10 +36,16 @@ export const PREVOTS_LEVEL_COLORS: Record<PrevotsLevel, string> = {
 /** Ordem de desenho: nível 0 primeiro (por baixo), depois 1, 2, 3, 4. */
 export const PREVOTS_LEVEL_ORDER: PrevotsLevel[] = [0, 1, 2, 3, 4];
 
-/** Bounds para sobrepor imagem (ex.: GeoTIFF) no mapa. */
 export interface TrackImageBounds {
   ne: { lat: number; lng: number };
   sw: { lat: number; lng: number };
+}
+
+export interface SecondaryImage {
+  id: string; // unique ID to track in state
+  url: string;
+  bounds: TrackImageBounds;
+  description?: string;
 }
 
 export interface TornadoTrack {
@@ -70,6 +76,8 @@ export interface TornadoTrack {
   trackImage?: string;
   /** Bounds geográficos da imagem (para sobrepor exatamente no mapa). */
   trackImageBounds?: TrackImageBounds;
+  /** Lista de imagens secundárias de "depois" (ex: zooms, drones). */
+  secondaryAfterImages?: SecondaryImage[];
   /** Timestamp de criação (ms) quando disponível no Firestore. */
   createdAtMs?: number;
   /** Timestamp de atualização (ms) quando disponível no Firestore. */

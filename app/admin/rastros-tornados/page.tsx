@@ -140,7 +140,11 @@ export default function AdminRastrosTornadosPage() {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [appliedStartDate, setAppliedStartDate] = useState('');
   const [appliedEndDate, setAppliedEndDate] = useState('');
-  const [imageMappingMode, setImageMappingMode] = useState<'none' | 'before' | 'after'>('none');
+  const [imageMappingMode, setImageMappingMode] = useState<string>('none');
+  const [secondaryAfterImages, setSecondaryAfterImages] = useState<any[]>([]);
+  const [secondaryUploadingId, setSecondaryUploadingId] = useState<string | null>(null);
+  const [activeSecondaryId, setActiveSecondaryId] = useState<string | null>(null);
+  const secondaryImageFileInputRef = useRef<HTMLInputElement>(null);
   const rectInstanceRef = useRef<any>(null);
 
   // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
@@ -198,19 +202,36 @@ export default function AdminRastrosTornadosPage() {
     let isMounted = true;
     const initMap = async () => {
       try {
-        const { Map } = await google.maps.importLibrary('maps');
-        if (!isMounted) return;
-        const map = new Map(mapRef.current, {
-          center: BRAZIL_CENTER,
-          zoom: 4,
-          disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeId: 'satellite',
-        });
-        mapInstanceRef.current = map;
-        setMapReady(true);
+        if (typeof window === 'undefined') return;
+
+        const tryInit = async () => {
+          if (!(window as any).google?.maps?.importLibrary) {
+            setTimeout(tryInit, 200);
+            return;
+          }
+
+          try {
+            const { Map } = await google.maps.importLibrary('maps');
+            if (!isMounted) return;
+            const map = new Map(mapRef.current, {
+              center: BRAZIL_CENTER,
+              zoom: 4,
+              disableDefaultUI: true,
+              zoomControl: true,
+              mapTypeId: 'satellite',
+            });
+            console.log('Admin: Google Map initialized successfully.');
+            mapInstanceRef.current = map;
+            setMapReady(true);
+          } catch (err) {
+            console.error('Admin map importLibrary error:', err);
+          }
+        };
+
+        console.log('Admin: Starting map initialization...');
+        tryInit();
       } catch (err) {
-        console.error(err);
+        console.error('Admin init map error:', err);
       }
     };
     initMap();
@@ -359,6 +380,17 @@ export default function AdminRastrosTornadosPage() {
       }
     }
 
+    // Overlays para imagens secundárias que estão em modo de mapeamento
+    if (imageMappingMode !== 'none' && imageMappingMode !== 'before' && imageMappingMode !== 'after') {
+      const secImg = secondaryAfterImages.find(img => img.id === imageMappingMode);
+      if (secImg && secImg.url && secImg.bounds) {
+        const bounds = makeBounds(secImg.bounds);
+        const overlay = createImageOverlay(secImg.url, bounds, 0.75);
+        // Usamos uma ref genérica para limpar depois ou apenas deixamos o useEffect lidar
+        (overlay as any)._isSecondaryMapping = true;
+      }
+    }
+
     return () => {
       if (overlayBeforeRef.current) {
         (overlayBeforeRef.current as any).setMap?.(null);
@@ -385,53 +417,81 @@ export default function AdminRastrosTornadosPage() {
       return;
     }
 
-    const currentBounds = imageMappingMode === 'before' ? beforeImageBounds : afterImageBounds;
-    const setBounds = imageMappingMode === 'before' ? setBeforeImageBounds : setAfterImageBounds;
-    const setShowOverlay = imageMappingMode === 'before' ? setShowOverlayBefore : setShowOverlayAfter;
-
     // Ativa o overlay da imagem correspondente para feedback visual
-    setShowOverlay(true);
+    if (imageMappingMode === 'before') setShowOverlayBefore(true);
+    if (imageMappingMode === 'after') setShowOverlayAfter(true);
 
     let initialBounds;
-    if (currentBounds) {
-      initialBounds = {
-        north: Math.max(currentBounds.ne.lat, currentBounds.sw.lat),
-        south: Math.min(currentBounds.ne.lat, currentBounds.sw.lat),
-        east: Math.max(currentBounds.ne.lng, currentBounds.sw.lng),
-        west: Math.min(currentBounds.ne.lng, currentBounds.sw.lng),
-      };
+    let setBoundsFunc: (b: any) => void;
+
+    if (imageMappingMode === 'before') {
+      setBoundsFunc = setBeforeImageBounds;
+      initialBounds = beforeImageBounds;
+    } else if (imageMappingMode === 'after') {
+      setBoundsFunc = setAfterImageBounds;
+      initialBounds = afterImageBounds;
     } else {
+      // É uma imagem secundária
+      const secImg = secondaryAfterImages.find(img => img.id === imageMappingMode);
+      if (!secImg) return;
+      setBoundsFunc = (newBounds) => {
+        setSecondaryAfterImages(prev => prev.map(img =>
+          img.id === imageMappingMode ? { ...img, bounds: newBounds } : img
+        ));
+      };
+      initialBounds = secImg.bounds;
+    }
+
+    const gBounds = initialBounds ? {
+      north: Math.max(initialBounds.ne.lat, initialBounds.sw.lat),
+      south: Math.min(initialBounds.ne.lat, initialBounds.sw.lat),
+      east: Math.max(initialBounds.ne.lng, initialBounds.sw.lng),
+      west: Math.min(initialBounds.ne.lng, initialBounds.sw.lng),
+    } : null;
+
+    if (!gBounds) {
       // Se não tem bounds, cria um retângulo padrão no centro do mapa
       const center = map.getCenter();
       const lat = center.lat();
       const lng = center.lng();
       const offset = 0.01;
-      initialBounds = {
+      const initialGBounds = {
         north: lat + offset,
         south: lat - offset,
         east: lng + offset,
         west: lng - offset,
       };
       // Define os bounds iniciais no estado para que o overlay apareça
-      setBounds({
-        ne: { lat: initialBounds.north, lng: initialBounds.east },
-        sw: { lat: initialBounds.south, lng: initialBounds.west }
+      setBoundsFunc({
+        ne: { lat: initialGBounds.north, lng: initialGBounds.east },
+        sw: { lat: initialGBounds.south, lng: initialGBounds.west }
       });
+      initialBounds = {
+        ne: { lat: initialGBounds.north, lng: initialGBounds.east },
+        sw: { lat: initialGBounds.south, lng: initialGBounds.west }
+      };
     }
+
+    const finalGBounds = {
+      north: Math.max(initialBounds.ne.lat, initialBounds.sw.lat),
+      south: Math.min(initialBounds.ne.lat, initialBounds.sw.lat),
+      east: Math.max(initialBounds.ne.lng, initialBounds.sw.lng),
+      west: Math.min(initialBounds.ne.lng, initialBounds.sw.lng),
+    };
 
     if (rectInstanceRef.current) {
       rectInstanceRef.current.setMap(null);
     }
 
     const rect = new google.maps.Rectangle({
-      bounds: initialBounds,
+      bounds: finalGBounds,
       editable: true,
       draggable: true,
       map: map,
-      strokeColor: imageMappingMode === 'before' ? '#fbbf24' : '#10b981',
+      strokeColor: '#fbbf24',
       strokeOpacity: 0.8,
       strokeWeight: 2,
-      fillColor: imageMappingMode === 'before' ? '#fbbf24' : '#10b981',
+      fillColor: '#fbbf24',
       fillOpacity: 0.1,
       zIndex: 200,
     });
@@ -443,7 +503,7 @@ export default function AdminRastrosTornadosPage() {
       if (!b) return;
       const ne = b.getNorthEast();
       const sw = b.getSouthWest();
-      setBounds({
+      setBoundsFunc({
         ne: { lat: ne.lat(), lng: ne.lng() },
         sw: { lat: sw.lat(), lng: sw.lng() },
       });
@@ -453,7 +513,7 @@ export default function AdminRastrosTornadosPage() {
     rect.addListener('dragend', updateBoundsState);
 
     // Ajusta o zoom para ver o retângulo
-    map.fitBounds(initialBounds, { top: 100, right: 100, bottom: 100, left: 100 });
+    map.fitBounds(finalGBounds, { top: 100, right: 100, bottom: 100, left: 100 });
 
     return () => {
       if (rectInstanceRef.current) {
@@ -847,6 +907,8 @@ export default function AdminRastrosTornadosPage() {
     setDrawIntensity('F0');
     setDrawPrevotsMode(false);
     setShowBeforeAfterDialog(false);
+    setSecondaryAfterImages([]);
+    setSecondaryUploadingId(null);
   };
 
   const openNewTrack = () => {
@@ -1143,6 +1205,28 @@ export default function AdminRastrosTornadosPage() {
     setAfterImageUploading,
   );
 
+  const addSecondaryImage = () => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setSecondaryAfterImages(prev => [...prev, { id, url: '', bounds: { ne: { lat: 0, lng: 0 }, sw: { lat: 0, lng: 0 } } }]);
+  };
+
+  const removeSecondaryImage = (id: string) => {
+    setSecondaryAfterImages(prev => prev.filter(img => img.id !== id));
+    if (imageMappingMode === id) setImageMappingMode('none');
+  };
+
+  const handleSecondaryImageFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!activeSecondaryId) return;
+    const id = activeSecondaryId;
+    const handler = makeImageUploadHandler(
+      (url) => setSecondaryAfterImages(prev => prev.map(img => img.id === id ? { ...img, url } : img)),
+      (bounds) => setSecondaryAfterImages(prev => prev.map(img => img.id === id ? { ...img, bounds: bounds || { ne: { lat: 0, lng: 0 }, sw: { lat: 0, lng: 0 } } } : img)),
+      (v) => setSecondaryUploadingId(v ? id : null)
+    );
+    await handler(e);
+    setActiveSecondaryId(null);
+  };
+
   const handleEdit = (t: TornadoTrack) => {
     setEditingId(t.id);
     setDate(t.date);
@@ -1167,6 +1251,7 @@ export default function AdminRastrosTornadosPage() {
     setDrawMode(false);
     setDrawPrevotsMode(false);
     setShowBeforeAfterDialog(false);
+    setSecondaryAfterImages(t.secondaryAfterImages || []);
     setPanelOpen(true);
   };
 
@@ -1219,6 +1304,7 @@ export default function AdminRastrosTornadosPage() {
         afterImageBounds: afterImageBounds || undefined,
         trackImage: trackImage.trim() || undefined,
         trackImageBounds: trackImageBounds || undefined,
+        secondaryAfterImages: secondaryAfterImages.length ? secondaryAfterImages : undefined,
       }, user.uid);
       addToast(editingId ? 'Rastro atualizado.' : 'Rastro criado.', 'success');
       await loadTracks();
@@ -1723,6 +1809,104 @@ export default function AdminRastrosTornadosPage() {
                         <input type="text" placeholder="SW lng" value={afterImageBounds?.sw?.lng ?? ''} onChange={(e) => setAfterImageBounds((b) => ({ ne: b?.ne ?? { lat: 0, lng: 0 }, sw: { lat: b?.sw?.lat ?? 0, lng: parseCoord(e.target.value) } }))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1.5" />
                       </div>
                       <p className="text-slate-500 text-xs">KMZ: imagem e coordenadas extraídas automaticamente. GeoTIFF também suportado.</p>
+                    </div>
+
+                    {/* Múltiplas Imagens Secundárias (Depois) */}
+                    <div className="col-span-2 space-y-3 rounded-lg border border-slate-700 p-3 bg-slate-800/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-200 text-sm font-semibold">Imagens de Zoom / Detalhes (Depois)</span>
+                        <button
+                          type="button"
+                          onClick={addSecondaryImage}
+                          className="text-xs flex items-center gap-1 px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30 transition-colors"
+                        >
+                          <PlusCircle className="w-3 h-3" /> Adicionar imagem
+                        </button>
+                      </div>
+                      
+                      <input 
+                        type="file" 
+                        ref={secondaryImageFileInputRef} 
+                        accept=".kmz,.tif,.tiff,image/tiff,image/*" 
+                        onChange={handleSecondaryImageFileSelect} 
+                        className="hidden" 
+                      />
+
+                      {secondaryAfterImages.length === 0 && (
+                        <p className="text-slate-500 text-xs italic">Nenhuma imagem secundária adicionada.</p>
+                      )}
+
+                      <div className="space-y-4">
+                        {secondaryAfterImages.map((img, idx) => (
+                          <div key={img.id} className="p-3 rounded-lg border border-slate-700 bg-slate-900/50 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-slate-400">Imagem #{idx + 1}</span>
+                              <button 
+                                type="button" 
+                                onClick={() => removeSecondaryImage(img.id)}
+                                className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                                title="Remover imagem"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <div className="flex gap-2 flex-wrap items-center">
+                              <button 
+                                type="button"
+                                onClick={() => { setActiveSecondaryId(img.id); secondaryImageFileInputRef.current?.click(); }}
+                                disabled={secondaryUploadingId === img.id}
+                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-600 text-xs font-medium cursor-pointer transition-colors ${secondaryUploadingId === img.id ? 'opacity-50 pointer-events-none' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
+                              >
+                                {secondaryUploadingId === img.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                                {secondaryUploadingId === img.id ? 'Enviando…' : 'Enviar KMZ / imagem'}
+                              </button>
+                              
+                              <button
+                                type="button"
+                                onClick={() => setImageMappingMode(imageMappingMode === img.id ? 'none' : img.id)}
+                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded border text-xs font-medium transition-colors ${imageMappingMode === img.id ? 'bg-amber-500 text-black border-amber-400' : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600'}`}
+                              >
+                                <Layers className="w-3 h-3" />
+                                {imageMappingMode === img.id ? 'Concluir Ajuste' : 'Ajustar no Mapa'}
+                              </button>
+                            </div>
+
+                            <input 
+                              type="url" 
+                              value={img.url} 
+                              onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, url: e.target.value } : si))} 
+                              placeholder="URL da imagem" 
+                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs" 
+                            />
+                            
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 uppercase">Nordeste (NE)</span>
+                                <div className="grid grid-cols-2 gap-1">
+                                  <input type="text" placeholder="Lat" value={img.bounds?.ne?.lat ?? ''} onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, ne: { ...si.bounds.ne, lat: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                  <input type="text" placeholder="Lng" value={img.bounds?.ne?.lng ?? ''} onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, ne: { ...si.bounds.ne, lng: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 uppercase">Sudoeste (SW)</span>
+                                <div className="grid grid-cols-2 gap-1">
+                                  <input type="text" placeholder="Lat" value={img.bounds?.sw?.lat ?? ''} onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, sw: { ...si.bounds.sw, lat: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                  <input type="text" placeholder="Lng" value={img.bounds?.sw?.lng ?? ''} onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, sw: { ...si.bounds.sw, lng: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                </div>
+                              </div>
+                            </div>
+
+                            <input 
+                              type="text" 
+                              value={img.description || ''} 
+                              onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, description: e.target.value } : si))} 
+                              placeholder="Descrição curta (ex: Zoom na área urbana)" 
+                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs" 
+                            />
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     {(beforeImage.trim() && afterImage.trim()) && (
                       <div className="col-span-2">
