@@ -84,5 +84,30 @@ export async function GET(request: Request) {
   // Previne problemas de Mixed Content convertendo HTTP nativo para HTTPS
   const finalUrl = bestItem.url.replace('http://', 'https://');
 
-  return NextResponse.redirect(finalUrl, { status: 302 });
+  // Baixar buffer e servir no domínio próprio com CORS liberado para o WebGL
+  try {
+    const upstream = await fetch(finalUrl, {
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!upstream.ok) {
+      return new NextResponse(`Erro CPTEC CDN: ${upstream.status}`, { status: 502 });
+    }
+
+    const contentType = upstream.headers.get('content-type') ?? 'image/png';
+    const body = await upstream.arrayBuffer();
+
+    return new NextResponse(body, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=300',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (err: any) {
+    return new NextResponse(`CPTEC PNG fetch failed: ${err.message}`, { status: 502 });
+  }
 }

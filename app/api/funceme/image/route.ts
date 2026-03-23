@@ -109,6 +109,30 @@ export async function GET(request: Request) {
   
   const urlFinal = `${finalPath}${diaFormatted}/${bestItem.img}`;
 
-  // Emitir Redirect 302 direto pra PNG da CDN
-  return NextResponse.redirect(urlFinal, { status: 302 });
+  // Baixar buffer e servir no domínio próprio com CORS liberado para o WebGL
+  try {
+    const upstream = await fetch(urlFinal, {
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!upstream.ok) {
+      return new NextResponse(`Erro Funceme CDN: ${upstream.status}`, { status: 502 });
+    }
+
+    const contentType = upstream.headers.get('content-type') ?? 'image/png';
+    const body = await upstream.arrayBuffer();
+
+    return new NextResponse(body, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=300',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (err: any) {
+    return new NextResponse(`Funceme PNG fetch failed: ${err.message}`, { status: 502 });
+  }
 }

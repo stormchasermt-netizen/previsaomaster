@@ -77,6 +77,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 function getProxiedRadarUrl(url: string): string {
   if (typeof window === 'undefined') return url;
+  if (url.startsWith('/api/')) return url;
   return `/api/radar-proxy?url=${encodeURIComponent(url)}`;
 }
 
