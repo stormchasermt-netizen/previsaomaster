@@ -145,6 +145,21 @@ export default function AdminRastrosTornadosPage() {
   const [secondaryUploadingId, setSecondaryUploadingId] = useState<string | null>(null);
   const [activeSecondaryId, setActiveSecondaryId] = useState<string | null>(null);
   const secondaryImageFileInputRef = useRef<HTMLInputElement>(null);
+  const [showSecondaryOnMap, setShowSecondaryOnMap] = useState<Record<string, boolean>>({});
+  const [secondaryOpacities, setSecondaryOpacities] = useState<Record<string, number>>({});
+  const secondaryOverlaysRef = useRef<Record<string, any>>({});
+  
+  // States para Radar Override Local
+  const [radarLat, setRadarLat] = useState<number | undefined>();
+  const [radarLng, setRadarLng] = useState<number | undefined>();
+  const [radarRangeKm, setRadarRangeKm] = useState<number | undefined>();
+  const [radarOpacity, setRadarOpacity] = useState<number | undefined>();
+  const [radarRotation, setRadarRotation] = useState<number | undefined>();
+  const [radarChromaKey, setRadarChromaKey] = useState<number | undefined>();
+  const [radarCropTop, setRadarCropTop] = useState<number | undefined>();
+  const [radarCropBottom, setRadarCropBottom] = useState<number | undefined>();
+  const [radarCropLeft, setRadarCropLeft] = useState<number | undefined>();
+  const [radarCropRight, setRadarCropRight] = useState<number | undefined>();
   const rectInstanceRef = useRef<any>(null);
 
   // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
@@ -364,6 +379,10 @@ export default function AdminRastrosTornadosPage() {
     const beforeUrl = beforeImage?.trim();
     const afterUrl = afterImage?.trim();
 
+    // Limpar overlays de imagens secundárias existentes
+    Object.values(secondaryOverlaysRef.current).forEach((overlay: any) => overlay?.setMap?.(null));
+    secondaryOverlaysRef.current = {};
+
     if (showOverlayBefore && beforeUrl && beforeImageBounds) {
       const bounds = makeBounds(beforeImageBounds);
       const overlay = createImageOverlay(beforeUrl, bounds, overlayBeforeOpacity);
@@ -380,16 +399,27 @@ export default function AdminRastrosTornadosPage() {
       }
     }
 
-    // Overlays para imagens secundárias que estão em modo de mapeamento
-    if (imageMappingMode !== 'none' && imageMappingMode !== 'before' && imageMappingMode !== 'after') {
-      const secImg = secondaryAfterImages.find(img => img.id === imageMappingMode);
-      if (secImg && secImg.url && secImg.bounds) {
-        const bounds = makeBounds(secImg.bounds);
-        const overlay = createImageOverlay(secImg.url, bounds, 0.75);
-        // Usamos uma ref genérica para limpar depois ou apenas deixamos o useEffect lidar
-        (overlay as any)._isSecondaryMapping = true;
+    // Overlays para imagens secundárias baseadas no checkbox 'Mostrar no mapa' OU modo de mapeamento
+    secondaryAfterImages.forEach(secImg => {
+      if (!secImg.url || !secImg.bounds || !secImg.bounds.ne || !secImg.bounds.sw) return;
+      if (isNaN(secImg.bounds.ne.lat) || isNaN(secImg.bounds.sw.lat)) return;
+      
+      const isMappingThis = imageMappingMode === secImg.id;
+      const isVisible = showSecondaryOnMap[secImg.id] || isMappingThis;
+      
+      if (!isVisible) return;
+      
+      const bounds = makeBounds(secImg.bounds);
+      const opacity = secondaryOpacities[secImg.id] ?? 0.75;
+      const overlay = createImageOverlay(secImg.url, bounds, opacity);
+      
+      secondaryOverlaysRef.current[secImg.id] = overlay;
+      overlay.setMap(map);
+      
+      if (isMappingThis) {
+        (overlay as any)._isSecondaryMapping = true; // manter marcação para saber
       }
-    }
+    });
 
     return () => {
       if (overlayBeforeRef.current) {
@@ -400,8 +430,10 @@ export default function AdminRastrosTornadosPage() {
         (overlayAfterRef.current as any).setMap?.(null);
         overlayAfterRef.current = null;
       }
+      Object.values(secondaryOverlaysRef.current).forEach((overlay: any) => overlay?.setMap?.(null));
+      secondaryOverlaysRef.current = {};
     };
-  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode]);
+  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode, showSecondaryOnMap, secondaryOpacities, secondaryAfterImages]);
 
   // Gerenciamento do Retângulo de Mapeamento de Imagem
   useEffect(() => {
@@ -420,6 +452,9 @@ export default function AdminRastrosTornadosPage() {
     // Ativa o overlay da imagem correspondente para feedback visual
     if (imageMappingMode === 'before') setShowOverlayBefore(true);
     if (imageMappingMode === 'after') setShowOverlayAfter(true);
+    if (imageMappingMode !== 'none' && imageMappingMode !== 'before' && imageMappingMode !== 'after') {
+      setShowSecondaryOnMap(prev => ({ ...prev, [imageMappingMode]: true }));
+    }
 
     let initialBounds;
     let setBoundsFunc: (b: any) => void;
@@ -893,6 +928,17 @@ export default function AdminRastrosTornadosPage() {
     setSource('');
     setRadarWmsUrl('');
     setRadarStationId('');
+    setRadarLat(undefined);
+    setRadarLng(undefined);
+    setRadarRangeKm(undefined);
+    setRadarOpacity(undefined);
+    setRadarRotation(undefined);
+    setRadarChromaKey(undefined);
+    setRadarCropTop(undefined);
+    setRadarCropBottom(undefined);
+    setRadarCropLeft(undefined);
+    setRadarCropRight(undefined);
+    setPolygons([]);
     setBeforeImage('');
     setAfterImage('');
     setBeforeImageBounds(null);
@@ -901,7 +947,6 @@ export default function AdminRastrosTornadosPage() {
     setShowOverlayAfter(false);
     setTrackImage('');
     setTrackImageBounds(null);
-    setPolygons([]);
     setPrevotsPolygons([]);
     setDrawMode(false);
     setDrawIntensity('F0');
@@ -993,133 +1038,19 @@ export default function AdminRastrosTornadosPage() {
     const nSamplesRaw = Math.max(1, image.getSamplesPerPixel() || 1);
     const nSamples = Math.min(nSamplesRaw, 4); // 4 no máximo para preview RGBA
 
-    // --- REGRAS DE OURO NODATA ---
-    // Extraído uma vez antes do loop de tentativas para eficiência
-    let noData: number | null = null;
-    try {
-      const fd = image.getFileDirectory() as any;
-      const nd = (image as any).getGDALNoData?.() ?? fd.GDAL_NODATA ?? fd.NoData;
-      if (nd !== null && isFinite(Number(nd))) noData = Number(nd);
-    } catch {}
-
     let pngBlob: Blob | null = null;
     try {
-      // Tenta resolução total primeiro; se falhar (memória), usa fallbacks progressivos.
-      const maxDimBase = 16384;
-      const baseScale = Math.min(1, maxDimBase / Math.max(origW, origH, 1));
-      const decodeScales = Array.from(new Set(
-        [1, baseScale, baseScale * 0.75, baseScale * 0.6, baseScale * 0.45, baseScale * 0.3]
-          .map((s) => Math.max(0.1, Math.min(1, s)))
-      )).sort((a, b) => b - a);
-
-      const decodeSizes = decodeScales.map((scale) => ({
-        w: Math.max(1, Math.round(origW * scale)),
-        h: Math.max(1, Math.round(origH * scale)),
-      }));
-
-      for (const attempt of decodeSizes) {
-        try {
-          const { w, h } = attempt;
-          const pixelCount = w * h;
-
-          // Carregado só quando noData !== null (economiza memória)
-          let rawRasters: any = null;
-          if (noData !== null) {
-            rawRasters = await image.readRasters({
-              interleave: true,
-              pool: null,
-              width: w,
-              height: h,
-              resampleMethod: 'bilinear',
-            }) as any;
-          }
-
-          console.log(`GeoTIFF Admin debug: nSamplesRaw=${nSamplesRaw}, noData=${noData}, attempt=${w}x${h}`);
-
-          // Use readRGB for safer 16-to-8 bit conversion and color space handling
-          const rgb = await image.readRGB({
-            pool: null,
-            width: w,
-            height: h,
-            resampleMethod: 'bilinear',
-          }) as unknown as Uint8Array;
-
-          // --- ESTIRAMENTO DE CONTRASTE (Histogram Stretch) ---
-          // readRGB pode mapear linearmente do range completo (ex: 0-65535 → 0-255),
-          // resultando em imagens muito escuras para satélite. Precisamos recalcular
-          // o min/max efetivo do RGB de saída e re-esticar para 0-255.
-          
-          // Passo 1: Marca pixels NoData (para ignorá-los no cálculo de min/max)
-          const isNoDataPixel = new Uint8Array(pixelCount);
-          if (noData !== null && rawRasters) {
-            for (let i = 0; i < pixelCount; i++) {
-              let allMatch = true;
-              for (let c = 0; c < Math.min(nSamplesRaw, 3); c++) {
-                if (Number(rawRasters[i * nSamplesRaw + c]) !== noData) {
-                  allMatch = false;
-                  break;
-                }
-              }
-              if (allMatch) isNoDataPixel[i] = 1;
-            }
-          }
-
-          // Passo 2: Encontra min/max efetivo por canal RGB (ignorando NoData)
-          const rMin = [255, 255, 255];
-          const rMax = [0, 0, 0];
-          for (let i = 0; i < pixelCount; i++) {
-            if (isNoDataPixel[i]) continue;
-            for (let c = 0; c < 3; c++) {
-              const v = rgb[i * 3 + c];
-              if (v < rMin[c]) rMin[c] = v;
-              if (v > rMax[c]) rMax[c] = v;
-            }
-          }
-
-          // Passo 3: Verifica se precisa esticar (imagem escura = range pequeno)
-          const needsStretch = (rMax[0] - rMin[0]) < 200 || (rMax[1] - rMin[1]) < 200 || (rMax[2] - rMin[2]) < 200;
-          console.log(`GeoTIFF contrast: R[${rMin[0]}-${rMax[0]}] G[${rMin[1]}-${rMax[1]}] B[${rMin[2]}-${rMax[2]}] needsStretch=${needsStretch}`);
-
-          const stretch = (v: number, c: number): number => {
-            if (!needsStretch) return v;
-            const range = rMax[c] - rMin[c];
-            if (range === 0) return v >= 0 && v <= 255 ? v : 128;
-            return Math.round(Math.max(0, Math.min(255, ((v - rMin[c]) / range) * 255)));
-          };
-
-          // Passo 4: Monta o canvas com contraste ajustado
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) continue;
-          const imgData = ctx.createImageData(w, h);
-
-          for (let i = 0; i < pixelCount; i++) {
-            const base = i * 4;
-            imgData.data[base]     = stretch(rgb[i * 3], 0);
-            imgData.data[base + 1] = stretch(rgb[i * 3 + 1], 1);
-            imgData.data[base + 2] = stretch(rgb[i * 3 + 2], 2);
-            imgData.data[base + 3] = isNoDataPixel[i] ? 0 : 255;
-          }
-
-          ctx.putImageData(imgData, 0, 0);
-          const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png', 1));
-          if (blob) {
-            pngBlob = blob;
-            break;
-          }
-        } catch (attemptErr) {
-          console.warn(`GeoTIFF: tentativa ${attempt.w}x${attempt.h} falhou.`, attemptErr);
-        }
-      }
-
-      if (!pngBlob) {
-        throw new Error('Falha em todas as tentativas de render do GeoTIFF.');
+      // Reutiliza a lógica ultra-robusta (com estiramento de contraste, nodata, etc) do arquivo corrigido!
+      const { geotiffBlobToPngDataUrl } = await import('@/lib/geotiffToPng');
+      const dataUrl = await geotiffBlobToPngDataUrl(file);
+      if (dataUrl) {
+        const resp = await fetch(dataUrl);
+        pngBlob = await resp.blob();
+      } else {
+        throw new Error('geotiffBlobToPngDataUrl resultou em vazio');
       }
     } catch (renderErr) {
-      console.warn('GeoTIFF: não foi possível renderizar pixels, usando bounds apenas.', renderErr);
-      // Bounds já foram extraídos — upload da imagem original como fallback
+      console.warn('GeoTIFF: não foi possível renderizar pixels com geotiffToPng. Usando apenas bounds.', renderErr);
     }
     return { pngBlob, bounds };
   };
@@ -1280,6 +1211,17 @@ export default function AdminRastrosTornadosPage() {
     setSource(t.source || '');
     setRadarWmsUrl(t.radarWmsUrl || '');
     setRadarStationId(t.radarStationId || '');
+    setRadarLat(t.radarLat);
+    setRadarLng(t.radarLng);
+    setRadarRangeKm(t.radarRangeKm);
+    setRadarOpacity(t.radarOpacity);
+    setRadarRotation(t.radarRotation);
+    setRadarChromaKey(t.radarChromaKey);
+    setRadarCropTop(t.radarCropTop);
+    setRadarCropBottom(t.radarCropBottom);
+    setRadarCropLeft(t.radarCropLeft);
+    setRadarCropRight(t.radarCropRight);
+    setPolygons(t.polygons || []);
     setBeforeImage(t.beforeImage || '');
     setAfterImage(t.afterImage || '');
     setBeforeImageBounds(t.beforeImageBounds ?? null);
@@ -1288,7 +1230,6 @@ export default function AdminRastrosTornadosPage() {
     setShowOverlayAfter(false);
     setTrackImage(t.trackImage || '');
     setTrackImageBounds(t.trackImageBounds ?? null);
-    setPolygons(t.polygons?.length ? t.polygons : []);
     setPrevotsPolygons(t.prevotsPolygons?.filter((p) => p.level !== 0) ?? []);
     setDrawMode(false);
     setDrawPrevotsMode(false);
@@ -1340,6 +1281,16 @@ export default function AdminRastrosTornadosPage() {
         source: source.trim() || undefined,
         radarWmsUrl: radarWmsUrl.trim() || undefined,
         radarStationId: radarStationId.trim() || undefined,
+        radarLat,
+        radarLng,
+        radarRangeKm,
+        radarOpacity,
+        radarRotation,
+        radarChromaKey,
+        radarCropTop,
+        radarCropBottom,
+        radarCropLeft,
+        radarCropRight,
         beforeImage: beforeImage.trim() || undefined,
         afterImage: afterImage.trim() || undefined,
         beforeImageBounds: beforeImageBounds || undefined,
@@ -1766,6 +1717,61 @@ export default function AdminRastrosTornadosPage() {
                         ))}
                       </select>
                     </label>
+
+                    {/* Ajuste Fino de Radar Local (Override) */}
+                    <div className="col-span-2 space-y-3 rounded-lg border border-slate-600 p-3 bg-slate-800/50">
+                      <span className="text-slate-300 text-sm font-semibold block">Ajuste Fino do Radar (Salvo apenas para este rastro)</span>
+                      <p className="text-slate-500 text-xs">Preencha apenas o que desejar substituir em relação à configuração original do Radar.</p>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <label>
+                          <span className="text-slate-400 text-xs block mb-1">Centro Latitude</span>
+                          <input type="number" value={radarLat ?? ''} onChange={(e) => setRadarLat(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                        </label>
+                        <label>
+                          <span className="text-slate-400 text-xs block mb-1">Centro Longitude</span>
+                          <input type="number" value={radarLng ?? ''} onChange={(e) => setRadarLng(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                        </label>
+                        <label>
+                          <span className="text-slate-400 text-xs block mb-1">Raio (km)</span>
+                          <input type="number" value={radarRangeKm ?? ''} onChange={(e) => setRadarRangeKm(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                        </label>
+                        <label>
+                          <span className="text-slate-400 text-xs block mb-1">Opacidade (0 a 1)</span>
+                          <input type="number" step="0.05" min="0" max="1" value={radarOpacity ?? ''} onChange={(e) => setRadarOpacity(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                        </label>
+                        <label>
+                          <span className="text-slate-400 text-xs block mb-1">Rotação (graus)</span>
+                          <input type="number" step="0.1" value={radarRotation ?? ''} onChange={(e) => setRadarRotation(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                        </label>
+                        <label>
+                          <span className="text-slate-400 text-xs block mb-1">Chroma Key Delta (0 a 255)</span>
+                          <input type="number" value={radarChromaKey ?? ''} onChange={(e) => setRadarChromaKey(e.target.value ? parseInt(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                        </label>
+                      </div>
+
+                      <div className="space-y-1 mt-2">
+                        <span className="text-slate-400 text-xs font-semibold block">Cortes / Crop (0 a 1)</span>
+                        <div className="grid grid-cols-4 gap-2">
+                          <label>
+                            <span className="text-slate-500 text-[10px] block">Topo</span>
+                            <input type="number" step="0.01" min="0" max="1" value={radarCropTop ?? ''} onChange={(e) => setRadarCropTop(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                          </label>
+                          <label>
+                            <span className="text-slate-500 text-[10px] block">Base</span>
+                            <input type="number" step="0.01" min="0" max="1" value={radarCropBottom ?? ''} onChange={(e) => setRadarCropBottom(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                          </label>
+                          <label>
+                            <span className="text-slate-500 text-[10px] block">Esq.</span>
+                            <input type="number" step="0.01" min="0" max="1" value={radarCropLeft ?? ''} onChange={(e) => setRadarCropLeft(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                          </label>
+                          <label>
+                            <span className="text-slate-500 text-[10px] block">Dir.</span>
+                            <input type="number" step="0.01" min="0" max="1" value={radarCropRight ?? ''} onChange={(e) => setRadarCropRight(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
                     {/* Imagem Antes (GeoTIFF/imagem) — overlay com caixinha */}
                     <div className="col-span-2 space-y-2 rounded-lg border border-slate-600 p-3 bg-slate-800/50">
                       <span className="text-slate-400 text-sm font-medium block">Imagem Antes (KMZ / GeoTIFF / imagem)</span>
