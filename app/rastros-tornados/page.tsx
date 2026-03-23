@@ -3694,6 +3694,12 @@ export default function RastrosTornadosPage() {
                 <span className="text-xs font-bold text-cyan-400 truncate flex-1 min-w-0 uppercase tracking-wider">
                   {selectedTrack.date} {selectedTrack.locality ? `· ${selectedTrack.locality}` : ''}
                 </span>
+                {typeof selectedTrack.views === 'number' && (
+                  <span className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0 ml-1" title="Visualizações">
+                    <Eye className="w-3.5 h-3.5" />
+                    {selectedTrack.views}
+                  </span>
+                )}
                 <div className="flex items-center gap-0.5 shrink-0 ml-2">
                   <button
                     type="button"
