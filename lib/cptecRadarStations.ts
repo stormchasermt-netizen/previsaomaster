@@ -466,6 +466,10 @@ export function buildNowcastingPngUrl(
   ts12: string,
   productType: 'reflectividade' | 'velocidade' = 'reflectividade'
 ): string {
+  if (station.slug === 'chapeco') {
+    const radarId = productType === 'velocidade' ? station.velocityId : station.id;
+    return `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${ts12}`;
+  }
   if (station.org === 'funceme') {
     return `/api/funceme/image?radar=${station.id}&timestamp=${ts12}`;
   }
