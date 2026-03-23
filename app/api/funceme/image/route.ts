@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
 interface FuncemeResultItem {
-  dia: string; // Ex: "2026/03/23"
-  img: string; // Ex: "PRSF20260323220944GMWR1000SST_openlayer.png"
-  datahora: string; // Ex: "2026-03-23 22:09:44"
+  dia: string;       // Ex: "2026/03/23"
+  img: string;       // Ex: "PRSF20260323220944GMWR1000SST_openlayer.png"
+  datahora: string;  // Ex: "2026-03-23 22:09:44"
 }
 
 interface FuncemeResponse {
@@ -15,13 +15,21 @@ interface FuncemeResponse {
   };
 }
 
-// Cache local em memória simples para os JSONs da Funceme. Ex: chave "GMWR1000SST_2026-03-23" -> { fetchTime, results }
+// Headers obrigatórios — o servidor Funceme exige Origin e Referer do domínio radar.funceme.br
+const FUNCEME_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+  'Origin': 'https://radar.funceme.br',
+  'Referer': 'https://radar.funceme.br/',
+  'Accept': 'application/json, text/plain, */*',
+};
+
+// Cache local em memória simples para os JSONs da Funceme
 const jsonCache = new Map<string, { fetchTime: number; path: string; items: FuncemeResultItem[] }>();
-const CACHE_TTL_MS = 60 * 1000; // 1 minuto de cache em memória (evita sobrecarregar apil5 ao deslizar timeline)
+const CACHE_TTL_MS = 60 * 1000; // 1 min
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const radar = searchParams.get('radar'); // GMWR1000SST ou RMT0100DS
+  const radar = searchParams.get('radar');   // GMWR1000SST ou RMT0100DS
   const timestamp = searchParams.get('timestamp'); // YYYYMMDDHHmm
 
   if (!radar || !timestamp || timestamp.length !== 12) {
@@ -48,18 +56,21 @@ export async function GET(request: Request) {
     path = cached.path;
     items = cached.items;
   } else {
-    // Buscar da API original
+    // Buscar da API original — com headers obrigatórios
     const apiUrl = `https://apil5.funceme.br/rpc/v1/produto-gerado?radar=${radar}&produto=prsf&tempo=20&data=${targetDateStr}&cache=no`;
 
     try {
-      const res = await fetch(apiUrl, { next: { revalidate: 0 } });
+      const res = await fetch(apiUrl, {
+        headers: FUNCEME_HEADERS,
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15000),
+      });
       if (!res.ok) {
         return new NextResponse(`Funceme API error: ${res.status}`, { status: res.status });
       }
       const json = await res.json() as FuncemeResponse;
 
       if (!json?.data?.list?.[0]?.result) {
-        // Sem dados para este dia
         return new NextResponse('No data available for this date', { status: 404 });
       }
 
@@ -77,24 +88,17 @@ export async function GET(request: Request) {
     return new NextResponse('No available frames for this date', { status: 404 });
   }
 
-  // Encontrar o frame mais próximo igual ou anterior ao targetTimeEpoch
-  // Geralmente a lista já vem ordenada da mais recente para a mais antiga, mas vamos varrer sequencialmente.
-  // datahora format is "YYYY-MM-DD HH:mm:ss" in UTC?? Actually Funceme datahora usually is UTC.
-  // Let's assume the string can be parsed natively if we append 'Z', because Ceará radars usually register in UTC.
-  
+  // Encontrar o frame mais próximo dentro de +/- 15 min
   let bestItem: FuncemeResultItem | null = null;
   let minDiff = Infinity;
 
-  // Busca a imagem mais próxima dentro de uma janela de +/- 15 minutos
   for (const item of items) {
     const itemEpoch = new Date(item.datahora.replace(' ', 'T') + 'Z').getTime();
     const diff = Math.abs(targetTimeEpoch - itemEpoch);
 
-    if (diff <= 15 * 60 * 1000) {
-      if (diff < minDiff) {
-        minDiff = diff;
-        bestItem = item;
-      }
+    if (diff <= 15 * 60 * 1000 && diff < minDiff) {
+      minDiff = diff;
+      bestItem = item;
     }
   }
 
@@ -102,23 +106,25 @@ export async function GET(request: Request) {
     return new NextResponse('No frame close enough to the requested timestamp', { status: 404 });
   }
 
-  // Montar URL Final
-  let finalPath = path.endsWith('/') ? path : path + '/';
-  // item.dia comes as "2026/03/23", some radar formats skip the slash, but usually it has it.
-  const diaFormatted = bestItem.dia.includes('/') ? bestItem.dia : `${bestItem.dia.substring(0,4)}/${bestItem.dia.substring(4,6)}/${bestItem.dia.substring(6,8)}`;
-  
-  const urlFinal = `${finalPath}${diaFormatted}/${bestItem.img}`;
+  // Montar URL Final: path + dia + / + img
+  // Ex: https://cdn.funceme.br/radar/operadares/GMWR1000SST/plots/prsf/transparente/2026/03/23/PRSF2026...png
+  const finalPath = path.endsWith('/') ? path : path + '/';
+  const urlFinal = `${finalPath}${bestItem.dia}/${bestItem.img}`;
 
-  // Baixar buffer e servir no domínio próprio com CORS liberado para o WebGL
+  // Baixar buffer da CDN e servir no domínio próprio com CORS liberado para o WebGL Canvas
   try {
     const upstream = await fetch(urlFinal, {
+      headers: {
+        'User-Agent': FUNCEME_HEADERS['User-Agent'],
+        'Referer': 'https://radar.funceme.br/',
+      },
       cache: 'no-store',
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),
     });
 
     if (!upstream.ok) {
-      return new NextResponse(`Erro Funceme CDN: ${upstream.status}`, { status: 502 });
+      return new NextResponse(`Erro Funceme CDN: ${upstream.status} para ${urlFinal}`, { status: 502 });
     }
 
     const contentType = upstream.headers.get('content-type') ?? 'image/png';
