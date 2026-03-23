@@ -1044,6 +1044,50 @@ export default function AdminRastrosTornadosPage() {
             resampleMethod: 'bilinear',
           }) as unknown as Uint8Array;
 
+          // --- ESTIRAMENTO DE CONTRASTE (Histogram Stretch) ---
+          // readRGB pode mapear linearmente do range completo (ex: 0-65535 → 0-255),
+          // resultando em imagens muito escuras para satélite. Precisamos recalcular
+          // o min/max efetivo do RGB de saída e re-esticar para 0-255.
+          
+          // Passo 1: Marca pixels NoData (para ignorá-los no cálculo de min/max)
+          const isNoDataPixel = new Uint8Array(pixelCount);
+          if (noData !== null && rawRasters) {
+            for (let i = 0; i < pixelCount; i++) {
+              let allMatch = true;
+              for (let c = 0; c < Math.min(nSamplesRaw, 3); c++) {
+                if (Number(rawRasters[i * nSamplesRaw + c]) !== noData) {
+                  allMatch = false;
+                  break;
+                }
+              }
+              if (allMatch) isNoDataPixel[i] = 1;
+            }
+          }
+
+          // Passo 2: Encontra min/max efetivo por canal RGB (ignorando NoData)
+          const rMin = [255, 255, 255];
+          const rMax = [0, 0, 0];
+          for (let i = 0; i < pixelCount; i++) {
+            if (isNoDataPixel[i]) continue;
+            for (let c = 0; c < 3; c++) {
+              const v = rgb[i * 3 + c];
+              if (v < rMin[c]) rMin[c] = v;
+              if (v > rMax[c]) rMax[c] = v;
+            }
+          }
+
+          // Passo 3: Verifica se precisa esticar (imagem escura = range pequeno)
+          const needsStretch = (rMax[0] - rMin[0]) < 200 || (rMax[1] - rMin[1]) < 200 || (rMax[2] - rMin[2]) < 200;
+          console.log(`GeoTIFF contrast: R[${rMin[0]}-${rMax[0]}] G[${rMin[1]}-${rMax[1]}] B[${rMin[2]}-${rMax[2]}] needsStretch=${needsStretch}`);
+
+          const stretch = (v: number, c: number): number => {
+            if (!needsStretch) return v;
+            const range = rMax[c] - rMin[c];
+            if (range === 0) return v >= 0 && v <= 255 ? v : 128;
+            return Math.round(Math.max(0, Math.min(255, ((v - rMin[c]) / range) * 255)));
+          };
+
+          // Passo 4: Monta o canvas com contraste ajustado
           const canvas = document.createElement('canvas');
           canvas.width = w;
           canvas.height = h;
@@ -1052,27 +1096,11 @@ export default function AdminRastrosTornadosPage() {
           const imgData = ctx.createImageData(w, h);
 
           for (let i = 0; i < pixelCount; i++) {
-            const r = rgb[i * 3];
-            const g = rgb[i * 3 + 1];
-            const b = rgb[i * 3 + 2];
-            
-            // Check for NoData: Só tratamos como transparente se o arquivo declarar explicitamente
-            let isNoData = false;
-            if (noData !== null && rawRasters) {
-              isNoData = true;
-              for (let c = 0; c < Math.min(nSamplesRaw, 3); c++) {
-                if (Number(rawRasters[i * nSamplesRaw + c]) !== noData) {
-                  isNoData = false;
-                  break;
-                }
-              }
-            }
-            // Regra de ouro: nunca assuma que preto = NoData. Removida a transparência automática de (0,0,0).
-
-            imgData.data[i * 4] = r;
-            imgData.data[i * 4 + 1] = g;
-            imgData.data[i * 4 + 2] = b;
-            imgData.data[i * 4 + 3] = isNoData ? 0 : 255;
+            const base = i * 4;
+            imgData.data[base]     = stretch(rgb[i * 3], 0);
+            imgData.data[base + 1] = stretch(rgb[i * 3 + 1], 1);
+            imgData.data[base + 2] = stretch(rgb[i * 3 + 2], 2);
+            imgData.data[base + 3] = isNoDataPixel[i] ? 0 : 255;
           }
 
           ctx.putImageData(imgData, 0, 0);
