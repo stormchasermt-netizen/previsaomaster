@@ -520,7 +520,7 @@ export default function RastrosTornadosPage() {
     setIsSavingRadarEdit(true);
     try {
       if (!currentRadarId) return;
-      const updatedOverrides = { ...(selectedTrack.radarOverrides || {}) };
+      const updatedOverrides: Record<string, any> = { ...(selectedTrack.radarOverrides || {}) };
       updatedOverrides[currentRadarId] = {
         lat: editRadarLat,
         lng: editRadarLng,
@@ -532,7 +532,7 @@ export default function RastrosTornadosPage() {
         cropBottom: editRadarCropBottom,
         cropLeft: editRadarCropLeft,
         cropRight: editRadarCropRight,
-        customBounds: useEditCustomBounds && editRadarCustomBounds ? editRadarCustomBounds : undefined,
+        customBounds: useEditCustomBounds && editRadarCustomBounds ? editRadarCustomBounds : null,
       };
 
       const updatedTrack: TornadoTrack = {
@@ -2367,7 +2367,7 @@ export default function RastrosTornadosPage() {
       }
       const rLat = currentOverrides.lat ?? selectedTrack.radarLat;
       const rLng = currentOverrides.lng ?? selectedTrack.radarLng;
-      const rRange = currentOverrides.rangeKm ?? selectedTrack.radarRangeKm ?? 250;
+      const rRange = currentOverrides.rangeKm ?? selectedTrack.radarRangeKm ?? radarStation?.rangeKm ?? 250;
       if (rLat !== undefined && rLng !== undefined) {
         const b = calculateRadarBounds(rLat, rLng, rRange);
         return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };

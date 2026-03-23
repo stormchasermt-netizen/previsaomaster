@@ -114,7 +114,7 @@ export interface RadarOverride {
   cropBottom?: number;
   cropLeft?: number;
   cropRight?: number;
-  customBounds?: { north: number; south: number; east: number; west: number };
+  customBounds?: { north: number; south: number; east: number; west: number } | null;
 }
 
 /** Ordem da escala F (do menor ao maior número = do exterior ao interior). */
