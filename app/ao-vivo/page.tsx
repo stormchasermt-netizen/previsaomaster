@@ -851,6 +851,9 @@ export default function AoVivoPage() {
           configSlug = 'santiago-redemet';
         }
         const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
+        if (cfg?.customBounds) {
+          return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
+        }
         if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
           const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
           const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
@@ -862,6 +865,9 @@ export default function AoVivoPage() {
       
       const configSlug = `argentina:${dr.station.id}`;
       const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
+      if (cfg?.customBounds) {
+        return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
+      }
       if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
         const range = cfg.rangeKm ?? dr.station.rangeKm ?? 480;
         const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
@@ -871,7 +877,7 @@ export default function AoVivoPage() {
       const b = getArgentinaRadarBounds(dr.station);
       return { north: b.north, south: b.south, east: b.east, west: b.west };
     },
-    [radarConfigs]
+    [radarConfigs, radarSourceMode]
   );
 
   const requestLocation = useCallback(() => {
