@@ -147,19 +147,10 @@ export default function AdminRastrosTornadosPage() {
   const secondaryImageFileInputRef = useRef<HTMLInputElement>(null);
   const [showSecondaryOnMap, setShowSecondaryOnMap] = useState<Record<string, boolean>>({});
   const [secondaryOpacities, setSecondaryOpacities] = useState<Record<string, number>>({});
-  const secondaryOverlaysRef = useRef<Record<string, any>>({});
+  const [secondaryOverlaysRef, setSecondaryOverlaysRef] = useState<Record<string, any>>({});
   
   // States para Radar Override Local
-  const [radarLat, setRadarLat] = useState<number | undefined>();
-  const [radarLng, setRadarLng] = useState<number | undefined>();
-  const [radarRangeKm, setRadarRangeKm] = useState<number | undefined>();
-  const [radarOpacity, setRadarOpacity] = useState<number | undefined>();
-  const [radarRotation, setRadarRotation] = useState<number | undefined>();
-  const [radarChromaKey, setRadarChromaKey] = useState<number | undefined>();
-  const [radarCropTop, setRadarCropTop] = useState<number | undefined>();
-  const [radarCropBottom, setRadarCropBottom] = useState<number | undefined>();
-  const [radarCropLeft, setRadarCropLeft] = useState<number | undefined>();
-  const [radarCropRight, setRadarCropRight] = useState<number | undefined>();
+  const [radarOverrides, setRadarOverrides] = useState<Record<string, any>>({});
   const rectInstanceRef = useRef<any>(null);
 
   // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
@@ -332,7 +323,7 @@ export default function AdminRastrosTornadosPage() {
       );
     };
 
-    const createImageOverlay = (url: string, bounds: any, opacity: number) => {
+    const createImageOverlay = (url: string, bounds: any, opacity: number, rotation: number = 0) => {
       const ov = new google.maps.OverlayView();
       let divEl: HTMLDivElement | null = null;
       ov.onAdd = () => {
@@ -342,7 +333,7 @@ export default function AdminRastrosTornadosPage() {
         img.src = url;
         img.loading = 'eager';
         (img as any).fetchPriority = 'high';
-        img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;`;
+        img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;transform:rotate(${rotation}deg);transform-origin:center;`;
         divEl.appendChild(img);
         ov.getPanes()?.overlayLayer?.appendChild(divEl);
       };
@@ -410,8 +401,9 @@ export default function AdminRastrosTornadosPage() {
       if (!isVisible) return;
       
       const bounds = makeBounds(secImg.bounds);
-      const opacity = secondaryOpacities[secImg.id] ?? 0.75;
-      const overlay = createImageOverlay(secImg.url, bounds, opacity);
+      const opacity = secImg.opacity ?? 0.8;
+      const rotation = secImg.rotation ?? 0;
+      const overlay = createImageOverlay(secImg.url, bounds, opacity, rotation);
       
       secondaryOverlaysRef.current[secImg.id] = overlay;
       overlay.setMap(map);
@@ -928,16 +920,7 @@ export default function AdminRastrosTornadosPage() {
     setSource('');
     setRadarWmsUrl('');
     setRadarStationId('');
-    setRadarLat(undefined);
-    setRadarLng(undefined);
-    setRadarRangeKm(undefined);
-    setRadarOpacity(undefined);
-    setRadarRotation(undefined);
-    setRadarChromaKey(undefined);
-    setRadarCropTop(undefined);
-    setRadarCropBottom(undefined);
-    setRadarCropLeft(undefined);
-    setRadarCropRight(undefined);
+    setRadarOverrides({});
     setPolygons([]);
     setBeforeImage('');
     setAfterImage('');
@@ -1211,16 +1194,20 @@ export default function AdminRastrosTornadosPage() {
     setSource(t.source || '');
     setRadarWmsUrl(t.radarWmsUrl || '');
     setRadarStationId(t.radarStationId || '');
-    setRadarLat(t.radarLat);
-    setRadarLng(t.radarLng);
-    setRadarRangeKm(t.radarRangeKm);
-    setRadarOpacity(t.radarOpacity);
-    setRadarRotation(t.radarRotation);
-    setRadarChromaKey(t.radarChromaKey);
-    setRadarCropTop(t.radarCropTop);
-    setRadarCropBottom(t.radarCropBottom);
-    setRadarCropLeft(t.radarCropLeft);
-    setRadarCropRight(t.radarCropRight);
+    
+    // Migra propriedades legadas, ou aproveita radarOverrides preexistente
+    const fallbackId = t.radarStationId || t.radarWmsUrl || 'legacy';
+    const loadedOverrides = { ...(t.radarOverrides || {}) };
+    if (!loadedOverrides[fallbackId] && t.radarLat !== undefined) {
+      loadedOverrides[fallbackId] = {
+        lat: t.radarLat, lng: t.radarLng, rangeKm: t.radarRangeKm,
+        opacity: t.radarOpacity, rotation: t.radarRotation, chromaKey: t.radarChromaKey,
+        cropTop: t.radarCropTop, cropBottom: t.radarCropBottom,
+        cropLeft: t.radarCropLeft, cropRight: t.radarCropRight
+      };
+    }
+    setRadarOverrides(loadedOverrides);
+    
     setPolygons(t.polygons || []);
     setBeforeImage(t.beforeImage || '');
     setAfterImage(t.afterImage || '');
@@ -1281,16 +1268,7 @@ export default function AdminRastrosTornadosPage() {
         source: source.trim() || undefined,
         radarWmsUrl: radarWmsUrl.trim() || undefined,
         radarStationId: radarStationId.trim() || undefined,
-        radarLat,
-        radarLng,
-        radarRangeKm,
-        radarOpacity,
-        radarRotation,
-        radarChromaKey,
-        radarCropTop,
-        radarCropBottom,
-        radarCropLeft,
-        radarCropRight,
+        radarOverrides: Object.keys(radarOverrides).length > 0 ? radarOverrides : undefined,
         beforeImage: beforeImage.trim() || undefined,
         afterImage: afterImage.trim() || undefined,
         beforeImageBounds: beforeImageBounds || undefined,
@@ -1723,54 +1701,68 @@ export default function AdminRastrosTornadosPage() {
                       <span className="text-slate-300 text-sm font-semibold block">Ajuste Fino do Radar (Salvo apenas para este rastro)</span>
                       <p className="text-slate-500 text-xs">Preencha apenas o que desejar substituir em relação à configuração original do Radar.</p>
                       
-                      <div className="grid grid-cols-2 gap-3">
-                        <label>
-                          <span className="text-slate-400 text-xs block mb-1">Centro Latitude</span>
-                          <input type="number" value={radarLat ?? ''} onChange={(e) => setRadarLat(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
-                        </label>
-                        <label>
-                          <span className="text-slate-400 text-xs block mb-1">Centro Longitude</span>
-                          <input type="number" value={radarLng ?? ''} onChange={(e) => setRadarLng(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
-                        </label>
-                        <label>
-                          <span className="text-slate-400 text-xs block mb-1">Raio (km)</span>
-                          <input type="number" value={radarRangeKm ?? ''} onChange={(e) => setRadarRangeKm(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
-                        </label>
-                        <label>
-                          <span className="text-slate-400 text-xs block mb-1">Opacidade (0 a 1)</span>
-                          <input type="number" step="0.05" min="0" max="1" value={radarOpacity ?? ''} onChange={(e) => setRadarOpacity(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
-                        </label>
-                        <label>
-                          <span className="text-slate-400 text-xs block mb-1">Rotação (graus)</span>
-                          <input type="number" step="0.1" value={radarRotation ?? ''} onChange={(e) => setRadarRotation(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
-                        </label>
-                        <label>
-                          <span className="text-slate-400 text-xs block mb-1">Chroma Key Delta (0 a 255)</span>
-                          <input type="number" value={radarChromaKey ?? ''} onChange={(e) => setRadarChromaKey(e.target.value ? parseInt(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
-                        </label>
-                      </div>
+                      {(() => {
+                        const rId = radarStationId || radarWmsUrl || 'legacy';
+                        const override = radarOverrides[rId] || {};
+                        const updateField = (field: string, val: number | undefined) => {
+                          setRadarOverrides(prev => ({
+                            ...prev,
+                            [rId]: { ...(prev[rId] || {}), [field]: val }
+                          }));
+                        };
+                        return (
+                          <>
+                            <div className="grid grid-cols-2 gap-3">
+                              <label>
+                                <span className="text-slate-400 text-xs block mb-1">Centro Latitude</span>
+                                <input type="number" value={override.lat ?? ''} onChange={(e) => updateField('lat', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                              </label>
+                              <label>
+                                <span className="text-slate-400 text-xs block mb-1">Centro Longitude</span>
+                                <input type="number" value={override.lng ?? ''} onChange={(e) => updateField('lng', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                              </label>
+                              <label>
+                                <span className="text-slate-400 text-xs block mb-1">Raio (km)</span>
+                                <input type="number" value={override.rangeKm ?? ''} onChange={(e) => updateField('rangeKm', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                              </label>
+                              <label>
+                                <span className="text-slate-400 text-xs block mb-1">Opacidade (0 a 1)</span>
+                                <input type="number" step="0.05" min="0" max="1" value={override.opacity ?? ''} onChange={(e) => updateField('opacity', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                              </label>
+                              <label>
+                                <span className="text-slate-400 text-xs block mb-1">Rotação (graus)</span>
+                                <input type="number" step="0.1" value={override.rotation ?? ''} onChange={(e) => updateField('rotation', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                              </label>
+                              <label>
+                                <span className="text-slate-400 text-xs block mb-1">Chroma Key Delta (0 a 255)</span>
+                                <input type="number" value={override.chromaKey ?? ''} onChange={(e) => updateField('chromaKey', e.target.value ? parseInt(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" />
+                              </label>
+                            </div>
 
-                      <div className="space-y-1 mt-2">
-                        <span className="text-slate-400 text-xs font-semibold block">Cortes / Crop (0 a 1)</span>
-                        <div className="grid grid-cols-4 gap-2">
-                          <label>
-                            <span className="text-slate-500 text-[10px] block">Topo</span>
-                            <input type="number" step="0.01" min="0" max="1" value={radarCropTop ?? ''} onChange={(e) => setRadarCropTop(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
-                          </label>
-                          <label>
-                            <span className="text-slate-500 text-[10px] block">Base</span>
-                            <input type="number" step="0.01" min="0" max="1" value={radarCropBottom ?? ''} onChange={(e) => setRadarCropBottom(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
-                          </label>
-                          <label>
-                            <span className="text-slate-500 text-[10px] block">Esq.</span>
-                            <input type="number" step="0.01" min="0" max="1" value={radarCropLeft ?? ''} onChange={(e) => setRadarCropLeft(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
-                          </label>
-                          <label>
-                            <span className="text-slate-500 text-[10px] block">Dir.</span>
-                            <input type="number" step="0.01" min="0" max="1" value={radarCropRight ?? ''} onChange={(e) => setRadarCropRight(e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
-                          </label>
-                        </div>
-                      </div>
+                            <div className="space-y-1 mt-2">
+                              <span className="text-slate-400 text-xs font-semibold block">Cortes / Crop (0 a 1)</span>
+                              <div className="grid grid-cols-4 gap-2">
+                                <label>
+                                  <span className="text-slate-500 text-[10px] block">Topo</span>
+                                  <input type="number" step="0.01" min="0" max="1" value={override.cropTop ?? ''} onChange={(e) => updateField('cropTop', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                                </label>
+                                <label>
+                                  <span className="text-slate-500 text-[10px] block">Base</span>
+                                  <input type="number" step="0.01" min="0" max="1" value={override.cropBottom ?? ''} onChange={(e) => updateField('cropBottom', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                                </label>
+                                <label>
+                                  <span className="text-slate-500 text-[10px] block">Esq.</span>
+                                  <input type="number" step="0.01" min="0" max="1" value={override.cropLeft ?? ''} onChange={(e) => updateField('cropLeft', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                                </label>
+                                <label>
+                                  <span className="text-slate-500 text-[10px] block">Dir.</span>
+                                  <input type="number" step="0.01" min="0" max="1" value={override.cropRight ?? ''} onChange={(e) => updateField('cropRight', e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" />
+                                </label>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                     {/* Imagem Antes (GeoTIFF/imagem) — overlay com caixinha */}
                     <div className="col-span-2 space-y-2 rounded-lg border border-slate-600 p-3 bg-slate-800/50">
@@ -1927,6 +1919,39 @@ export default function AdminRastrosTornadosPage() {
                               placeholder="URL da imagem" 
                               className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs" 
                             />
+
+                            <div className="flex items-center justify-between gap-4 mt-1 bg-slate-800/80 p-2 rounded border border-slate-700">
+                              <label className="inline-flex items-center gap-2 text-slate-300 text-xs cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={!!showSecondaryOnMap[img.id]} 
+                                  onChange={(e) => setShowSecondaryOnMap(prev => ({ ...prev, [img.id]: e.target.checked }))} 
+                                  className="rounded border-slate-500 bg-slate-900 text-emerald-500 focus:ring-emerald-500" 
+                                />
+                                Mostrar no mapa
+                              </label>
+
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1 text-xs text-slate-400">
+                                  <span className="shrink-0 truncate w-12">Opacid.</span>
+                                  <input
+                                    type="range" min={0} max={1} step={0.05}
+                                    value={img.opacity ?? 0.8}
+                                    onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, opacity: parseFloat(e.target.value) } : si))}
+                                    className="w-16 accent-amber-500"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1 text-xs text-slate-400">
+                                  <span className="shrink-0 truncate w-10">Rot. (º)</span>
+                                  <input
+                                    type="number" step="0.1"
+                                    value={img.rotation ?? 0}
+                                    onChange={(e) => setSecondaryAfterImages(prev => prev.map(si => si.id === img.id ? { ...si, rotation: parseFloat(e.target.value) } : si))}
+                                    className="w-16 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-center"
+                                  />
+                                </div>
+                              </div>
+                            </div>
                             
                             <div className="grid grid-cols-2 gap-2">
                               <div className="space-y-1">

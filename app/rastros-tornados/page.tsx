@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw, Eye } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { BeforeAfterCompare } from '@/components/BeforeAfterCompare';
@@ -28,7 +28,7 @@ import {
   type FScale,
   type Season,
 } from '../../lib/tornadoTracksData';
-import { fetchTornadoTracks, saveTornadoTrack } from '../../lib/tornadoTracksStore';
+import { fetchTornadoTracks, saveTornadoTrack, incrementTrackViews } from '../../lib/tornadoTracksStore';
 import { fetchPrevotsForecastByDate } from '@/lib/prevotsForecastStore';
 import type { PrevotsForecast } from '@/lib/prevotsForecastData';
 import {
@@ -399,6 +399,7 @@ export default function RastrosTornadosPage() {
   const [overlayAfterOpacity, setOverlayAfterOpacity] = useState(0.75);
   const [visibleSecondaryImageIds, setVisibleSecondaryImageIds] = useState<string[]>([]);
   const [secondaryImageOpacities, setSecondaryImageOpacities] = useState<Record<string, number>>({});
+  const [secondaryImageRotations, setSecondaryImageRotations] = useState<Record<string, number>>({});
   const [polygonVisible, setPolygonVisible] = useState(true);
   const [polygonFillVisible, setPolygonFillVisible] = useState(true);
   const [prevotsOverlayVisible, setPrevotsOverlayVisible] = useState(false);
@@ -479,6 +480,9 @@ export default function RastrosTornadosPage() {
   const imageRectRef = useRef<any>(null);
   const [isSavingImageBounds, setIsSavingImageBounds] = useState(false);
 
+  const currentRadarId = radarStation ? ('slug' in radarStation ? radarStation.slug : `argentina:${radarStation.id}`) : selectedTrack?.radarWmsUrl;
+  const currentOverrides = (currentRadarId && selectedTrack?.radarOverrides) ? selectedTrack.radarOverrides[currentRadarId] : {};
+
   // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
   const parseCoord = (val: string): number => {
     if (!val) return 0;
@@ -489,18 +493,18 @@ export default function RastrosTornadosPage() {
   const handleOpenRadarEdit = () => {
     if (!selectedTrack) return;
     
-    setEditRadarLat(selectedTrack.radarLat ?? radarStation?.lat ?? 0);
-    setEditRadarLng(selectedTrack.radarLng ?? radarStation?.lng ?? 0);
-    setEditRadarRangeKm(selectedTrack.radarRangeKm ?? radarStation?.rangeKm ?? 250);
-    setEditRadarRotation(selectedTrack.radarRotation ?? 0);
-    setEditRadarOpacity(selectedTrack.radarOpacity ?? radarOpacity);
-    setEditRadarChromaKey(selectedTrack.radarChromaKey ?? 0);
-    setEditRadarCropTop(selectedTrack.radarCropTop ?? 0);
-    setEditRadarCropBottom(selectedTrack.radarCropBottom ?? 0);
-    setEditRadarCropLeft(selectedTrack.radarCropLeft ?? 0);
-    setEditRadarCropRight(selectedTrack.radarCropRight ?? 0);
-    setEditRadarCustomBounds(selectedTrack.radarCustomBounds ?? null);
-    setUseEditCustomBounds(!!selectedTrack.radarCustomBounds);
+    setEditRadarLat(currentOverrides.lat ?? selectedTrack.radarLat ?? radarStation?.lat ?? 0);
+    setEditRadarLng(currentOverrides.lng ?? selectedTrack.radarLng ?? radarStation?.lng ?? 0);
+    setEditRadarRangeKm(currentOverrides.rangeKm ?? selectedTrack.radarRangeKm ?? radarStation?.rangeKm ?? 250);
+    setEditRadarRotation(currentOverrides.rotation ?? selectedTrack.radarRotation ?? 0);
+    setEditRadarOpacity(currentOverrides.opacity ?? selectedTrack.radarOpacity ?? radarOpacity);
+    setEditRadarChromaKey(currentOverrides.chromaKey ?? selectedTrack.radarChromaKey ?? 0);
+    setEditRadarCropTop(currentOverrides.cropTop ?? selectedTrack.radarCropTop ?? 0);
+    setEditRadarCropBottom(currentOverrides.cropBottom ?? selectedTrack.radarCropBottom ?? 0);
+    setEditRadarCropLeft(currentOverrides.cropLeft ?? selectedTrack.radarCropLeft ?? 0);
+    setEditRadarCropRight(currentOverrides.cropRight ?? selectedTrack.radarCropRight ?? 0);
+    setEditRadarCustomBounds(currentOverrides.customBounds ?? selectedTrack.radarCustomBounds ?? null);
+    setUseEditCustomBounds(!!(currentOverrides.customBounds ?? selectedTrack.radarCustomBounds));
     
     setIsRadarEditMode(true);
     setRadarEditMinimized(false);
@@ -515,19 +519,25 @@ export default function RastrosTornadosPage() {
     if (!selectedTrack || !user) return;
     setIsSavingRadarEdit(true);
     try {
+      if (!currentRadarId) return;
+      const updatedOverrides = { ...(selectedTrack.radarOverrides || {}) };
+      updatedOverrides[currentRadarId] = {
+        lat: editRadarLat,
+        lng: editRadarLng,
+        rangeKm: editRadarRangeKm,
+        rotation: editRadarRotation,
+        opacity: editRadarOpacity,
+        chromaKey: editRadarChromaKey,
+        cropTop: editRadarCropTop,
+        cropBottom: editRadarCropBottom,
+        cropLeft: editRadarCropLeft,
+        cropRight: editRadarCropRight,
+        customBounds: useEditCustomBounds && editRadarCustomBounds ? editRadarCustomBounds : undefined,
+      };
+
       const updatedTrack: TornadoTrack = {
         ...selectedTrack,
-        radarLat: editRadarLat,
-        radarLng: editRadarLng,
-        radarRangeKm: editRadarRangeKm,
-        radarRotation: editRadarRotation,
-        radarOpacity: editRadarOpacity,
-        radarChromaKey: editRadarChromaKey,
-        radarCropTop: editRadarCropTop,
-        radarCropBottom: editRadarCropBottom,
-        radarCropLeft: editRadarCropLeft,
-        radarCropRight: editRadarCropRight,
-        radarCustomBounds: useEditCustomBounds && editRadarCustomBounds ? editRadarCustomBounds : undefined,
+        radarOverrides: updatedOverrides,
       };
       
       await saveTornadoTrack(updatedTrack, user.uid);
@@ -1977,7 +1987,7 @@ export default function RastrosTornadosPage() {
     );
   };
 
-  const createImageOverlayView = (url: string, bounds: any, map: any, opacity: number) => {
+  const createImageOverlayView = (url: string, bounds: any, map: any, opacity: number, rotation: number = 0) => {
     const ov = new google.maps.OverlayView();
     let divEl: HTMLDivElement | null = null;
     ov.onAdd = () => {
@@ -1987,7 +1997,7 @@ export default function RastrosTornadosPage() {
       img.src = url;
       img.loading = 'eager';
       (img as any).fetchPriority = 'high';
-      img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;`;
+      img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;transform:rotate(${rotation}deg);transform-origin:center;`;
       divEl.appendChild(img);
       ov.getPanes()?.overlayLayer?.appendChild(divEl);
     };
@@ -2094,8 +2104,9 @@ export default function RastrosTornadosPage() {
     (selectedTrack.secondaryAfterImages || []).forEach(img => {
       if (visibleSecondaryImageIds.includes(img.id) && img.url && img.bounds) {
         const bounds = makeBounds(img.bounds);
-        const opacity = secondaryImageOpacities[img.id] ?? 0.75;
-        const overlay = createImageOverlayView(img.url, bounds, map, opacity);
+        const opacity = secondaryImageOpacities[img.id] ?? img.opacity ?? 0.75;
+        const rotation = secondaryImageRotations[img.id] ?? img.rotation ?? 0;
+        const overlay = createImageOverlayView(img.url, bounds, map, opacity, rotation);
         secondaryOverlaysRef.current[img.id] = overlay;
       }
     });
@@ -2116,7 +2127,7 @@ export default function RastrosTornadosPage() {
       Object.values(secondaryOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
       secondaryOverlaysRef.current = {};
     };
-  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity, visibleSecondaryImageIds, secondaryImageOpacities, imageMappingMode, tempBeforeImageBounds, tempAfterImageBounds]);
+  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity, visibleSecondaryImageIds, secondaryImageOpacities, secondaryImageRotations, imageMappingMode, tempBeforeImageBounds, tempAfterImageBounds]);
 
   // Gerenciamento do Retângulo de Mapeamento de Imagem (Main Page - Admin Only)
   useEffect(() => {
@@ -2350,11 +2361,15 @@ export default function RastrosTornadosPage() {
       }
 
       // Prioridade 2: Overrides salvos no rastro
-      if (selectedTrack.radarCustomBounds) {
-        return selectedTrack.radarCustomBounds;
+      const rBounds = currentOverrides.customBounds ?? selectedTrack.radarCustomBounds;
+      if (rBounds) {
+        return rBounds;
       }
-      if (selectedTrack.radarLat !== undefined && selectedTrack.radarLng !== undefined) {
-        const b = calculateRadarBounds(selectedTrack.radarLat, selectedTrack.radarLng, selectedTrack.radarRangeKm ?? 250);
+      const rLat = currentOverrides.lat ?? selectedTrack.radarLat;
+      const rLng = currentOverrides.lng ?? selectedTrack.radarLng;
+      const rRange = currentOverrides.rangeKm ?? selectedTrack.radarRangeKm ?? 250;
+      if (rLat !== undefined && rLng !== undefined) {
+        const b = calculateRadarBounds(rLat, rLng, rRange);
         return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
       }
 
@@ -2468,8 +2483,8 @@ export default function RastrosTornadosPage() {
       divEl = document.createElement('div');
       divEl.style.cssText = 'position:absolute;pointer-events:none;display:none;';
       const img = document.createElement('img');
-      const currentOpacity = isRadarEditMode ? editRadarOpacity : (selectedTrack.radarOpacity ?? radarOpacity);
-      const currentRotation = isRadarEditMode ? editRadarRotation : (selectedTrack.radarRotation ?? 0);
+      const currentOpacity = isRadarEditMode ? editRadarOpacity : (currentOverrides.opacity ?? selectedTrack.radarOpacity ?? radarOpacity);
+      const currentRotation = isRadarEditMode ? editRadarRotation : (currentOverrides.rotation ?? selectedTrack.radarRotation ?? 0);
       
       img.className = 'pixelated-layer';
       img.style.cssText = `width:100%;height:100%;opacity:${currentOpacity};object-fit:fill;`;
@@ -2531,17 +2546,17 @@ export default function RastrosTornadosPage() {
         setRadarImageSource(src);
         if (src === 'cptec') setCptecAvailable(true);
 
-        const currentChromaKey = isRadarEditMode ? editRadarChromaKey : (selectedTrack.radarChromaKey ?? 0);
+        const currentChromaKey = isRadarEditMode ? editRadarChromaKey : (currentOverrides.chromaKey ?? selectedTrack.radarChromaKey ?? 0);
         const currentCrop = isRadarEditMode ? {
           top: editRadarCropTop,
           bottom: editRadarCropBottom,
           left: editRadarCropLeft,
           right: editRadarCropRight
         } : {
-          top: selectedTrack.radarCropTop ?? 0,
-          bottom: selectedTrack.radarCropBottom ?? 0,
-          left: selectedTrack.radarCropLeft ?? 0,
-          right: selectedTrack.radarCropRight ?? 0
+          top: currentOverrides.cropTop ?? selectedTrack.radarCropTop ?? 0,
+          bottom: currentOverrides.cropBottom ?? selectedTrack.radarCropBottom ?? 0,
+          left: currentOverrides.cropLeft ?? selectedTrack.radarCropLeft ?? 0,
+          right: currentOverrides.cropRight ?? selectedTrack.radarCropRight ?? 0
         };
 
         const applyFilters = async () => {
@@ -2619,7 +2634,7 @@ export default function RastrosTornadosPage() {
       radarOverlayRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [radarVisible, radarTimestamps, radarFrameIdx, radarOpacity, radarStation, radarSourceMode, radarProductType, superResEnabled, isRadarEditMode, editRadarLat, editRadarLng, editRadarRangeKm, editRadarRotation, editRadarOpacity, editRadarChromaKey, editRadarCropTop, editRadarCropBottom, editRadarCropLeft, editRadarCropRight, editRadarCustomBounds, useEditCustomBounds]);
+  }, [radarVisible, radarTimestamps, radarFrameIdx, radarOpacity, radarStation, radarSourceMode, radarProductType, superResEnabled, isRadarEditMode, editRadarLat, editRadarLng, editRadarRangeKm, editRadarRotation, editRadarOpacity, editRadarChromaKey, editRadarCropTop, editRadarCropBottom, editRadarCropLeft, editRadarCropRight, editRadarCustomBounds, useEditCustomBounds, selectedTrack, radarConfigs]);
 
   // Overlay de radar na timeline (quando período ≤ 3 dias)
   useEffect(() => {
@@ -4284,6 +4299,62 @@ export default function RastrosTornadosPage() {
                   </div>
                 )}
 
+                {/* Imagens Secundárias / Zoom */}
+                {(selectedTrack.secondaryAfterImages?.length ?? 0) > 0 && (
+                  <div className="pt-2 border-t border-slate-600 space-y-2">
+                    <dt className="text-slate-500 text-xs">Imagens de Zoom / Detalhes</dt>
+                    <div className="space-y-2">
+                      {selectedTrack.secondaryAfterImages!.map((img, idx) => {
+                        const isVisible = visibleSecondaryImageIds.includes(img.id);
+                        const opacity = secondaryImageOpacities[img.id] ?? img.opacity ?? 0.8;
+                        const rotation = secondaryImageRotations[img.id] ?? img.rotation ?? 0;
+                        return (
+                          <div key={img.id} className="bg-slate-800/80 rounded p-2 border border-slate-700 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <a href={img.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 underline truncate">
+                                <ExternalLink className="w-3 h-3 shrink-0" />
+                                {img.description || `Zoom #${idx + 1}`}
+                              </a>
+                              
+                              <label className="inline-flex items-center gap-1.5 text-slate-300 text-[10px] cursor-pointer shrink-0">
+                                <input 
+                                  type="checkbox" 
+                                  checked={isVisible} 
+                                  onChange={(e) => setVisibleSecondaryImageIds(prev => e.target.checked ? [...prev, img.id] : prev.filter(id => id !== img.id))} 
+                                  className="rounded border-slate-500 bg-slate-900 text-emerald-500" 
+                                />
+                                Ver no mapa
+                              </label>
+                            </div>
+                            {isVisible && (
+                              <div className="flex items-center justify-between gap-3 pt-1">
+                                <div className="flex items-center gap-2 flex-1">
+                                  <span className="text-[10px] text-slate-400 shrink-0">Opacid:</span>
+                                  <input
+                                    type="range" min={0} max={1} step={0.05}
+                                    value={opacity}
+                                    onChange={(e) => setSecondaryImageOpacities(prev => ({ ...prev, [img.id]: parseFloat(e.target.value) }))}
+                                    className="flex-1 accent-amber-500"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2 w-24">
+                                  <span className="text-[10px] text-slate-400 shrink-0">Rot(º):</span>
+                                  <input
+                                    type="number" step="0.1"
+                                    value={rotation}
+                                    onChange={(e) => setSecondaryImageRotations(prev => ({ ...prev, [img.id]: parseFloat(e.target.value) }))}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-center text-slate-300"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Controles do polígono */}
                 {selectedTrack.polygons?.length > 0 && (
                   <div className="pt-2 border-t border-slate-600 space-y-2">
@@ -4739,7 +4810,14 @@ export default function RastrosTornadosPage() {
                         <li key={t.id}>
                           <button
                             type="button"
-                            onClick={() => setSelectedTrack(t)}
+                            onClick={() => {
+                              setSelectedTrack(t);
+                              const key = `viewed_track_${t.id}`;
+                              if (!sessionStorage.getItem(key)) {
+                                sessionStorage.setItem(key, '1');
+                                incrementTrackViews(t.id).catch(console.error);
+                              }
+                            }}
                             className="w-full text-left rounded-xl p-3 bg-[#0A0E17]/60 hover:bg-white/5 border border-white/10 hover:border-cyan-500/30 transition-all group"
                           >
                             <div className="flex items-start gap-3">
@@ -4760,6 +4838,12 @@ export default function RastrosTornadosPage() {
                                 </span>
                                 {(t.beforeImage?.trim() && t.afterImage?.trim()) && (
                                   <span className="ml-2 text-[10px] text-emerald-400">Antes/Depois</span>
+                                )}
+                                {(typeof t.views === 'number') && (
+                                  <span className="ml-2 text-[10px] text-slate-400 inline-flex items-center gap-1" title="Visualizações">
+                                    <Eye className="w-3 h-3" />
+                                    {t.views}
+                                  </span>
                                 )}
                               </div>
                             </div>

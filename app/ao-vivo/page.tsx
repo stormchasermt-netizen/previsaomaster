@@ -41,6 +41,7 @@ import { filterRadarImageFromUrl, filterClimatempoRadarImage, filterDopplerSuper
 import { cacheRadarImage } from '@/lib/radarCacheClient';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
+import { fetchAllRadarViews, incrementRadarViews } from '@/lib/radarViewsStore';
 
 type DisplayRadar = { type: 'cptec'; station: CptecRadarStation } | { type: 'argentina'; station: ArgentinaRadarStation };
 
@@ -295,6 +296,13 @@ export default function AoVivoPage() {
   const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
   const [sampledValue1, setSampledValue1] = useState<number | null>(null);
   const [sampledValue2, setSampledValue2] = useState<number | null>(null);
+
+  const [radarViewsRecord, setRadarViewsRecord] = useState<Record<string, number>>({});
+  const [calendarMode, setCalendarMode] = useState<'days' | 'months' | 'years'>('days');
+
+  useEffect(() => {
+    fetchAllRadarViews().then(setRadarViewsRecord).catch(console.error);
+  }, []);
 
   /** Máximo de minutos atrás: live = meia-noite até agora */
   const maxSliderMinutesAgo = useMemo(() => {
@@ -2596,14 +2604,24 @@ export default function AoVivoPage() {
                                   onChange={(e) => {
                                     setSelectedIndividualRadars((prev) => {
                                       const next = new Set(prev);
-                                      if (e.target.checked) next.add(id);
-                                      else next.delete(id);
+                                      if (e.target.checked) {
+                                        next.add(id);
+                                        const key = `viewed_radar_${id}`;
+                                        if (!sessionStorage.getItem(key)) {
+                                          sessionStorage.setItem(key, '1');
+                                          incrementRadarViews(id).catch(console.error);
+                                        }
+                                      } else next.delete(id);
                                       return next;
                                     });
                                   }}
                                   className="hidden"
                                 />
                                 <span className="text-sm text-slate-300 truncate">{r.station.name}</span>
+                                <span className="ml-auto text-[10px] text-slate-500 inline-flex items-center gap-1" title="Visualizações">
+                                  <Eye className="w-3 h-3" />
+                                  {radarViewsRecord[id] || 0}
+                                </span>
                               </label>
                             );
                           })}
@@ -2698,82 +2716,172 @@ export default function AoVivoPage() {
                             type="button"
                             onClick={() => {
                               const [y, m] = historicalDate.split('-').map(Number);
-                              const d = new Date(y, m - 1, 1);
-                              d.setMonth(d.getMonth() - 1);
-                              setHistoricalDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                              if (calendarMode === 'days') {
+                                const d = new Date(y, m - 1, 1);
+                                d.setMonth(d.getMonth() - 1);
+                                setHistoricalDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                              } else if (calendarMode === 'months') {
+                                setHistoricalDate(`${y - 1}-${String(m).padStart(2, '0')}-01`);
+                              } else if (calendarMode === 'years') {
+                                setHistoricalDate(`${y - 10}-01-01`);
+                              }
                             }}
                             className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/20 transition-colors"
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
-                          <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider capitalize">
-                            {new Date(historicalDate + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (calendarMode === 'days') setCalendarMode('months');
+                              else if (calendarMode === 'months') setCalendarMode('years');
+                              else setCalendarMode('days');
+                            }}
+                            className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider hover:bg-cyan-500/20 px-2 py-0.5 rounded transition-colors"
+                          >
+                            {calendarMode === 'days' && new Date(historicalDate + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                            {calendarMode === 'months' && new Date(historicalDate + 'T12:00:00').getFullYear()}
+                            {calendarMode === 'years' && `${Math.floor(new Date(historicalDate + 'T12:00:00').getFullYear() / 10) * 10} - ${Math.floor(new Date(historicalDate + 'T12:00:00').getFullYear() / 10) * 10 + 9}`}
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
                               const [y, m] = historicalDate.split('-').map(Number);
-                              const nextFirst = new Date(y, m, 1);
-                              const today = new Date();
-                              today.setHours(23, 59, 59, 999);
-                              if (nextFirst > today) return;
-                              setHistoricalDate(`${nextFirst.getFullYear()}-${String(nextFirst.getMonth() + 1).padStart(2, '0')}-01`);
+                              if (calendarMode === 'days') {
+                                const nextFirst = new Date(y, m, 1);
+                                const today = new Date();
+                                today.setHours(23, 59, 59, 999);
+                                if (nextFirst <= today) {
+                                  setHistoricalDate(`${nextFirst.getFullYear()}-${String(nextFirst.getMonth() + 1).padStart(2, '0')}-01`);
+                                }
+                              } else if (calendarMode === 'months') {
+                                const nextY = y + 1;
+                                if (nextY <= new Date().getFullYear()) {
+                                  setHistoricalDate(`${nextY}-${String(m).padStart(2, '0')}-01`);
+                                }
+                              } else if (calendarMode === 'years') {
+                                const nextY = y + 10;
+                                if (nextY <= new Date().getFullYear() + 9) {
+                                  setHistoricalDate(`${nextY}-01-01`);
+                                }
+                              }
                             }}
                             className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                             disabled={(() => {
                               const [y, m] = historicalDate.split('-').map(Number);
-                              const nextFirst = new Date(y, m, 1);
-                              return nextFirst > new Date();
+                              if (calendarMode === 'days') {
+                                const nextFirst = new Date(y, m, 1);
+                                return nextFirst > new Date();
+                              } else if (calendarMode === 'months') {
+                                return y + 1 > new Date().getFullYear();
+                              } else if (calendarMode === 'years') {
+                                return y + 10 > new Date().getFullYear() + 9;
+                              }
+                              return false;
                             })()}
                           >
                             <ChevronRight className="w-4 h-4" />
                           </button>
                         </div>
                         <div className="p-1.5">
-                          <div className="grid grid-cols-7 gap-0 text-center text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
-                              <span key={d} className="py-0.5">{d}</span>
-                            ))}
-                          </div>
-                          <div className="grid grid-cols-7 gap-0.5">
-                            {(() => {
-                              const [y, m] = historicalDate.split('-').map(Number);
-                              const first = new Date(y, m - 1, 1);
-                              const startPad = first.getDay();
-                              const daysInMonth = new Date(y, m, 0).getDate();
-                              const today = new Date();
-                              today.setHours(0, 0, 0, 0);
-                              const cells: (number | null)[] = [];
-                              for (let i = 0; i < startPad; i++) cells.push(null);
-                              for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-                              return cells.map((day, i) => {
-                                if (day === null) return <div key={`e-${i}`} className="aspect-square" />;
-                                const cellDate = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                const isSelected = cellDate === historicalDate;
-                                const isToday = cellDate === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-                                const isFuture = new Date(cellDate) > today;
+                          {calendarMode === 'days' && (
+                            <>
+                              <div className="grid grid-cols-7 gap-0 text-center text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
+                                  <span key={d} className="py-0.5">{d}</span>
+                                ))}
+                              </div>
+                              <div className="grid grid-cols-7 gap-0.5">
+                                {(() => {
+                                  const [y, m] = historicalDate.split('-').map(Number);
+                                  const first = new Date(y, m - 1, 1);
+                                  const startPad = first.getDay();
+                                  const daysInMonth = new Date(y, m, 0).getDate();
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  const cells: (number | null)[] = [];
+                                  for (let i = 0; i < startPad; i++) cells.push(null);
+                                  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                                  return cells.map((day, i) => {
+                                    if (day === null) return <div key={`e-${i}`} className="aspect-square" />;
+                                    const cellDate = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                    const isSelected = cellDate === historicalDate;
+                                    const isToday = cellDate === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                                    const isFuture = new Date(cellDate) > today;
+                                    return (
+                                      <button
+                                        key={cellDate}
+                                        type="button"
+                                        onClick={() => !isFuture && setHistoricalDate(cellDate)}
+                                        disabled={isFuture}
+                                        className={`aspect-square rounded text-[11px] font-semibold transition-all ${
+                                          isFuture
+                                            ? 'text-slate-600 cursor-not-allowed'
+                                            : isSelected
+                                              ? 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                                              : isToday
+                                                ? 'bg-white/10 text-cyan-300 ring-1 ring-cyan-500/50 hover:bg-white/15'
+                                                : 'text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-300'
+                                        }`}
+                                      >
+                                        {day}
+                                      </button>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </>
+                          )}
+                          {calendarMode === 'months' && (
+                            <div className="grid grid-cols-3 gap-1 p-2">
+                              {Array.from({ length: 12 }, (_, i) => {
+                                const y = parseInt(historicalDate.split('-')[0], 10);
+                                const cellDate = new Date(y, i, 1);
+                                const isFuture = cellDate > new Date();
+                                const currentM = parseInt(historicalDate.split('-')[1], 10) - 1;
                                 return (
                                   <button
-                                    key={cellDate}
+                                    key={i}
                                     type="button"
-                                    onClick={() => !isFuture && setHistoricalDate(cellDate)}
+                                    onClick={() => {
+                                      setHistoricalDate(`${y}-${String(i + 1).padStart(2, '0')}-01`);
+                                      setCalendarMode('days');
+                                    }}
                                     disabled={isFuture}
-                                    className={`aspect-square rounded text-[11px] font-semibold transition-all ${
-                                      isFuture
-                                        ? 'text-slate-600 cursor-not-allowed'
-                                        : isSelected
-                                          ? 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.4)]'
-                                          : isToday
-                                            ? 'bg-white/10 text-cyan-300 ring-1 ring-cyan-500/50 hover:bg-white/15'
-                                            : 'text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-300'
-                                    }`}
+                                    className={`py-2 rounded text-[10px] font-bold uppercase transition-all ${i === currentM ? 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.4)]' : isFuture ? 'text-slate-600 cursor-not-allowed' : 'text-slate-300 bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-300'}`}
                                   >
-                                    {day}
+                                    {new Date(2000, i, 1).toLocaleDateString('pt-BR', { month: 'short' })}
                                   </button>
                                 );
-                              });
-                            })()}
-                          </div>
+                              })}
+                            </div>
+                          )}
+                          {calendarMode === 'years' && (
+                            <div className="grid grid-cols-3 gap-1 p-2">
+                              {(() => {
+                                const currentY = parseInt(historicalDate.split('-')[0], 10);
+                                const startY = Math.floor(currentY / 10) * 10 - 1;
+                                return Array.from({ length: 12 }, (_, i) => {
+                                  const y = startY + i;
+                                  const isFuture = y > new Date().getFullYear();
+                                  return (
+                                    <button
+                                      key={y}
+                                      type="button"
+                                      onClick={() => {
+                                        setHistoricalDate(`${y}-01-01`);
+                                        setCalendarMode('months');
+                                      }}
+                                      disabled={isFuture}
+                                      className={`py-2 rounded text-[10px] font-bold transition-all ${y === currentY ? 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.4)]' : isFuture ? 'text-slate-600 cursor-not-allowed' : 'text-slate-300 bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-300'}`}
+                                    >
+                                      {y}
+                                    </button>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          )}
                         </div>
                         <button
                           type="button"

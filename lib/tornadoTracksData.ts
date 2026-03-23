@@ -46,6 +46,8 @@ export interface SecondaryImage {
   url: string;
   bounds: TrackImageBounds;
   description?: string;
+  opacity?: number;
+  rotation?: number;
 }
 
 export interface TornadoTrack {
@@ -62,6 +64,7 @@ export interface TornadoTrack {
   locality?: string;
   description?: string;
   source?: string;
+  views?: number;
   /** URL WMS completa (GetMap) capturada do CPTEC/SIGMA para gerar overlay de radar. */
   radarWmsUrl?: string;
   /** Slug do radar pré-selecionado (quando há mais de um no raio de 300 km) */
@@ -83,7 +86,7 @@ export interface TornadoTrack {
   /** Timestamp de atualização (ms) quando disponível no Firestore. */
   updatedAtMs?: number;
 
-  // Overrides de radar específicos para este rastro (Admin)
+  // Overrides legados mantidos para refatoração
   radarLat?: number;
   radarLng?: number;
   radarRangeKm?: number;
@@ -95,6 +98,23 @@ export interface TornadoTrack {
   radarCropLeft?: number;
   radarCropRight?: number;
   radarCustomBounds?: { north: number; south: number; east: number; west: number };
+
+  /** Overrides de radar específicos, indexados pelo id (ex: 'santiago') ou WMS Url */
+  radarOverrides?: Record<string, RadarOverride>;
+}
+
+export interface RadarOverride {
+  lat?: number;
+  lng?: number;
+  rangeKm?: number;
+  rotation?: number;
+  opacity?: number;
+  chromaKey?: number;
+  cropTop?: number;
+  cropBottom?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  customBounds?: { north: number; south: number; east: number; west: number };
 }
 
 /** Ordem da escala F (do menor ao maior número = do exterior ao interior). */

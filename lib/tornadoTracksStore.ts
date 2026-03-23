@@ -6,6 +6,7 @@ import {
   getDocs,
   deleteDoc,
   serverTimestamp,
+  increment,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { inferCountryFromTrack, type TornadoTrack, type FScale, type TrackImageBounds, type PrevotsPolygon } from '@/lib/tornadoTracksData';
@@ -43,20 +44,20 @@ function polygonsFromFirestore(polygons: { intensity?: string; coordinatesJson?:
 
 function prevotsPolygonsFromFirestore(raw: unknown): PrevotsPolygon[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((p: any) => {
-      const level = Number(p?.level ?? 0);
-      if (level < 1 || level > 4) return null;
-      let coords: number[][][] = [];
-      if (typeof p?.coordinatesJson === 'string') {
-        try {
-          coords = JSON.parse(p.coordinatesJson);
-        } catch { coords = []; }
-      } else if (Array.isArray(p?.coordinates)) coords = p.coordinates;
-      if (!Array.isArray(coords) || coords.length === 0) return null;
-      return { level: level as 1 | 2 | 3 | 4, coordinates: coords };
-    })
-    .filter((x): x is PrevotsPolygon => x !== null);
+  const result: PrevotsPolygon[] = [];
+  raw.forEach((p: any) => {
+    const level = Number(p?.level ?? 0);
+    if (level < 0 || level > 4) return;
+    let coords: number[][][] = [];
+    if (typeof p?.coordinatesJson === 'string') {
+      try {
+        coords = JSON.parse(p.coordinatesJson);
+      } catch { coords = []; }
+    } else if (Array.isArray(p?.coordinates)) coords = p.coordinates;
+    if (!Array.isArray(coords) || coords.length === 0) return;
+    result.push({ level: level as any, coordinates: coords });
+  });
+  return result;
 }
 
 function prevotsPolygonsToFirestore(prevots: PrevotsPolygon[]) {
@@ -87,6 +88,7 @@ export async function fetchTornadoTracks(): Promise<TornadoTrack[]> {
       locality: data.locality,
       description: data.description,
       source: data.source,
+      views: typeof data.views === 'number' ? data.views : 0,
       radarWmsUrl: data.radarWmsUrl ?? undefined,
       radarStationId: data.radarStationId ?? undefined,
       beforeImage: data.beforeImage,
@@ -136,6 +138,7 @@ export async function saveTornadoTrack(track: TornadoTrackInput, adminId: string
     locality: track.locality || null,
     description: track.description || null,
     source: track.source || null,
+    views: track.views ?? 0,
     radarWmsUrl: track.radarWmsUrl || null,
     radarStationId: track.radarStationId || null,
     beforeImage: track.beforeImage || null,
@@ -174,4 +177,13 @@ export async function saveTornadoTrack(track: TornadoTrackInput, adminId: string
 export async function deleteTornadoTrack(id: string): Promise<void> {
   if (!db) throw new Error('Firestore não inicializado');
   await deleteDoc(doc(db, COLLECTION, id));
+}
+
+export async function incrementTrackViews(id: string): Promise<void> {
+  if (!db) return;
+  try {
+    await setDoc(doc(db, COLLECTION, id), { views: increment(1) }, { merge: true });
+  } catch (err) {
+    console.error('Error incrementing track views:', err);
+  }
 }
