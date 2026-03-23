@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap, Eye } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap, Eye, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -463,6 +463,80 @@ export default function AoVivoPage() {
   const [editLiveCenter, setEditLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const editOverlayRef = useRef<any>(null);
+
+  // ---- Drawing tool ----
+  const [drawingMode, setDrawingMode] = useState(false);
+  const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingRef = useRef(false);
+  const lastPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Drawing canvas logic
+  useEffect(() => {
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) return;
+    if (!drawingMode) {
+      canvas.style.pointerEvents = 'none';
+      return;
+    }
+    canvas.style.pointerEvents = 'auto';
+    // Resize canvas to match parent
+    const container = canvas.parentElement;
+    if (container) {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3;
+
+    const getPos = (e: MouseEvent | TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      if ('touches' in e) {
+        const t = e.touches[0];
+        return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+      }
+      return { x: (e as MouseEvent).clientX - rect.left, y: (e as MouseEvent).clientY - rect.top };
+    };
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      isDrawingRef.current = true;
+      lastPosRef.current = getPos(e);
+    };
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDrawingRef.current || !lastPosRef.current) return;
+      e.preventDefault();
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastPosRef.current = pos;
+    };
+    const onUp = () => {
+      isDrawingRef.current = false;
+      lastPosRef.current = null;
+    };
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseup', onUp);
+    canvas.addEventListener('mouseleave', onUp);
+    canvas.addEventListener('touchstart', onDown, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onUp);
+    canvas.addEventListener('touchcancel', onUp);
+    return () => {
+      canvas.removeEventListener('mousedown', onDown);
+      canvas.removeEventListener('mousemove', onMove);
+      canvas.removeEventListener('mouseup', onUp);
+      canvas.removeEventListener('mouseleave', onUp);
+      canvas.removeEventListener('touchstart', onDown);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onUp);
+      canvas.removeEventListener('touchcancel', onUp);
+    };
+  }, [drawingMode]);
   const lastEditDragRef = useRef<{ lat: number; lng: number } | null>(null);
 
   /** Desktop detection para split vertical */
@@ -3032,6 +3106,12 @@ export default function AoVivoPage() {
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-px bg-white/70 shadow-[0_0_2px_rgba(0,0,0,0.8)]" />
               </div>
             </div>
+            {/* Canvas de Desenho Livre */}
+            <canvas
+              ref={drawingCanvasRef}
+              className="absolute inset-0 w-full h-full z-[25]"
+              style={{ pointerEvents: drawingMode ? 'auto' : 'none', cursor: drawingMode ? 'crosshair' : 'default' }}
+            />
             {/* Leitura de Valor */}
             <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white font-mono z-30">
               {t('live_value_reading')}: {sampledValue1 !== null ? `${sampledValue1} dBZ` : '--'}
@@ -3980,6 +4060,33 @@ export default function AoVivoPage() {
             <MapPin className="w-5 h-5 relative z-10 drop-shadow-[0_0_4px_rgba(6,182,212,0.5)]" />
           </div>
           <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">GPS</span>
+        </button>
+
+        {/* Botão Lápis — Desenho livre */}
+        <button
+          onClick={() => {
+            if (drawingMode) {
+              // Limpar canvas e desativar
+              const canvas = drawingCanvasRef.current;
+              if (canvas) {
+                const ctx = canvas.getContext('2d');
+                if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+              }
+              setDrawingMode(false);
+            } else {
+              setDrawingMode(true);
+            }
+          }}
+          className={`group/tab flex flex-col items-center gap-1 p-2.5 rounded-xl transition-all duration-200 relative ${drawingMode ? 'text-sky-400' : 'text-slate-500 hover:text-white'}`}
+          title={drawingMode ? 'Apagar desenho' : 'Desenhar no mapa'}
+        >
+          {drawingMode && (
+            <motion.div layoutId="bottomBarGlow" className="absolute inset-0 rounded-xl bg-sky-400/10 border border-sky-400/20" />
+          )}
+          <div className="relative z-10 transition-transform duration-200 group-hover/tab:scale-110 group-hover/tab:-translate-y-0.5">
+            <Pencil className="w-5 h-5" />
+          </div>
+          <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">{drawingMode ? 'Apagar' : 'Lápis'}</span>
         </button>
 
         <button
