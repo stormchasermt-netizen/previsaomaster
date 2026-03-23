@@ -23,6 +23,7 @@ import {
   type PrevotsPolygon,
   type PrevotsLevel,
   type FScale,
+  type NumericalModelImage,
   getMaxIntensity,
 } from '@/lib/tornadoTracksData';
 import { CPTEC_RADAR_STATIONS } from '@/lib/cptecRadarStations';
@@ -148,6 +149,14 @@ export default function AdminRastrosTornadosPage() {
   const [showSecondaryOnMap, setShowSecondaryOnMap] = useState<Record<string, boolean>>({});
   const [secondaryOpacities, setSecondaryOpacities] = useState<Record<string, number>>({});
   const secondaryOverlaysRef = useRef<Record<string, any>>({});
+  
+  const [numericalModels, setNumericalModels] = useState<NumericalModelImage[]>([]);
+  const [numericalUploadingId, setNumericalUploadingId] = useState<string | null>(null);
+  const [activeNumericalId, setActiveNumericalId] = useState<string | null>(null);
+  const numericalImageFileInputRef = useRef<HTMLInputElement>(null);
+  const [showNumericalOnMap, setShowNumericalOnMap] = useState<Record<string, boolean>>({});
+  const [numericalOpacities, setNumericalOpacities] = useState<Record<string, number>>({});
+  const numericalOverlaysRef = useRef<Record<string, any>>({});
   
   // States para Radar Override Local
   const [radarOverrides, setRadarOverrides] = useState<Record<string, any>>({});
@@ -323,17 +332,33 @@ export default function AdminRastrosTornadosPage() {
       );
     };
 
-    const createImageOverlay = (url: string, bounds: any, opacity: number, rotation: number = 0) => {
+    const createImageOverlay = (
+      url: string, 
+      bounds: any, 
+      opacity: number, 
+      rotation: number = 0,
+      chromaKey: number = 0,
+      crop: { top: number; bottom: number; left: number; right: number } = { top: 0, bottom: 0, left: 0, right: 0 }
+    ) => {
       const ov = new google.maps.OverlayView();
       let divEl: HTMLDivElement | null = null;
       ov.onAdd = () => {
         divEl = document.createElement('div');
-        divEl.style.cssText = 'position:absolute;pointer-events:none;border:none;';
+        divEl.style.cssText = 'position:absolute;pointer-events:none;border:none;overflow:hidden;';
         const img = document.createElement('img');
         img.src = url;
         img.loading = 'eager';
         (img as any).fetchPriority = 'high';
-        img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;transform:rotate(${rotation}deg);transform-origin:center;`;
+        
+        let mixBlend = '';
+        if (chromaKey > 0) mixBlend = 'mix-blend-mode: multiply;'; // fallback simples para modelos numéricos claros
+        
+        let clipPath = '';
+        if (crop.top > 0 || crop.bottom > 0 || crop.left > 0 || crop.right > 0) {
+          clipPath = `clip-path: inset(${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%);`;
+        }
+
+        img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;transform:rotate(${rotation}deg);transform-origin:center;${mixBlend}${clipPath}`;
         divEl.appendChild(img);
         ov.getPanes()?.overlayLayer?.appendChild(divEl);
       };
@@ -413,6 +438,31 @@ export default function AdminRastrosTornadosPage() {
       }
     });
 
+    // Overlays para modelos numéricos
+    numericalModels.forEach(numModel => {
+      if (!numModel.url || !numModel.bounds || !numModel.bounds.ne || !numModel.bounds.sw) return;
+      if (isNaN(numModel.bounds.ne.lat) || isNaN(numModel.bounds.sw.lat)) return;
+      
+      const isMappingThis = imageMappingMode === numModel.id;
+      const isVisible = showNumericalOnMap[numModel.id] || isMappingThis;
+      
+      if (!isVisible) return;
+      
+      const bounds = makeBounds(numModel.bounds);
+      const opacity = numModel.opacity ?? 0.8;
+      const rotation = numModel.rotation ?? 0;
+      const chroma = numModel.chromaKey ?? 0;
+      const overlay = createImageOverlay(numModel.url, bounds, opacity, rotation, chroma, {
+        top: numModel.cropTop ?? 0,
+        bottom: numModel.cropBottom ?? 0,
+        left: numModel.cropLeft ?? 0,
+        right: numModel.cropRight ?? 0
+      });
+      
+      numericalOverlaysRef.current[numModel.id] = overlay;
+      overlay.setMap(map);
+    });
+
     return () => {
       if (overlayBeforeRef.current) {
         (overlayBeforeRef.current as any).setMap?.(null);
@@ -424,8 +474,10 @@ export default function AdminRastrosTornadosPage() {
       }
       Object.values(secondaryOverlaysRef.current).forEach((overlay: any) => overlay?.setMap?.(null));
       secondaryOverlaysRef.current = {};
+      Object.values(numericalOverlaysRef.current).forEach((overlay: any) => overlay?.setMap?.(null));
+      numericalOverlaysRef.current = {};
     };
-  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode, showSecondaryOnMap, secondaryOpacities, secondaryAfterImages]);
+  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode, showSecondaryOnMap, secondaryOpacities, secondaryAfterImages, numericalModels, showNumericalOnMap]);
 
   // Gerenciamento do Retângulo de Mapeamento de Imagem
   useEffect(() => {
@@ -446,10 +498,11 @@ export default function AdminRastrosTornadosPage() {
     if (imageMappingMode === 'after') setShowOverlayAfter(true);
     if (imageMappingMode !== 'none' && imageMappingMode !== 'before' && imageMappingMode !== 'after') {
       setShowSecondaryOnMap(prev => ({ ...prev, [imageMappingMode]: true }));
+      setShowNumericalOnMap(prev => ({ ...prev, [imageMappingMode]: true }));
     }
 
     let initialBounds;
-    let setBoundsFunc: (b: any) => void;
+    let setBoundsFunc: (b: any) => void = () => {};
 
     if (imageMappingMode === 'before') {
       setBoundsFunc = setBeforeImageBounds;
@@ -457,16 +510,26 @@ export default function AdminRastrosTornadosPage() {
     } else if (imageMappingMode === 'after') {
       setBoundsFunc = setAfterImageBounds;
       initialBounds = afterImageBounds;
-    } else {
-      // É uma imagem secundária
       const secImg = secondaryAfterImages.find(img => img.id === imageMappingMode);
-      if (!secImg) return;
-      setBoundsFunc = (newBounds) => {
-        setSecondaryAfterImages(prev => prev.map(img =>
-          img.id === imageMappingMode ? { ...img, bounds: newBounds } : img
-        ));
-      };
-      initialBounds = secImg.bounds;
+      const numImg = numericalModels.find(img => img.id === imageMappingMode);
+      
+      if (secImg) {
+        setBoundsFunc = (newBounds) => {
+          setSecondaryAfterImages(prev => prev.map(img =>
+            img.id === imageMappingMode ? { ...img, bounds: newBounds } : img
+          ));
+        };
+        initialBounds = secImg.bounds;
+      } else if (numImg) {
+        setBoundsFunc = (newBounds) => {
+          setNumericalModels(prev => prev.map(img =>
+            img.id === imageMappingMode ? { ...img, bounds: newBounds } : img
+          ));
+        };
+        initialBounds = numImg.bounds;
+      } else {
+        return;
+      }
     }
 
     const gBounds = initialBounds ? {
@@ -937,6 +1000,8 @@ export default function AdminRastrosTornadosPage() {
     setShowBeforeAfterDialog(false);
     setSecondaryAfterImages([]);
     setSecondaryUploadingId(null);
+    setNumericalModels([]);
+    setNumericalUploadingId(null);
   };
 
   const openNewTrack = () => {
@@ -1183,6 +1248,28 @@ export default function AdminRastrosTornadosPage() {
     setActiveSecondaryId(null);
   };
 
+  const addNumericalModel = () => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setNumericalModels(prev => [...prev, { id, url: '', round: '00Z', forecastHour: 1, bounds: { ne: { lat: 0, lng: 0 }, sw: { lat: 0, lng: 0 } } }]);
+  };
+
+  const removeNumericalModel = (id: string) => {
+    setNumericalModels(prev => prev.filter(img => img.id !== id));
+    if (imageMappingMode === id) setImageMappingMode('none');
+  };
+
+  const handleNumericalModelFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!activeNumericalId) return;
+    const id = activeNumericalId;
+    const handler = makeImageUploadHandler(
+      (url) => setNumericalModels(prev => prev.map(img => img.id === id ? { ...img, url } : img)),
+      (bounds) => setNumericalModels(prev => prev.map(img => img.id === id ? { ...img, bounds: bounds || { ne: { lat: 0, lng: 0 }, sw: { lat: 0, lng: 0 } } } : img)),
+      (v) => setNumericalUploadingId(v ? id : null)
+    );
+    await handler(e);
+    setActiveNumericalId(null);
+  };
+
   const handleEdit = (t: TornadoTrack) => {
     setEditingId(t.id);
     setDate(t.date);
@@ -1222,6 +1309,7 @@ export default function AdminRastrosTornadosPage() {
     setDrawPrevotsMode(false);
     setShowBeforeAfterDialog(false);
     setSecondaryAfterImages(t.secondaryAfterImages || []);
+    setNumericalModels(t.numericalModels || []);
     setPanelOpen(true);
   };
 
@@ -1981,6 +2069,161 @@ export default function AdminRastrosTornadosPage() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Modelos Numéricos (GTS) */}
+                    <div className="col-span-2 space-y-3 rounded-lg border border-slate-700 p-3 bg-slate-800/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-200 text-sm font-semibold">Modelos Numéricos (GTS)</span>
+                        <button
+                          type="button"
+                          onClick={addNumericalModel}
+                          className="text-xs flex items-center gap-1 px-2 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 transition-colors"
+                        >
+                          <PlusCircle className="w-3 h-3" /> Adicionar modelo
+                        </button>
+                      </div>
+
+                      <input
+                        type="file"
+                        ref={numericalImageFileInputRef}
+                        accept=".kmz,.tif,.tiff,image/tiff,image/*"
+                        onChange={handleNumericalModelFileSelect}
+                        className="hidden"
+                      />
+
+                      {numericalModels.length === 0 && (
+                        <p className="text-slate-500 text-xs italic">Nenhum modelo numérico adicionado.</p>
+                      )}
+
+                      <div className="space-y-4">
+                        {numericalModels.map((img, idx) => (
+                          <div key={img.id} className="p-3 rounded-lg border border-slate-700 bg-slate-900/50 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-slate-400">Modelo #{idx + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeNumericalModel(img.id)}
+                                className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                                title="Remover modelo"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="text-[10px] text-slate-400 mb-1 block">Rodada (HHZ)</label>
+                                <select
+                                  value={img.round || '00Z'}
+                                  onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, round: e.target.value } : si))}
+                                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                                >
+                                  {['00Z', '06Z', '12Z', '18Z', '20Z'].map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-400 mb-1 block">Forecast (+H)</label>
+                                <input
+                                  type="number" min={0}
+                                  value={img.forecastHour ?? 1}
+                                  onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, forecastHour: parseInt(e.target.value) || 0 } : si))}
+                                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 flex-wrap items-center">
+                              <button
+                                type="button"
+                                onClick={() => { setActiveNumericalId(img.id); numericalImageFileInputRef.current?.click(); }}
+                                disabled={numericalUploadingId === img.id}
+                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-600 text-xs font-medium cursor-pointer transition-colors ${numericalUploadingId === img.id ? 'opacity-50 pointer-events-none' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'}`}
+                              >
+                                {numericalUploadingId === img.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                                {numericalUploadingId === img.id ? 'Enviando…' : 'Enviar imagem'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setImageMappingMode(imageMappingMode === img.id ? 'none' : img.id)}
+                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded border text-xs font-medium transition-colors ${imageMappingMode === img.id ? 'bg-amber-500 text-black border-amber-400' : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600'}`}
+                              >
+                                <Layers className="w-3 h-3" />
+                                {imageMappingMode === img.id ? 'Concluir Ajuste' : 'Ajustar no Mapa'}
+                              </button>
+                            </div>
+
+                            <input
+                              type="url"
+                              value={img.url}
+                              onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, url: e.target.value } : si))}
+                              placeholder="URL da imagem numérico"
+                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs"
+                            />
+
+                            <label className="inline-flex items-center gap-2 text-slate-300 text-[11px] cursor-pointer mt-1">
+                              <input
+                                type="checkbox"
+                                checked={!!showNumericalOnMap[img.id]}
+                                onChange={(e) => setShowNumericalOnMap(prev => ({ ...prev, [img.id]: e.target.checked }))}
+                                className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500"
+                              />
+                              Mostrar no mapa
+                            </label>
+
+                            {/* Transparency and Chroma */}
+                            <div className="grid grid-cols-2 gap-4 my-2">
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                                  <span>Opacidade</span>
+                                  <span>{Math.round((img.opacity ?? 0.8) * 100)}%</span>
+                                </div>
+                                <input
+                                  type="range" min={0} max={1} step={0.05}
+                                  value={img.opacity ?? 0.8}
+                                  onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, opacity: parseFloat(e.target.value) } : si))}
+                                  className="w-full accent-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-400 block mb-1">Recortar Fundo (Multiply)</label>
+                                <label className="inline-flex items-center gap-2 text-slate-300 text-[11px] cursor-pointer">
+                                  <input type="checkbox" checked={!!img.chromaKey} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, chromaKey: e.target.checked ? 1 : 0 } : si))} className="rounded border-slate-600 bg-slate-800 text-blue-500" />
+                                  Sem fundo branco
+                                </label>
+                              </div>
+                            </div>
+                            
+                            {/* Crop */}
+                            <div className="grid grid-cols-4 gap-1">
+                              <div className="flex flex-col"><span className="text-[10px] text-slate-500">Crop Top %</span><input type="number" min={0} max={100} value={img.cropTop ?? 0} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, cropTop: parseInt(e.target.value) || 0 } : si))} className="bg-slate-800 border border-slate-700 rounded px-1 py-1 text-[10px]" /></div>
+                              <div className="flex flex-col"><span className="text-[10px] text-slate-500">Crop Bot %</span><input type="number" min={0} max={100} value={img.cropBottom ?? 0} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, cropBottom: parseInt(e.target.value) || 0 } : si))} className="bg-slate-800 border border-slate-700 rounded px-1 py-1 text-[10px]" /></div>
+                              <div className="flex flex-col"><span className="text-[10px] text-slate-500">Crop Lft %</span><input type="number" min={0} max={100} value={img.cropLeft ?? 0} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, cropLeft: parseInt(e.target.value) || 0 } : si))} className="bg-slate-800 border border-slate-700 rounded px-1 py-1 text-[10px]" /></div>
+                              <div className="flex flex-col"><span className="text-[10px] text-slate-500">Crop Rgt %</span><input type="number" min={0} max={100} value={img.cropRight ?? 0} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, cropRight: parseInt(e.target.value) || 0 } : si))} className="bg-slate-800 border border-slate-700 rounded px-1 py-1 text-[10px]" /></div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 uppercase">Nordeste (NE)</span>
+                                <div className="grid grid-cols-2 gap-1">
+                                  <input type="text" placeholder="Lat" value={img.bounds?.ne?.lat ?? ''} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, ne: { ...si.bounds.ne, lat: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                  <input type="text" placeholder="Lng" value={img.bounds?.ne?.lng ?? ''} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, ne: { ...si.bounds.ne, lng: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[10px] text-slate-500 uppercase">Sudoeste (SW)</span>
+                                <div className="grid grid-cols-2 gap-1">
+                                  <input type="text" placeholder="Lat" value={img.bounds?.sw?.lat ?? ''} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, sw: { ...si.bounds.sw, lat: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                  <input type="text" placeholder="Lng" value={img.bounds?.sw?.lng ?? ''} onChange={(e) => setNumericalModels(prev => prev.map(si => si.id === img.id ? { ...si, bounds: { ...si.bounds, sw: { ...si.bounds.sw, lng: parseCoord(e.target.value) } } } : si))} className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px]" />
+                                </div>
+                              </div>
+                            </div>
+
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
                     {(beforeImage.trim() && afterImage.trim()) && (
                       <div className="col-span-2">
                         <button

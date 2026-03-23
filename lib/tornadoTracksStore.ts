@@ -118,6 +118,7 @@ export async function fetchTornadoTracks(): Promise<TornadoTrack[]> {
       radarCustomBounds: data.radarCustomBounds && typeof data.radarCustomBounds.north === 'number' ? data.radarCustomBounds : undefined,
       radarOverrides: data.radarOverrides && typeof data.radarOverrides === 'object' ? data.radarOverrides : undefined,
       secondaryAfterImages: Array.isArray(data.secondaryAfterImages) ? data.secondaryAfterImages : undefined,
+      numericalModels: Array.isArray(data.numericalModels) ? data.numericalModels : undefined,
     };
     return {
       ...baseTrack,
@@ -162,6 +163,7 @@ export async function saveTornadoTrack(track: TornadoTrackInput, adminId: string
     radarCustomBounds: track.radarCustomBounds ?? null,
     radarOverrides: track.radarOverrides ?? null,
     secondaryAfterImages: track.secondaryAfterImages ?? null,
+    numericalModels: track.numericalModels ?? null,
     adminId,
     updatedAt: serverTimestamp(),
   };

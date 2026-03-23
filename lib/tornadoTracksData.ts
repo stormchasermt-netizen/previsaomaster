@@ -50,6 +50,21 @@ export interface SecondaryImage {
   rotation?: number;
 }
 
+export interface NumericalModelImage {
+  id: string;
+  url: string;
+  round: string; // e.g. '00Z', '06Z', '12Z', '18Z', '20Z'
+  forecastHour: number; // e.g. 1, 2, 3 (for +1, +2, +3)
+  bounds: TrackImageBounds;
+  opacity?: number;
+  rotation?: number;
+  chromaKey?: number;
+  cropTop?: number;
+  cropBottom?: number;
+  cropLeft?: number;
+  cropRight?: number;
+}
+
 export interface TornadoTrack {
   id: string;
   date: string;
@@ -81,6 +96,8 @@ export interface TornadoTrack {
   trackImageBounds?: TrackImageBounds;
   /** Lista de imagens secundárias de "depois" (ex: zooms, drones). */
   secondaryAfterImages?: SecondaryImage[];
+  /** Modelos Numéricos (GTS) aplicados ao rastro. */
+  numericalModels?: NumericalModelImage[];
   /** Timestamp de criação (ms) quando disponível no Firestore. */
   createdAtMs?: number;
   /** Timestamp de atualização (ms) quando disponível no Firestore. */

@@ -58,7 +58,7 @@ import {
 import { fetchRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
 import { hasRedemetFallback, getRedemetArea } from '../../lib/redemetRadar';
 import { filterDopplerSuperRes, filterRadarImageFromUrl } from '../../lib/radarImageFilter';
-import { cacheRadarImage } from '../../lib/radarCacheClient';
+import { cacheRadarImage, getRadarBackupUrl } from '../../lib/radarCacheClient';
 import {
   fetchRastrosProfile,
   saveRastrosProfile,
@@ -400,6 +400,10 @@ export default function RastrosTornadosPage() {
   const [visibleSecondaryImageIds, setVisibleSecondaryImageIds] = useState<string[]>([]);
   const [secondaryImageOpacities, setSecondaryImageOpacities] = useState<Record<string, number>>({});
   const [secondaryImageRotations, setSecondaryImageRotations] = useState<Record<string, number>>({});
+  
+  const [visibleNumericalModelIds, setVisibleNumericalModelIds] = useState<string[]>([]);
+  const [numericalModelOpacities, setNumericalModelOpacities] = useState<Record<string, number>>({});
+  const numericalOverlaysRef = useRef<Record<string, any>>({});
   const [polygonVisible, setPolygonVisible] = useState(true);
   const [polygonFillVisible, setPolygonFillVisible] = useState(true);
   const [prevotsOverlayVisible, setPrevotsOverlayVisible] = useState(false);
@@ -409,6 +413,7 @@ export default function RastrosTornadosPage() {
   const [timelineEnabled, setTimelineEnabled] = useState(false);
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
+  const [timelineSpeed, setTimelineSpeed] = useState<1 | 2 | 5>(1);
   const [dashboardCountry, setDashboardCountry] = useState<'all' | string>('all');
   const [newTrackNotifications, setNewTrackNotifications] = useState<TornadoTrack[]>([]);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
@@ -434,7 +439,7 @@ export default function RastrosTornadosPage() {
   const [radarOpacity, setRadarOpacity] = useState(0.75);
   const [radarError, setRadarError] = useState<string | null>(null);
   /** Fonte da imagem carregada: CPTEC ou REDEMET (quando usou fallback) */
-  const [radarImageSource, setRadarImageSource] = useState<'cptec' | 'redemet' | null>(null);
+  const [radarImageSource, setRadarImageSource] = useState<'cptec' | 'redemet' | 'backup' | null>(null);
   /** Toggle HD (REDEMET) / Super Res (CPTEC) */
   const [radarSourceMode, setRadarSourceMode] = useState<'superres' | 'hd'>('superres');
   const [redemetFoundUrl, setRedemetFoundUrl] = useState<string | null>(null);
@@ -1035,11 +1040,13 @@ export default function RastrosTornadosPage() {
     }
   }, [calendarSelectPhase, intervalStartDate, allowedRadarDates]);
 
-  /** Radares no mosaico: todos os CPTEC (sem filtro de raio) */
   const intervalRadars = useMemo(() => {
     if (!showRadarTimelineSlider) return [];
+    if (intervalStartDate && intervalStartDate < '2026-03-01') {
+      return CPTEC_RADAR_STATIONS.filter(r => r.slug !== 'climatempo-poa');
+    }
     return [...CPTEC_RADAR_STATIONS];
-  }, [showRadarTimelineSlider]);
+  }, [showRadarTimelineSlider, intervalStartDate]);
 
   /** Estação ativa para timeline: único = selecionada, mosaico = primeira do raio */
   const timelineActiveStation = radarTimelineMode === 'unico'
@@ -1048,7 +1055,7 @@ export default function RastrosTornadosPage() {
 
   /** Timestamps do slider: unificado 5min (mosaico) ou por radar (único) */
   useEffect(() => {
-    if (!showRadarTimelineSlider || !intervalStartDate || !intervalEndDate) {
+    if ((!showRadarTimelineSlider && !timelineEnabled) || !intervalStartDate || !intervalEndDate) {
       setRadarTimelineTimestamps([]);
       setRadarTimelineIndex(0);
       return;
@@ -1102,14 +1109,30 @@ export default function RastrosTornadosPage() {
     [filteredTracks]
   );
 
-  const timelineCurrentDate = timelineEnabled && timelineDates.length
-    ? timelineDates[Math.min(timelineIndex, timelineDates.length - 1)]
-    : null;
+  const timelineCurrentDate = useMemo(() => {
+    if (!timelineEnabled) return null;
+    if (radarTimelineTimestamps.length > 0) {
+      const ts = radarTimelineTimestamps[radarTimelineIndex];
+      if (!ts) return null;
+      return `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)} ${ts.slice(8, 10)}:${ts.slice(10, 12)}`;
+    }
+    if (timelineDates.length > 0) {
+      return timelineDates[Math.min(timelineIndex, timelineDates.length - 1)];
+    }
+    return null;
+  }, [timelineEnabled, radarTimelineTimestamps, radarTimelineIndex, timelineDates, timelineIndex]);
 
   const displayedTracks = useMemo(() => {
-    if (!timelineCurrentDate) return filteredTracks;
-    return filteredTracks.filter((t) => t.date <= timelineCurrentDate);
-  }, [filteredTracks, timelineCurrentDate]);
+    if (!timelineEnabled || !timelineCurrentDate) return filteredTracks;
+    return filteredTracks.filter((t) => {
+      if (timelineCurrentDate.length > 10) { // YYYY-MM-DD HH:mm
+        const d = timelineCurrentDate.slice(0, 10);
+        const hm = timelineCurrentDate.slice(11);
+        return t.date < d || (t.date === d && (t.time || '00:00') <= hm);
+      }
+      return t.date <= timelineCurrentDate;
+    });
+  }, [filteredTracks, timelineEnabled, timelineCurrentDate]);
 
   /** Rastros usados nos gráficos: filtro por tipo All (F0–F5) / Sig (F2+) / Vio (F4+) */
   const chartTracks = useMemo(() => {
@@ -1193,18 +1216,35 @@ export default function RastrosTornadosPage() {
   }, [timelineDates.length]);
 
   useEffect(() => {
-    if (!timelineEnabled || !timelinePlaying || timelineDates.length <= 1) return;
+    if (!timelineEnabled || !timelinePlaying) return;
+    const isDetailed = radarTimelineTimestamps.length > 0;
+    const len = isDetailed ? radarTimelineTimestamps.length : timelineDates.length;
+    if (len <= 1) return;
+
+    const baseInterval = isDetailed ? 600 : 1200;
+    const intervalMs = baseInterval / timelineSpeed;
+
     const timer = setInterval(() => {
-      setTimelineIndex((prev) => {
-        if (prev >= timelineDates.length - 1) {
-          setTimelinePlaying(false);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 1200);
+      if (isDetailed) {
+        setRadarTimelineIndex((prev) => {
+          if (prev >= radarTimelineTimestamps.length - 1) {
+            setTimelinePlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      } else {
+        setTimelineIndex((prev) => {
+          if (prev >= timelineDates.length - 1) {
+            setTimelinePlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }
+    }, intervalMs);
     return () => clearInterval(timer);
-  }, [timelineEnabled, timelinePlaying, timelineDates.length]);
+  }, [timelineEnabled, timelinePlaying, radarTimelineTimestamps.length, timelineDates.length, timelineSpeed]);
 
   useEffect(() => {
     if (!selectedTrack) return;
@@ -1556,7 +1596,10 @@ export default function RastrosTornadosPage() {
       setRadarLoading(false);
       return;
     }
-    const cptecRadars = findRadarsWithinRadius(centroid, 350);
+    let cptecRadars = findRadarsWithinRadius(centroid, 350);
+    if (track.date < '2026-03-01') {
+      cptecRadars = cptecRadars.filter(r => r.slug !== 'climatempo-poa');
+    }
     const argentinaRadars = findArgentinaRadarsWithinRadius(centroid, 350);
     const radars: (CptecRadarStation | ArgentinaRadarStation)[] = [...cptecRadars, ...argentinaRadars];
     if (!radars.length) {
@@ -1946,6 +1989,9 @@ export default function RastrosTornadosPage() {
     setGoesError(null);
     setVisibleSecondaryImageIds([]);
     setSecondaryImageOpacities({});
+    setSecondaryImageRotations({});
+    setVisibleNumericalModelIds([]);
+    setNumericalModelOpacities({});
     setRadarVisible(false);
     setRadarOpacity(0.75);
     setRadarError(null);
@@ -1957,6 +2003,8 @@ export default function RastrosTornadosPage() {
     setRadarPlaying(false);
     Object.values(secondaryOverlaysRef.current).forEach(ov => ov.setMap(null));
     secondaryOverlaysRef.current = {};
+    Object.values(numericalOverlaysRef.current).forEach(ov => ov.setMap(null));
+    numericalOverlaysRef.current = {};
     if (goesOverlayRef.current) {
       (goesOverlayRef.current as any).setMap?.(null);
       goesOverlayRef.current = null;
@@ -1987,17 +2035,34 @@ export default function RastrosTornadosPage() {
     );
   };
 
-  const createImageOverlayView = (url: string, bounds: any, map: any, opacity: number, rotation: number = 0) => {
+  const createImageOverlayView = (
+    url: string,
+    bounds: any,
+    map: any,
+    opacity: number,
+    rotation: number = 0,
+    chromaKey: number = 0,
+    crop: { top: number; bottom: number; left: number; right: number } = { top: 0, bottom: 0, left: 0, right: 0 }
+  ) => {
     const ov = new google.maps.OverlayView();
     let divEl: HTMLDivElement | null = null;
     ov.onAdd = () => {
       divEl = document.createElement('div');
-      divEl.style.cssText = 'position:absolute;pointer-events:none;border:none;';
+      divEl.style.cssText = 'position:absolute;pointer-events:none;border:none;overflow:hidden;';
       const img = document.createElement('img');
       img.src = url;
       img.loading = 'eager';
       (img as any).fetchPriority = 'high';
-      img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;transform:rotate(${rotation}deg);transform-origin:center;`;
+
+      let mixBlend = '';
+      if (chromaKey > 0) mixBlend = 'mix-blend-mode: multiply;';
+
+      let clipPath = '';
+      if (crop.top > 0 || crop.bottom > 0 || crop.left > 0 || crop.right > 0) {
+        clipPath = `clip-path: inset(${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%);`;
+      }
+
+      img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;transform:rotate(${rotation}deg);transform-origin:center;${mixBlend}${clipPath}`;
       divEl.appendChild(img);
       ov.getPanes()?.overlayLayer?.appendChild(divEl);
     };
@@ -2038,10 +2103,13 @@ export default function RastrosTornadosPage() {
       }
       Object.values(secondaryOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
       secondaryOverlaysRef.current = {};
+      Object.values(numericalOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
+      numericalOverlaysRef.current = {};
       setTrackImageOverlayVisible(false);
       setOverlayBeforeVisible(false);
       setOverlayAfterVisible(false);
       setVisibleSecondaryImageIds([]);
+      setVisibleNumericalModelIds([]);
       return;
     }
     const map = mapInstanceRef.current;
@@ -2060,6 +2128,8 @@ export default function RastrosTornadosPage() {
     }
     Object.values(secondaryOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
     secondaryOverlaysRef.current = {};
+    Object.values(numericalOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
+    numericalOverlaysRef.current = {};
 
     const beforeUrl = selectedTrack.beforeImage?.trim();
     const afterUrl = selectedTrack.afterImage?.trim();
@@ -2111,6 +2181,23 @@ export default function RastrosTornadosPage() {
       }
     });
 
+    // Modelos Numéricos
+    (selectedTrack.numericalModels || []).forEach(img => {
+      if (visibleNumericalModelIds.includes(img.id) && img.url && img.bounds) {
+        const bounds = makeBounds(img.bounds);
+        const opacity = numericalModelOpacities[img.id] ?? img.opacity ?? 0.75;
+        const rotation = img.rotation ?? 0;
+        const chroma = img.chromaKey ?? 0;
+        const overlay = createImageOverlayView(img.url, bounds, map, opacity, rotation, chroma, {
+          top: img.cropTop ?? 0,
+          bottom: img.cropBottom ?? 0,
+          left: img.cropLeft ?? 0,
+          right: img.cropRight ?? 0
+        });
+        numericalOverlaysRef.current[img.id] = overlay;
+      }
+    });
+
     return () => {
       if (trackImageGroundOverlayRef.current) {
         (trackImageGroundOverlayRef.current as any).setMap?.(null);
@@ -2126,8 +2213,10 @@ export default function RastrosTornadosPage() {
       }
       Object.values(secondaryOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
       secondaryOverlaysRef.current = {};
+      Object.values(numericalOverlaysRef.current).forEach(ov => (ov as any).setMap?.(null));
+      numericalOverlaysRef.current = {};
     };
-  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity, visibleSecondaryImageIds, secondaryImageOpacities, secondaryImageRotations, imageMappingMode, tempBeforeImageBounds, tempAfterImageBounds]);
+  }, [selectedTrack, trackImageOverlayVisible, overlayBeforeVisible, overlayAfterVisible, overlayBeforeOpacity, overlayAfterOpacity, visibleSecondaryImageIds, secondaryImageOpacities, secondaryImageRotations, visibleNumericalModelIds, numericalModelOpacities, imageMappingMode, tempBeforeImageBounds, tempAfterImageBounds]);
 
   // Gerenciamento do Retângulo de Mapeamento de Imagem (Main Page - Admin Only)
   useEffect(() => {
@@ -2252,6 +2341,10 @@ export default function RastrosTornadosPage() {
     if (!visibleSecondaryImageIds.includes(img.id)) {
       toggleSecondaryImage(img.id);
     }
+  };
+
+  const toggleNumericalModel = (id: string) => {
+    setVisibleNumericalModelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
   // GOES-16 overlay: desenha o frame atual recortado na área do tornado (NASA GIBS)
@@ -2493,6 +2586,7 @@ export default function RastrosTornadosPage() {
       }
       let tryIndex = 0;
       let redemetAttempted = false;
+      let backupAttempted = false;
       const showError = () => {
         img.style.display = 'none';
         if (divEl) divEl.style.display = 'none';
@@ -2525,8 +2619,8 @@ export default function RastrosTornadosPage() {
         if (!redemetAttempted && redemetFindPromise) {
           redemetAttempted = true;
           redemetFindPromise.then(redemetUrl => {
-            if (!redemetUrl) { showError(); return; }
-            img.onerror = () => showError();
+            if (!redemetUrl) { tryNext(); return; }
+            img.onerror = () => tryNext();
             img.onload = () => {
               setRadarError(null);
               setRadarImageSource('redemet');
@@ -2536,6 +2630,20 @@ export default function RastrosTornadosPage() {
             img.src = getProxiedRadarUrl(redemetUrl);
           });
           return;
+        }
+        if (!backupAttempted) {
+          backupAttempted = true;
+          if (radarCfgSlug) {
+            const backupUrl = getRadarBackupUrl(radarCfgSlug, ts.slice(0, 12), radarProductType);
+            img.onerror = () => showError();
+            img.onload = () => {
+              setRadarError(null);
+              setRadarImageSource('backup');
+              showImage();
+            };
+            img.src = backupUrl;
+            return;
+          }
         }
         showError();
       };
@@ -4221,7 +4329,7 @@ export default function RastrosTornadosPage() {
                       </label>
                     )}
                     {radarImageSource && !radarError && !(cptecAvailable && redemetAvailable && radarStation && 'slug' in radarStation && (radarStation.slug === 'santiago' || radarStation.slug === 'morroigreja')) && (
-                      <p className="text-xs text-slate-400">Fonte: {radarImageSource === 'cptec' ? 'CPTEC (Super Res)' : 'REDEMET (HD)'}</p>
+                      <p className="text-xs text-slate-400">Fonte: {radarImageSource === 'backup' ? 'Firebase Storage (Backup)' : radarImageSource === 'cptec' ? 'CPTEC (Super Res)' : 'REDEMET (HD)'}</p>
                     )}
                   </div>
                 )}
@@ -4626,12 +4734,29 @@ export default function RastrosTornadosPage() {
                   <button type="button" onClick={() => setTimelinePlaying((v) => !v)} className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all" title={timelinePlaying ? 'Pausar' : 'Reproduzir'}>
                     {timelinePlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </button>
+                  <select
+                    value={timelineSpeed}
+                    onChange={(e) => setTimelineSpeed(Number(e.target.value) as 1 | 2 | 5)}
+                    className="bg-transparent text-slate-300 text-[10px] font-bold outline-none cursor-pointer hover:text-cyan-400 transition-colors"
+                  >
+                    <option value={1} className="bg-slate-900">1x</option>
+                    <option value={2} className="bg-slate-900">2x</option>
+                    <option value={5} className="bg-slate-900">5x</option>
+                  </select>
                   <input
-                    type="range" min={0} max={Math.max(0, timelineDates.length - 1)} step={1}
-                    value={Math.min(timelineIndex, Math.max(0, timelineDates.length - 1))}
-                    onChange={(e) => { setTimelinePlaying(false); setTimelineIndex(parseInt(e.target.value, 10) || 0); }}
+                    type="range"
+                    min={0}
+                    max={Math.max(0, radarTimelineTimestamps.length > 0 ? radarTimelineTimestamps.length - 1 : timelineDates.length - 1)}
+                    step={1}
+                    value={Math.min(radarTimelineTimestamps.length > 0 ? radarTimelineIndex : timelineIndex, Math.max(0, radarTimelineTimestamps.length > 0 ? radarTimelineTimestamps.length - 1 : timelineDates.length - 1))}
+                    onChange={(e) => {
+                      setTimelinePlaying(false);
+                      const idx = parseInt(e.target.value, 10) || 0;
+                      if (radarTimelineTimestamps.length > 0) setRadarTimelineIndex(idx);
+                      else setTimelineIndex(idx);
+                    }}
                     className="flex-1 h-2 rounded-full bg-slate-800 accent-cyan-500 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(6,182,212,0.8)] cursor-pointer"
-                    disabled={timelineDates.length <= 1}
+                    disabled={radarTimelineTimestamps.length > 0 ? radarTimelineTimestamps.length <= 1 : timelineDates.length <= 1}
                   />
                   <span className="text-[10px] text-cyan-400 font-bold font-mono min-w-[80px] text-center drop-shadow-[0_0_6px_rgba(6,182,212,0.6)]">{timelineCurrentDate || '--'}</span>
                 </>
