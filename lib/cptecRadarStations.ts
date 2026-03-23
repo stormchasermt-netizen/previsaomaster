@@ -64,8 +64,8 @@ export interface CptecRadarStation {
   lng: number;
   /** Alcance em km (250 DECEA/Santiago, 450 Chapecó vigilância, 240 IPMET) */
   rangeKm: number;
-  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam */
-  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam';
+  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam, funceme */
+  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme';
   /** Servidor s0, s1, s2, s3 */
   server: string;
   /** Produto: ppi ou cappi (São Roque) */
@@ -131,8 +131,9 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   // Santarém - Ref/Doppler ids pendentes (sipam/santarem)
   { id: 'R12800000', slug: 'santarem', name: 'Santarém', lat: -2.44, lng: -54.71, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz' },
 
-  // Quixeramobim e Fortaleza - IDs pendentes (usuário não forneceu)
-  // Mantidos comentados até confirmação: { slug: 'quixeramobim', ... }, { slug: 'fortaleza', ... }
+  // Quixeramobim e Fortaleza (FUNCEME)
+  { id: 'GMWR1000SST', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.7319, lng: -38.5267, rangeKm: 250, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMT0100DS', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.197, lng: -39.296, rangeKm: 250, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
   // Fontes especiais (WMS/proxy)
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.561, lng: -46.736, rangeKm: 85, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
@@ -465,6 +466,9 @@ export function buildNowcastingPngUrl(
   ts12: string,
   productType: 'reflectividade' | 'velocidade' = 'reflectividade'
 ): string {
+  if (station.org === 'funceme') {
+    return `/api/funceme/image?radar=${station.id}&timestamp=${ts12}`;
+  }
   if (station.slug === 'climatempo-poa') {
     return `https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png?nocache=${ts12}`;
   }

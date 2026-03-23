@@ -253,7 +253,8 @@ export default function AdminRadaresPage() {
         existing?.urlTemplate ||
         defaultUrl
           .replace(/\d{4}\/\d{2}\//, '{year}/{month}/')
-          .replace(/_\d{12}(\.png)/, '_{ts12}$1');
+          .replace(/_\d{12}(\.png)/, '_{ts12}$1')
+          .replace(/timestamp=\d{12}/, 'timestamp={ts12}');
     }
 
     const initialUrl = isIpmet ? IPMET_STATIC_URL : buildRadarPngUrl(template, getSampleTs12(interval));

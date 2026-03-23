@@ -702,7 +702,13 @@ export default function AoVivoPage() {
   const allRadars = useMemo((): DisplayRadar[] => {
     const cptec: DisplayRadar[] = CPTEC_RADAR_STATIONS.map((s) => ({ type: 'cptec' as const, station: s }));
     const argentina: DisplayRadar[] = ARGENTINA_RADAR_STATIONS.map((s) => ({ type: 'argentina' as const, station: s }));
-    const list = [...cptec, ...argentina];
+    let list = [...cptec, ...argentina];
+    
+    // Ocultar POA caso a data de histórico seja menor que 01/03/2026
+    if (historicalTimestampOverride && historicalDate && historicalDate < '2026-03-01') {
+      list = list.filter((r) => !(r.type === 'cptec' && r.station.slug === 'climatempo-poa'));
+    }
+
     if (myLocation) {
       list.sort((a, b) => {
         const latA = a.station.lat;
@@ -713,7 +719,7 @@ export default function AoVivoPage() {
       });
     }
     return list;
-  }, [myLocation]);
+  }, [myLocation, historicalTimestampOverride, historicalDate]);
 
 
   const displayRadars = useMemo(() => {
