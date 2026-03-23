@@ -847,8 +847,8 @@ export default function AoVivoPage() {
           return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
         }
         let configSlug = dr.station.slug;
-        if (dr.station.slug === 'santiago' && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
-          configSlug = 'santiago-redemet';
+        if (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
+          configSlug = `${dr.station.slug}-redemet`;
         }
         const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
         if (cfg?.customBounds) {
@@ -1700,8 +1700,8 @@ export default function AoVivoPage() {
     radars.forEach((dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
       let configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
-      if (dr.type === 'cptec' && dr.station.slug === 'santiago' && radarSourceMode === 'hd') {
-        configSlug = 'santiago-redemet';
+      if (dr.type === 'cptec' && hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
+        configSlug = `${dr.station.slug}-redemet`;
       }
       const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
       const rotationDeg = cfg?.rotationDegrees ?? 0;
