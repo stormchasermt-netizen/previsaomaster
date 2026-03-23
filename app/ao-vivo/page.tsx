@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap, Eye } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -1827,7 +1827,7 @@ export default function AoVivoPage() {
         : getBoundsForDisplayRadar(dr);
 
       // Removido fallback hardcoded de santiago hd pois agora usa config santiago-redemet
-      const latLngBounds = new google.maps.LatLngBounds(
+      let latLngBounds = new google.maps.LatLngBounds(
         { lat: bounds.south, lng: bounds.west },
         { lat: bounds.north, lng: bounds.east }
       );
@@ -2003,9 +2003,35 @@ export default function AoVivoPage() {
           if (loaded?.source) {
             setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: loaded.source }));
           }
-          // Fire-and-forget: salvar imagem no Storage para cache
+
           let slug = dr.type === 'cptec' ? dr.station.slug : `argentina_${dr.station.id}`;
-          if (loaded?.source === 'redemet') slug = `${slug}-redemet`;
+          let finalConfigSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+          if (loaded?.source === 'redemet') {
+            slug = `${slug}-redemet`;
+            finalConfigSlug = `${finalConfigSlug}-redemet`;
+          }
+
+          const finalCfg = radarConfigs.find((c) => c.id === finalConfigSlug || c.stationSlug === finalConfigSlug);
+          const finalBounds = finalCfg?.customBounds 
+            ? { north: finalCfg.customBounds.north, south: finalCfg.customBounds.south, east: finalCfg.customBounds.east, west: finalCfg.customBounds.west } 
+            : getBoundsForDisplayRadar(dr);
+
+          if ((dr.type === 'cptec' && loaded?.source === 'redemet' && finalCfg) || finalCfg?.customBounds) {
+             latLngBounds = new google.maps.LatLngBounds(
+               { lat: finalBounds.south, lng: finalBounds.west },
+               { lat: finalBounds.north, lng: finalBounds.east }
+             );
+             if (ov) {
+               ov.getBounds = () => latLngBounds;
+               if (divEl) ov.draw();
+             }
+             const finalRotationDeg = finalCfg.rotationDegrees ?? 0;
+             const finalEffectiveOpacity = finalCfg.opacity ?? opacity;
+             img.style.opacity = String(finalEffectiveOpacity);
+             img.style.transform = finalRotationDeg !== 0 ? `rotate(${finalRotationDeg}deg)` : '';
+          }
+
+          // Fire-and-forget: salvar imagem no Storage para cache
           cacheRadarImage(img.src, slug, effectiveTs12, productType);
           setFailedRadars((prev) => {
             const next = new Set(prev);

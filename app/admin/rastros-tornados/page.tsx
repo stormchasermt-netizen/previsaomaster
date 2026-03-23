@@ -147,7 +147,7 @@ export default function AdminRastrosTornadosPage() {
   const secondaryImageFileInputRef = useRef<HTMLInputElement>(null);
   const [showSecondaryOnMap, setShowSecondaryOnMap] = useState<Record<string, boolean>>({});
   const [secondaryOpacities, setSecondaryOpacities] = useState<Record<string, number>>({});
-  const [secondaryOverlaysRef, setSecondaryOverlaysRef] = useState<Record<string, any>>({});
+  const secondaryOverlaysRef = useRef<Record<string, any>>({});
   
   // States para Radar Override Local
   const [radarOverrides, setRadarOverrides] = useState<Record<string, any>>({});
