@@ -68,6 +68,10 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
   const cb = data.customBounds as Record<string, number> | undefined;
   const cr = data.cropConfig as Record<string, number> | undefined;
 
+  const rawRange = typeof data.rangeKm === 'number' ? data.rangeKm : 250;
+  const isRedemetHd = docId === 'santiago-redemet' || docId === 'morroigreja-redemet';
+  const rangeKm = isRedemetHd && (rawRange === 200 || rawRange === 250) ? 400 : rawRange;
+
   return {
     id: docId,
     stationSlug: (data.stationSlug as string) || '',
@@ -76,7 +80,7 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
     bounds: { ne, sw },
     lat: typeof data.lat === 'number' ? data.lat : 0,
     lng: typeof data.lng === 'number' ? data.lng : 0,
-    rangeKm: typeof data.rangeKm === 'number' ? data.rangeKm : 250,
+    rangeKm,
     updateIntervalMinutes: typeof data.updateIntervalMinutes === 'number' ? data.updateIntervalMinutes : undefined,
     rotationDegrees: typeof data.rotationDegrees === 'number' ? data.rotationDegrees : undefined,
     opacity: typeof data.opacity === 'number' ? data.opacity : undefined,
