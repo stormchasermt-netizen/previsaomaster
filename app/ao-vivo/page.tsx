@@ -268,6 +268,7 @@ export default function AoVivoPage() {
   const { addToast } = useToast();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const recentNowcastingSuccessRef = useRef<number>(0);
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const [mapReady, setMapReady] = useState(false);
@@ -2010,6 +2011,8 @@ export default function AoVivoPage() {
         };
         const showOverlay = () => { if (divEl) divEl.style.display = ''; };
         const onRedemetLoad = (ts12Val: string) => {
+          recentNowcastingSuccessRef.current = Date.now();
+          setNowcastingOffline(false);
           setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: ts12Val }));
           setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'redemet' }));
           setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
@@ -2028,6 +2031,8 @@ export default function AoVivoPage() {
               if (!storageUrl) { markFailed(); return; }
               img.onerror = () => markFailed();
               img.onload = () => {
+                recentNowcastingSuccessRef.current = Date.now();
+                setNowcastingOffline(false);
                 applyNoiseFilter();
                 setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: timestamp }));
                 setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
@@ -2047,8 +2052,11 @@ export default function AoVivoPage() {
                 // Redemet também falhou → tentar Storage
                 if (storageFallbackPromise) {
                   storageFallbackPromise.then(storageUrl => {
-                    if (!storageUrl) { setNowcastingOffline(true); markFailed(); return; }
-                    setNowcastingOffline(true);
+                    if (!storageUrl) { 
+                      if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
+                      markFailed(); return; 
+                    }
+                    if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
                     img.onerror = () => markFailed();
                     img.onload = () => {
                       applyNoiseFilter();
@@ -2073,8 +2081,11 @@ export default function AoVivoPage() {
           // Último recurso: Storage (sem Redemet disponível)
           if (storageFallbackPromise) {
             storageFallbackPromise.then(storageUrl => {
-              if (!storageUrl) { setNowcastingOffline(true); markFailed(); return; }
-              setNowcastingOffline(true);
+              if (!storageUrl) { 
+                if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
+                markFailed(); return; 
+              }
+              if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
               img.onerror = () => markFailed();
               img.onload = () => {
                 applyNoiseFilter();
@@ -2092,6 +2103,11 @@ export default function AoVivoPage() {
         img.onerror = tryNext;
         img.onload = () => {
           const isDataUrl = img.src.startsWith('data:');
+          const isStorageUrl = img.src.includes('firebasestorage');
+          if (!isDataUrl && !isStorageUrl) {
+            recentNowcastingSuccessRef.current = Date.now();
+            setNowcastingOffline(false);
+          }
           if (isDataUrl) {
             markProcessed();
             return;
