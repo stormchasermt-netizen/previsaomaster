@@ -501,6 +501,8 @@ export default function AoVivoPage() {
       return { x: (e as MouseEvent).clientX - rect.left, y: (e as MouseEvent).clientY - rect.top };
     };
     const onDown = (e: MouseEvent | TouchEvent) => {
+      // Only draw with left mouse button (button 0)
+      if ('button' in e && (e as MouseEvent).button !== 0) return;
       isDrawingRef.current = true;
       lastPosRef.current = getPos(e);
     };
@@ -518,19 +520,40 @@ export default function AoVivoPage() {
       isDrawingRef.current = false;
       lastPosRef.current = null;
     };
+    // Let wheel events (scroll zoom) pass through to the map
+    const onWheel = (_e: WheelEvent) => {
+      canvas.style.pointerEvents = 'none';
+      requestAnimationFrame(() => { canvas.style.pointerEvents = 'auto'; });
+    };
+    // Let middle/right click pass through to the map (pan)
+    const onMouseDownFilter = (e: MouseEvent) => {
+      if (e.button !== 0) {
+        // Non-left click: let it reach the map for dragging
+        canvas.style.pointerEvents = 'none';
+        const restore = () => {
+          canvas.style.pointerEvents = 'auto';
+          window.removeEventListener('mouseup', restore);
+        };
+        window.addEventListener('mouseup', restore);
+      }
+    };
+    canvas.addEventListener('mousedown', onMouseDownFilter, true);
     canvas.addEventListener('mousedown', onDown);
     canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('mouseup', onUp);
     canvas.addEventListener('mouseleave', onUp);
+    canvas.addEventListener('wheel', onWheel, { passive: true });
     canvas.addEventListener('touchstart', onDown, { passive: false });
     canvas.addEventListener('touchmove', onMove, { passive: false });
     canvas.addEventListener('touchend', onUp);
     canvas.addEventListener('touchcancel', onUp);
     return () => {
+      canvas.removeEventListener('mousedown', onMouseDownFilter, true);
       canvas.removeEventListener('mousedown', onDown);
       canvas.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('mouseup', onUp);
       canvas.removeEventListener('mouseleave', onUp);
+      canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('touchstart', onDown);
       canvas.removeEventListener('touchmove', onMove);
       canvas.removeEventListener('touchend', onUp);
