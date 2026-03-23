@@ -3109,7 +3109,7 @@ export default function AoVivoPage() {
             {/* Canvas de Desenho Livre */}
             <canvas
               ref={drawingCanvasRef}
-              className="absolute inset-0 w-full h-full z-[25]"
+              className="absolute inset-0 w-full h-full z-[2]"
               style={{ pointerEvents: drawingMode ? 'auto' : 'none', cursor: drawingMode ? 'crosshair' : 'default' }}
             />
             {/* Leitura de Valor */}
