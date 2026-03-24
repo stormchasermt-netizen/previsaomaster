@@ -1281,14 +1281,7 @@ export default function RastrosTornadosPage() {
         const rawUrl = buildNowcastingPngUrl(station, ts12, timelineProductType);
         const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
 
-        // Tenta CPTEC proxy
-        const ok = await probeRadarImageExists(proxyUrl);
-        if (ok) {
-          // Pré-carregar imagem no cache do browser
-          await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = proxyUrl; });
-          return;
-        }
-        // Chapecó direto
+        // Chapecó: tentar URL direta do CPTEC primeiro
         if (station.slug === 'chapeco') {
           const directUrl = buildNowcastingPngUrl(station, ts12, timelineProductType, true);
           const [directProxy] = getRadarUrlsWithFallback(directUrl);
@@ -1297,6 +1290,12 @@ export default function RastrosTornadosPage() {
             await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = directProxy; });
             return;
           }
+        }
+        // Tenta CPTEC proxy/API
+        const ok = await probeRadarImageExists(proxyUrl);
+        if (ok) {
+          await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = proxyUrl; });
+          return;
         }
         // Redemet
         if (hasRedemetFallback(station.slug)) {
@@ -2617,17 +2616,20 @@ export default function RastrosTornadosPage() {
       // Always try the proxied CPTEC URL first
       const rawUrl = buildNowcastingPngUrl(cptecStation, ts12, radarProductType);
       const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
-      urlsToTry.push({ url: proxyUrl, source: 'cptec' });
-      // Also add the direct CPTEC URL as a fallback
-      if (directUrl) {
-        urlsToTry.push({ url: directUrl, source: 'cptec' });
-      }
 
-      // Se for Chapecó, tentamos também a URL direta via proxy (caso a API de metadados falhe)
       if (radarStationSlug === 'chapeco') {
+        // Chapecó: 1º URL direta do servidor CPTEC (via proxy), 2º URL direta sem proxy, 3º API de metadados
         const directCptecUrl = buildNowcastingPngUrl(cptecStation, ts12, radarProductType, true);
         const [directProxy] = getRadarUrlsWithFallback(directCptecUrl);
         urlsToTry.push({ url: directProxy, source: 'cptec' });
+        urlsToTry.push({ url: directCptecUrl, source: 'cptec' });
+        // API de metadados como fallback
+        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+      } else {
+        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+        if (directUrl && directUrl !== proxyUrl) {
+          urlsToTry.push({ url: directUrl, source: 'cptec' });
+        }
       }
 
       hasRedemetFb = hasRedemetFallback(radarStationSlug);
@@ -2904,15 +2906,17 @@ export default function RastrosTornadosPage() {
       const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
       const hasRedemetFb = hasRedemetFallback(station.slug);
       
-      let urlsToTry: { url: string, source: 'cptec' | 'redemet' | 'backup' }[] = [
-        { url: proxyUrl, source: 'cptec' }
-      ];
+      let urlsToTry: { url: string, source: 'cptec' | 'redemet' | 'backup' }[] = [];
 
-      // Para Chapecó, tenta também URL direta do CPTEC
       if (station.slug === 'chapeco') {
+        // Chapecó: 1º URL direta do CPTEC (via proxy), 2º URL direta sem proxy, 3º API
         const directUrl = buildNowcastingPngUrl(station, ts12, timelineProductType, true);
         const [directProxy] = getRadarUrlsWithFallback(directUrl);
         urlsToTry.push({ url: directProxy, source: 'cptec' });
+        urlsToTry.push({ url: directUrl, source: 'cptec' });
+        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+      } else {
+        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
       }
 
       let usedSource: 'cptec' | 'redemet' | 'backup' = 'cptec';
