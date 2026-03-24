@@ -45,43 +45,56 @@ export async function GET(request: Request) {
   const targetDateStr = `${yyyy}-${mm}-${dd}`;
   const targetTimeEpoch = new Date(`${yyyy}-${mm}-${dd}T${HH}:${min}:00Z`).getTime();
 
-  const cacheKey = `${radar}_${targetDateStr}`;
+  // FUNCEME usa data local BRT (UTC-3). Após 21h BRT (00h UTC), a data UTC é o dia seguinte.
+  // Tentamos a data do timestamp primeiro e, se não houver frames, tentamos o dia anterior.
+  const datesToTry = [targetDateStr];
+  const prevDay = new Date(Date.UTC(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd)));
+  prevDay.setUTCDate(prevDay.getUTCDate() - 1);
+  const prevDateStr = `${prevDay.getUTCFullYear()}-${String(prevDay.getUTCMonth() + 1).padStart(2, '0')}-${String(prevDay.getUTCDate()).padStart(2, '0')}`;
+  datesToTry.push(prevDateStr);
+
   let path = '';
   let items: FuncemeResultItem[] = [];
-
   const now = Date.now();
-  const cached = jsonCache.get(cacheKey);
 
-  if (cached && now - cached.fetchTime < CACHE_TTL_MS) {
-    path = cached.path;
-    items = cached.items;
-  } else {
-    // Buscar da API original — com headers obrigatórios
-    const apiUrl = `https://apil5.funceme.br/rpc/v1/produto-gerado?radar=${radar}&produto=prsf&tempo=20&data=${targetDateStr}&cache=no`;
+  for (const dateStr of datesToTry) {
+    const cacheKey = `${radar}_${dateStr}`;
+    const cached = jsonCache.get(cacheKey);
 
-    try {
-      const res = await fetch(apiUrl, {
-        headers: FUNCEME_HEADERS,
-        cache: 'no-store',
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!res.ok) {
-        return new NextResponse(`Funceme API error: ${res.status}`, { status: res.status });
+    if (cached && now - cached.fetchTime < CACHE_TTL_MS) {
+      path = cached.path;
+      items = cached.items;
+    } else {
+      // Buscar da API original — com headers obrigatórios
+      const apiUrl = `https://apil5.funceme.br/rpc/v1/produto-gerado?radar=${radar}&produto=prsf&tempo=20&data=${dateStr}&cache=no`;
+
+      try {
+        const res = await fetch(apiUrl, {
+          headers: FUNCEME_HEADERS,
+          cache: 'no-store',
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) {
+          continue; // Tenta próxima data
+        }
+        const json = await res.json() as FuncemeResponse;
+
+        if (!json?.data?.list?.[0]?.result) {
+          continue; // Tenta próxima data
+        }
+
+        path = json.data.list[0].path;
+        items = json.data.list[0].result;
+
+        // Atualiza cache local
+        jsonCache.set(cacheKey, { fetchTime: now, path, items });
+      } catch (e: any) {
+        continue; // Tenta próxima data
       }
-      const json = await res.json() as FuncemeResponse;
-
-      if (!json?.data?.list?.[0]?.result) {
-        return new NextResponse('No data available for this date', { status: 404 });
-      }
-
-      path = json.data.list[0].path;
-      items = json.data.list[0].result;
-
-      // Atualiza cache local
-      jsonCache.set(cacheKey, { fetchTime: now, path, items });
-    } catch (e: any) {
-      return new NextResponse(`Fetch error: ${e.message}`, { status: 500 });
     }
+
+    // Se encontrou frames nessa data, para de buscar
+    if (items.length > 0) break;
   }
 
   if (items.length === 0) {
