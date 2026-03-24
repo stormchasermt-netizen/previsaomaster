@@ -64,8 +64,10 @@ export interface CptecRadarStation {
   lng: number;
   /** Alcance em km (250 DECEA/Santiago, 450 Chapecó vigilância, 240 IPMET) */
   rangeKm: number;
-  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam, funceme */
-  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme';
+  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam, funceme, sipam-hd */
+  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme' | 'sipam-hd';
+  /** Slug SIPAM para radares HD (usado nas URLs siger.sipam.gov.br). Ex: 'sbbv' */
+  sipamSlug?: string;
   /** Servidor s0, s1, s2, s3 */
   server: string;
   /** Produto: ppi ou cappi (São Roque) */
@@ -137,6 +139,19 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
 
   // Fontes especiais (WMS/proxy)
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.561, lng: -46.736, rangeKm: 85, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+
+  // SIPAM-HD (Norte do Brasil) — Radares via apihidro.sipam.gov.br com bounds exatos
+  { id: 'sipam-sbbe', slug: 'sipam-belem', name: 'Belém (HD)', lat: -1.4084, lng: -48.46128, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbbe', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbbv', slug: 'sipam-boavista', name: 'Boa Vista (HD)', lat: 2.84421, lng: -60.7002, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbbv', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbcz', slug: 'sipam-cruzeirodosul', name: 'Cruzeiro do Sul (HD)', lat: -7.59553, lng: -72.7697, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbcz', updateIntervalMinutes: 12, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbmq', slug: 'sipam-macapa', name: 'Macapá (HD)', lat: -0.045597, lng: -51.0969, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbmq', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbmn', slug: 'sipam-manaus', name: 'Manaus (HD)', lat: -3.14889, lng: -59.9914, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbmn', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbpv', slug: 'sipam-portovelho', name: 'Porto Velho (HD)', lat: -8.71514, lng: -63.8838, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbpv', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbsn', slug: 'sipam-santarem', name: 'Santarém (HD)', lat: -2.42964, lng: -54.799, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbsn', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbua', slug: 'sipam-saogabriel', name: 'São Gabriel (HD)', lat: -0.143677, lng: -67.057, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbua', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbsl', slug: 'sipam-saoluis', name: 'São Luís (HD)', lat: -2.60048, lng: -44.2393, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbsl', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbtt', slug: 'sipam-tabatinga', name: 'Tabatinga (HD)', lat: -4.24839, lng: -69.935, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbtt', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'sipam-sbtf', slug: 'sipam-tefe', name: 'Tefé (HD)', lat: -3.3727, lng: -64.6932, rangeKm: 250, org: 'sipam-hd', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbtf', updateIntervalMinutes: 12, updateIntervalOffsetMinutes: 0 },
 ];
 
 /** URL da Cloud Function getRadarIPMet (proxy WMS mosaico estadual). */
@@ -197,6 +212,58 @@ export const FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS = {
   ne: { lat: -1.688086, lng: -35.895440 },
   sw: { lat: -8.449901, lng: -42.638776 },
 };
+
+/**
+ * Bounds fixos dos Radares SIPAM-HD (Norte/Centro-Oeste).
+ * Extraídos da API oficial: apihidro.sipam.gov.br/radares/
+ * Chave = sipamSlug (nomeRadar)
+ */
+export const SIPAM_HD_FIXED_BOUNDS: Record<string, { north: number; south: number; east: number; west: number }> = {
+  sbbe: { north: 0.85202, south: -3.67153, east: -46.21039, west: -50.70789 },
+  sbbv: { north: 4.99792, south: 0.689, east: -58.5388, west: -62.8617 },
+  sbcz: { north: -5.43696, south: -9.74925, east: -70.585, west: -74.9545 },
+  sbmq: { north: 2.19931, south: -2.10811, east: -48.9421, west: -53.2517 },
+  sbmn: { north: -0.99356, south: -5.3026, east: -57.829, west: -62.1539 },
+  sbpv: { north: -6.55576, south: -10.868, east: -61.701, west: -66.0863 },
+  sbsn: { north: -0.274719, south: -4.58335, east: -52.6389, west: -56.9591 },
+  sbua: { north: 2.01003, south: -2.29739, east: -64.902, west: -69.2119 },
+  sbsl: { north: -0.44544, south: -4.75419, east: -42.0786, west: -46.3999 },
+  sbtt: { north: -2.09219, south: -6.4021, east: -67.768, west: -72.1017 },
+  sbtf: { north: -1.21712, south: -5.52641, east: -62.5299, west: -66.8565 },
+};
+
+/**
+ * Mapeamento CPTEC slug → SIPAM-HD slug para fallback automático.
+ * Quando CPTEC/Nowcasting (Super Res) não tem imagem recente,
+ * o sistema usa a versão HD do SIPAM.
+ */
+export const SIPAM_HD_FALLBACK_MAP: Record<string, string> = {
+  portovelho: 'sipam-portovelho',
+  cruzeirodosul: 'sipam-cruzeirodosul',
+  tabatinga: 'sipam-tabatinga',
+  tefe: 'sipam-tefe',
+  saogabriel: 'sipam-saogabriel',
+  manaus: 'sipam-manaus',
+  boavista: 'sipam-boavista',
+  macapa: 'sipam-macapa',
+  santarem: 'sipam-santarem',
+};
+
+/**
+ * Verifica se uma estação CPTEC do Norte tem versão HD via SIPAM.
+ */
+export function hasSipamHdFallback(slug: string): boolean {
+  return slug in SIPAM_HD_FALLBACK_MAP;
+}
+
+/**
+ * Retorna a estação SIPAM-HD correspondente (se existir).
+ */
+export function getSipamHdStation(cptecSlug: string): CptecRadarStation | undefined {
+  const sipamSlug = SIPAM_HD_FALLBACK_MAP[cptecSlug];
+  if (!sipamSlug) return undefined;
+  return CPTEC_RADAR_STATIONS.find(s => s.slug === sipamSlug);
+}
 
 /** Calcula distância em km entre dois pontos (Haversine). */
 export function haversineKm(
@@ -492,6 +559,12 @@ export function buildNowcastingPngUrl(
   ts12: string,
   productType: 'reflectividade' | 'velocidade' = 'reflectividade'
 ): string {
+  if (station.org === 'sipam-hd' && station.sipamSlug) {
+    // Converter ts12 (YYYYMMDDHHmm) para formato SIPAM (YYYY_MM_DD_HH_mm_00)
+    const sipamTs = `${ts12.slice(0,4)}_${ts12.slice(4,6)}_${ts12.slice(6,8)}_${ts12.slice(8,10)}_${ts12.slice(10,12)}_00`;
+    const produto = productType === 'velocidade' ? 'rate' : 'dbz';
+    return `/api/sipam/image?radar=${station.sipamSlug}&produto=${produto}&timestamp=${sipamTs}`;
+  }
   if (station.slug === 'chapeco') {
     const radarId = productType === 'velocidade' ? station.velocityId : station.id;
     return `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${ts12}`;

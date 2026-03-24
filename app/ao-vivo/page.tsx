@@ -18,6 +18,7 @@ import {
   USP_STARNET_FIXED_BOUNDS,
   FUNCEME_FORTALEZA_FIXED_BOUNDS,
   FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS,
+  SIPAM_HD_FIXED_BOUNDS,
   GET_RADAR_IPMET_URL,
   GET_RADAR_USP_URL,
   buildNowcastingPngUrl,
@@ -195,6 +196,38 @@ async function filterValidSliderMinutesAgo(
     const radarId = productType === 'velocidade' ? dr.station.velocityId : dr.station.id;
     try {
       const res = await fetch(`/api/nowcasting/chapeco/frames?radarId=${encodeURIComponent(radarId || dr.station.id)}`, { cache: 'no-store', signal });
+      const data = await res.json().catch(() => ({ frames: [] }));
+      const frames: { ts12: string; datahora: string }[] = data.frames || [];
+      if (frames.length === 0) return [0];
+      const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
+      const baseY = parseInt(baseTs12.slice(0, 4), 10);
+      const baseM = parseInt(baseTs12.slice(4, 6), 10) - 1;
+      const baseD = parseInt(baseTs12.slice(6, 8), 10);
+      const baseHH = parseInt(baseTs12.slice(8, 10), 10);
+      const baseMM = parseInt(baseTs12.slice(10, 12), 10);
+      const baseDateMs = Date.UTC(baseY, baseM, baseD, baseHH, baseMM);
+      const result: number[] = [];
+      frames.forEach(f => {
+        const fy = parseInt(f.ts12.slice(0, 4), 10);
+        const fm = parseInt(f.ts12.slice(4, 6), 10) - 1;
+        const fd = parseInt(f.ts12.slice(6, 8), 10);
+        const fhh = parseInt(f.ts12.slice(8, 10), 10);
+        const fmm = parseInt(f.ts12.slice(10, 12), 10);
+        const fileDateMs = Date.UTC(fy, fm, fd, fhh, fmm);
+        const diffMin = Math.round((baseDateMs - fileDateMs) / 60000);
+        if (diffMin >= 0 && diffMin <= maxMinutes) result.push(diffMin);
+      });
+      result.sort((a, b) => b - a);
+      return result.length > 0 ? result : [0];
+    } catch {
+      return [0];
+    }
+  }
+
+  /** SIPAM-HD: busca frames reais da API SIPAM */
+  if (dr.type === 'cptec' && dr.station.org === 'sipam-hd' && dr.station.sipamSlug) {
+    try {
+      const res = await fetch(`/api/sipam/frames?radar=${encodeURIComponent(dr.station.sipamSlug)}`, { cache: 'no-store', signal });
       const data = await res.json().catch(() => ({ frames: [] }));
       const frames: { ts12: string; datahora: string }[] = data.frames || [];
       if (frames.length === 0) return [0];
@@ -1026,6 +1059,10 @@ export default function AoVivoPage() {
         if (dr.station.slug === 'funceme-quixeramobim') {
           return { north: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.north, south: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.south, east: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.east, west: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.west };
         }
+        if (dr.station.org === 'sipam-hd' && dr.station.sipamSlug && SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug]) {
+          const sb = SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug];
+          return { north: sb.north, south: sb.south, east: sb.east, west: sb.west };
+        }
         let configSlug = dr.station.slug;
         if (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
           configSlug = `${dr.station.slug}-redemet`;
@@ -1211,9 +1248,10 @@ export default function AoVivoPage() {
     setSliderMinutesAgo((prev) => Math.min(prev, maxSliderMinutesAgo));
   }, [maxSliderMinutesAgo]);
 
-  /** Modo único: verifica quais minutos têm imagem e filtra o slider. */
+  /** Modo único ou radar focado: verifica quais minutos têm imagem e filtra o slider. */
   useEffect(() => {
-    if (radarMode !== 'unico' || displayRadars.length === 0) {
+    const isSingleRadar = radarMode === 'unico' || (!!focusedRadarKey && displayRadars.length === 1);
+    if (!isSingleRadar || displayRadars.length === 0) {
       setValidSliderMinutesAgo(null);
       setSliderValidVerifying(false);
       return;
@@ -1240,7 +1278,7 @@ export default function AoVivoPage() {
       }
     })();
     return () => ac.abort();
-  }, [radarMode, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs]);
+  }, [radarMode, focusedRadarKey, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs]);
 
   /** Setas do teclado: controlam o slider de tempo do radar (evita mover o mapa). Captura no capture phase para ter prioridade sobre o mapa. */
   useEffect(() => {
