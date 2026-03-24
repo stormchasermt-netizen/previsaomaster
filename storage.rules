@@ -23,5 +23,9 @@ service firebase.storage {
     match /ipmet-bauru/{allPaths=**} {
       allow read: if true;
     }
+    // Permite leitura pública de todas as imagens históricas de radar (Backup Geral)
+    match /radar_backup/{allPaths=**} {
+      allow read: if true;
+    }
   }
 }

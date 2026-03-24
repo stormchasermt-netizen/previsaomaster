@@ -82,6 +82,8 @@ const BRAZIL_CENTER = { lat: -14.235, lng: -51.925 };
 /** Contorna CORS: imagens PNG do CPTEC não carregam em <img> cross-origin sem proxy. */
 function getProxiedRadarUrl(url: string): string {
   if (typeof window === 'undefined') return url;
+  // Se for uma URL relativa (começa com /), não precisa de proxy (CORS não se aplica)
+  if (url.startsWith('/')) return url;
   return `/api/radar-proxy?url=${encodeURIComponent(url)}`;
 }
 

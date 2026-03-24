@@ -21,9 +21,16 @@ export async function GET(req: NextRequest) {
 
   let parsed: URL;
   try {
-    parsed = new URL(url);
+    // Se a URL for relativa, tenta resolver com o host atual
+    const base = req.nextUrl.origin;
+    parsed = new URL(url, base);
   } catch {
     return NextResponse.json({ error: 'Invalid url' }, { status: 400 });
+  }
+
+  // Se a URL final (resolvida) for interna, não precisa de proxy
+  if (parsed.origin === req.nextUrl.origin) {
+    return NextResponse.json({ error: 'Direct access to internal API is preferred over proxy' }, { status: 400 });
   }
 
   if (!ALLOWED_HOSTS.includes(parsed.hostname) || url.includes('radar-proxy')) {
