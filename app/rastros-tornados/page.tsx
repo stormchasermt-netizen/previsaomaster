@@ -1574,8 +1574,33 @@ export default function RastrosTornadosPage() {
             if (!ts.length) continue;
             const probeIdx = findClosestRadarFrameIdx(ts, track.time);
             const probeTs = ts[probeIdx];
-            const url = buildNowcastingPngUrl(station, probeTs.slice(0, 12), 'reflectividade');
-            const exists = await probeRadarImageExists(getProxiedRadarUrl(url));
+            
+            const probeTs12 = probeTs.slice(0, 12);
+            const y = probeTs12.slice(0, 4);
+            const m = probeTs12.slice(4, 6);
+            const d = probeTs12.slice(6, 8);
+            const h = probeTs12.slice(8, 10);
+            const mn = probeTs12.slice(10, 12);
+            const targetTimeEpoch = new Date(`${y}-${m}-${d}T${h}:${mn}:00Z`).getTime();
+            const diffHours = (Date.now() - targetTimeEpoch) / (1000 * 60 * 60);
+
+            let exists = false;
+            if (diffHours <= 48 && diffHours >= -5) {
+              const url = buildNowcastingPngUrl(station, probeTs12, 'reflectividade');
+              exists = await probeRadarImageExists(getProxiedRadarUrl(url));
+            } else {
+              const directUrl = buildNowcastingPngUrl(station, probeTs12, 'reflectividade', true);
+              exists = await probeRadarImageExists(getProxiedRadarUrl(directUrl));
+              if (!exists) {
+                const backupApiUrl = getRadarBackupUrl('chapeco', probeTs12, 'reflectividade');
+                try {
+                  const r = await fetch(backupApiUrl);
+                  const data = r.ok ? await r.json() : null;
+                  if (data?.url) exists = true;
+                } catch {}
+              }
+            }
+
             if (exists) {
               setRadarStation(station);
               setRadarTimestamps(ts);
@@ -1688,8 +1713,33 @@ export default function RastrosTornadosPage() {
           if (!ts.length) continue;
           const probeIdx = findClosestRadarFrameIdx(ts, track.time);
           const probeTs = ts[probeIdx];
-          const url = buildNowcastingPngUrl(station, probeTs.slice(0, 12), 'reflectividade');
-          const exists = await probeRadarImageExists(getProxiedRadarUrl(url));
+
+          const probeTs12 = probeTs.slice(0, 12);
+          const y = probeTs12.slice(0, 4);
+          const m = probeTs12.slice(4, 6);
+          const d = probeTs12.slice(6, 8);
+          const h = probeTs12.slice(8, 10);
+          const mn = probeTs12.slice(10, 12);
+          const targetTimeEpoch = new Date(`${y}-${m}-${d}T${h}:${mn}:00Z`).getTime();
+          const diffHours = (Date.now() - targetTimeEpoch) / (1000 * 60 * 60);
+
+          let exists = false;
+          if (diffHours <= 48 && diffHours >= -5) {
+            const url = buildNowcastingPngUrl(station, probeTs12, 'reflectividade');
+            exists = await probeRadarImageExists(getProxiedRadarUrl(url));
+          } else {
+            const directUrl = buildNowcastingPngUrl(station, probeTs12, 'reflectividade', true);
+            exists = await probeRadarImageExists(getProxiedRadarUrl(directUrl));
+            if (!exists) {
+              const backupApiUrl = getRadarBackupUrl('chapeco', probeTs12, 'reflectividade');
+              try {
+                const r = await fetch(backupApiUrl);
+                const data = r.ok ? await r.json() : null;
+                if (data?.url) exists = true;
+              } catch {}
+            }
+          }
+
           if (exists) {
             setRadarsWithin300km(radars);
             setRadarStation(station);
