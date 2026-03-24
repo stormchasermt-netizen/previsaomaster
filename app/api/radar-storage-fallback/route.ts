@@ -29,6 +29,7 @@ function buildDownloadUrl(filePath: string): string {
 export async function GET(req: NextRequest) {
   const radarId = req.nextUrl.searchParams.get('radarId');
   const ts12 = req.nextUrl.searchParams.get('ts12');
+  const productType = req.nextUrl.searchParams.get('productType') || 'reflectividade';
 
   if (!radarId || !ts12 || ts12.length !== 12) {
     return NextResponse.json({ error: 'Missing or invalid params (radarId, ts12)' }, { status: 400 });
@@ -44,24 +45,27 @@ export async function GET(req: NextRequest) {
   try {
     const bucket = admin.storage().bucket(STORAGE_BUCKET);
 
+    const isVel = productType === 'velocidade';
+    const suffix = isVel ? '_vel.png' : '.png';
+
     // 1. Tenta encontrar na hora solicitada: radar_backup/{radarId}/{year}/{month}/{day}{HH}
     const hourPrefix = `${RADAR_BACKUP_PREFIX}/${radarId}/${y}/${m}/${d}${hh}`;
-    let [files] = await bucket.getFiles({ prefix: hourPrefix, maxResults: 30 });
-    let pngFiles = files.filter(f => f.name.endsWith('.png'));
+    let [files] = await bucket.getFiles({ prefix: hourPrefix, maxResults: 50 });
+    let pngFiles = files.filter(f => f.name.endsWith(suffix));
 
     // 2. Se não encontrou na hora solicitada, tenta a hora anterior
     if (pngFiles.length === 0) {
       const prevHour = String(Math.max(0, parseInt(hh, 10) - 1)).padStart(2, '0');
       const prevHourPrefix = `${RADAR_BACKUP_PREFIX}/${radarId}/${y}/${m}/${d}${prevHour}`;
-      [files] = await bucket.getFiles({ prefix: prevHourPrefix, maxResults: 30 });
-      pngFiles = files.filter(f => f.name.endsWith('.png'));
+      [files] = await bucket.getFiles({ prefix: prevHourPrefix, maxResults: 50 });
+      pngFiles = files.filter(f => f.name.endsWith(suffix));
     }
 
     // 3. Se ainda não encontrou, tenta listar TODOS do dia (qualquer hora)
     if (pngFiles.length === 0) {
       const dayPrefix = `${RADAR_BACKUP_PREFIX}/${radarId}/${y}/${m}/${d}`;
-      [files] = await bucket.getFiles({ prefix: dayPrefix, maxResults: 60 });
-      pngFiles = files.filter(f => f.name.endsWith('.png'));
+      [files] = await bucket.getFiles({ prefix: dayPrefix, maxResults: 100 });
+      pngFiles = files.filter(f => f.name.endsWith(suffix));
     }
 
     if (pngFiles.length === 0) {
@@ -96,7 +100,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ url: null, reason: 'no_close_match' });
     }
 
-    const basename = bestFile.split('/').pop()?.replace('.png', '') ?? '';
+    const basename = bestFile.split('/').pop()?.replace(suffix, '') ?? '';
     return NextResponse.json(
       { url: buildDownloadUrl(bestFile), basename, diffMinutes: minDiff },
       { headers: { 'Cache-Control': 'public, max-age=300' } }

@@ -2780,10 +2780,45 @@ export default function RastrosTornadosPage() {
       const hasRedemetFb = hasRedemetFallback(station.slug);
       
       let finalUrl = cptecUrl;
-      let usedSource: 'cptec' | 'redemet' = 'cptec';
+      let usedSource: 'cptec' | 'redemet' | 'backup' = 'cptec';
 
-      // Se mode for HD ou se CPTEC falhar (visto que é timeline, vamos tentar o probate rápido ou apenas aceitar fallback)
-      if (radarSourceMode === 'hd' && hasRedemetFb) {
+      const checkBackup = async () => {
+        const backupApiUrl = getRadarBackupUrl(station.slug, ts12, radarProductType);
+        const data = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (data?.url) {
+          return data.url;
+        }
+        return null;
+      };
+
+      // Tenta carregar CPTEC (fire-and-probe)
+      const cptecOk = await probeRadarImageExists(cptecUrl);
+      
+      if (!cptecOk) {
+        // Fallback 1: Redemet (se for modo HD ou se CPTEC falhar)
+        if (hasRedemetFb) {
+          const area = getRedemetArea(station.slug);
+          const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
+          if (res?.url) {
+            finalUrl = getProxiedRadarUrl(res.url);
+            usedSource = 'redemet';
+          } else {
+            // Fallback 2: Storage Backup
+            const bUrl = await checkBackup();
+            if (bUrl) {
+              finalUrl = bUrl;
+              usedSource = 'backup';
+            }
+          }
+        } else {
+          // Fallback 2: Storage Backup
+          const bUrl = await checkBackup();
+          if (bUrl) {
+            finalUrl = bUrl;
+            usedSource = 'backup';
+          }
+        }
+      } else if (radarSourceMode === 'hd' && hasRedemetFb) {
         const area = getRedemetArea(station.slug);
         const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
         if (res?.url) {
@@ -2793,7 +2828,7 @@ export default function RastrosTornadosPage() {
       }
 
       let timelineCfgSlug = station.slug;
-      if ((timelineCfgSlug === 'santiago' || timelineCfgSlug === 'morroigreja') && radarSourceMode === 'hd') {
+      if (usedSource === 'redemet') {
         timelineCfgSlug = `${timelineCfgSlug}-redemet`;
       }
       const cfg = radarConfigs.find((c) => c.id === timelineCfgSlug || c.stationSlug === timelineCfgSlug);
@@ -2806,10 +2841,12 @@ export default function RastrosTornadosPage() {
       ov.setMap(map);
       radarTimelineOverlaysRef.current.push(ov);
 
-      // Fire-and-forget: salvar imagem no Storage para arquivo histórico
-      let cacheSlug = station.slug;
-      if (usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
-      cacheRadarImage(finalUrl, cacheSlug, ts12, radarProductType);
+      // Fire-and-forget: salvar imagem no Storage para arquivo histórico se veio do CPTEC ou Redemet
+      if (usedSource !== 'backup') {
+        let cacheSlug = station.slug;
+        if (usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
+        cacheRadarImage(finalUrl, cacheSlug, ts12, radarProductType);
+      }
     });
 
     return () => {
