@@ -557,8 +557,17 @@ export function buildNowcastingPngUrl(
   if (station.slug === 'climatempo-poa') {
     return `https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png?nocache=${ts12}`;
   }
-  const y = ts12.slice(0, 4);
-  const m = ts12.slice(4, 6);
+  let finalTs12 = ts12;
+  // Chapecó (CDN direta): Os arquivos PNG na CDN S2 do CPTEC são gerados a cada 6 minutos exatos.
+  // Como o slider pode pedir intervalos de 5 min (ex: 2335), arredondamos para o múltiplo de 6 mais próximo (2330, 2336, etc).
+  if (station.slug === 'chapeco' && skipProxy) {
+    const min = parseInt(ts12.slice(10, 12), 10);
+    const nearest6 = Math.floor(min / 6) * 6;
+    finalTs12 = ts12.slice(0, 10) + nearest6.toString().padStart(2, '0');
+  }
+
+  const y = finalTs12.slice(0, 4);
+  const m = finalTs12.slice(4, 6);
   const sub =
     productType === 'velocidade'
       ? station.product === 'cappi'
@@ -567,7 +576,7 @@ export function buildNowcastingPngUrl(
       : station.subtype;
   const server = productType === 'velocidade' && station.velocityServer ? station.velocityServer : station.server;
   const fileId = productType === 'velocidade' && station.velocityId ? station.velocityId : station.id;
-  return `https://${server}.cptec.inpe.br/radar/${station.org}/${station.slug}/${station.product}/${sub}/${y}/${m}/${fileId}_${ts12}.png`;
+  return `https://${server}.cptec.inpe.br/radar/${station.org}/${station.slug}/${station.product}/${sub}/${y}/${m}/${fileId}_${finalTs12}.png`;
 }
 
 /** Converte lat/lng para Web Mercator (EPSG:3857). */

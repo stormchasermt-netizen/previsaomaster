@@ -2503,12 +2503,14 @@ export default function RastrosTornadosPage() {
       }
 
       if (radarStation && radarCfg) {
-        return {
-          north: radarCfg.bounds.ne.lat,
-          south: radarCfg.bounds.sw.lat,
-          east: radarCfg.bounds.ne.lng,
-          west: radarCfg.bounds.sw.lng,
-        };
+        if (radarCfg.customBounds) {
+          return { north: radarCfg.customBounds.north, south: radarCfg.customBounds.south, east: radarCfg.customBounds.east, west: radarCfg.customBounds.west };
+        }
+        if (radarCfg.lat !== 0 || radarCfg.lng !== 0) {
+          const range = radarCfg.rangeKm ?? radarStation.rangeKm ?? 250;
+          const b = calculateRadarBounds(radarCfg.lat, radarCfg.lng, range);
+          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+        }
       }
       if (radarStation && !isArgentinaRadar) {
         const b = getRadarImageBounds(radarStation as CptecRadarStation);

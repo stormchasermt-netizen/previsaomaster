@@ -16,13 +16,13 @@ interface NowcastingProduct {
 const jsonCache = new Map<string, { fetchTime: number; products: NowcastingProduct[] }>();
 const CACHE_TTL_MS = 60 * 1000; // 1 minuto de cache
 
-export async function GET(request: Request) {
+async function resolveNowcastingImageUrl(request: Request): Promise<{ status: number, url?: string, error?: string }> {
   const { searchParams } = new URL(request.url);
   const radarId = searchParams.get('radarId');
   const timestamp = searchParams.get('timestamp');
 
   if (!radarId || !timestamp || timestamp.length !== 12) {
-    return new NextResponse('Missing radarId or matching 12-char timestamp', { status: 400 });
+    return { status: 400, error: 'Missing radarId or matching 12-char timestamp' };
   }
 
   const yyyy = timestamp.substring(0, 4);
@@ -31,6 +31,17 @@ export async function GET(request: Request) {
   const HH = timestamp.substring(8, 10);
   const min = timestamp.substring(10, 12);
   const targetTimeEpoch = new Date(`${yyyy}-${mm}-${dd}T${HH}:${min}:00Z`).getTime();
+
+  if (isNaN(targetTimeEpoch)) {
+    return { status: 400, error: 'Invalid timestamp format' };
+  }
+
+  const diffHours = (Date.now() - targetTimeEpoch) / (1000 * 60 * 60);
+  // A API Nowcasting (tempo real) só suporta os últimos ~400 frames (aprox 40 horas).
+  // Requisições para histórico mais antigo do que 48h recusam imediatamente para poupar a API e evitar lentidão.
+  if (diffHours > 48 || diffHours < -5) {
+    return { status: 404, error: 'Historical frames not available in Nowcasting API' };
+  }
 
   let products: NowcastingProduct[] = [];
   const now = Date.now();
@@ -47,19 +58,19 @@ export async function GET(request: Request) {
     try {
       const res = await fetch(apiUrl, { next: { revalidate: 0 } });
       if (!res.ok) {
-        return new NextResponse(`Nowcasting API error: ${res.status}`, { status: res.status });
+        return { status: res.status, error: `Nowcasting API error: ${res.status}` };
       }
       products = await res.json() as NowcastingProduct[];
       jsonCache.set(cacheKey, { fetchTime: now, products });
     } catch (e: any) {
-      return new NextResponse(`Fetch error: ${e.message}`, { status: 500 });
+      return { status: 500, error: `Fetch error: ${e.message}` };
     }
   }
 
   // Find the specific product requested (reflectividade, velocidade, etc)
   const productData = products.find(p => p.id === radarId);
   if (!productData || !productData.imagens || productData.imagens.length === 0) {
-    return new NextResponse('Product not found or no images available', { status: 404 });
+    return { status: 404, error: 'Product not found or no images available' };
   }
 
   let bestItem: NowcastingImage | null = null;
@@ -78,15 +89,54 @@ export async function GET(request: Request) {
   }
 
   if (!bestItem) {
-    return new NextResponse('No frame close enough to the requested timestamp', { status: 404 });
+    return { status: 404, error: 'No frame close enough to the requested timestamp' };
   }
 
   // Previne problemas de Mixed Content convertendo HTTP nativo para HTTPS
   const finalUrl = bestItem.url.replace('http://', 'https://');
+  return { status: 200, url: finalUrl };
+}
 
-  // Baixar buffer e servir no domínio próprio com CORS liberado para o WebGL
+export async function HEAD(request: Request) {
+  const result = await resolveNowcastingImageUrl(request);
+  if (result.status !== 200 || !result.url) {
+    return new NextResponse(result.error || 'Not found', { status: result.status });
+  }
+
   try {
-    const upstream = await fetch(finalUrl, {
+    const upstream = await fetch(result.url, {
+      method: 'HEAD',
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!upstream.ok) {
+      return new NextResponse(`Erro CPTEC CDN: ${upstream.status}`, { status: 502 });
+    }
+
+    const contentType = upstream.headers.get('content-type') ?? 'image/png';
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=300',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (err: any) {
+    return new NextResponse(`CPTEC HEAD fetch failed: ${err.message}`, { status: 502 });
+  }
+}
+
+export async function GET(request: Request) {
+  const result = await resolveNowcastingImageUrl(request);
+  if (result.status !== 200 || !result.url) {
+    return new NextResponse(result.error || 'Not found', { status: result.status });
+  }
+
+  try {
+    const upstream = await fetch(result.url, {
       cache: 'no-store',
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),

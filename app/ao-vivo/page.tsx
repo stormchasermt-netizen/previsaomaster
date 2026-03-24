@@ -1054,6 +1054,23 @@ export default function AoVivoPage() {
   const getBoundsForDisplayRadar = useCallback(
     (dr: DisplayRadar) => {
       if (dr.type === 'cptec') {
+        let configSlug = dr.station.slug;
+        if (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
+          configSlug = `${dr.station.slug}-redemet`;
+        }
+        
+        // PRIORIDADE 1: Configurações Salvas no Firebase (Admin)
+        const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
+        if (cfg?.customBounds) {
+          return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
+        }
+        if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
+          const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
+          const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
+          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+        }
+
+        // PRIORIDADE 2: Fallbacks Hardcoded por Estação
         const isIpmet = dr.station.slug === 'ipmet-bauru';
         const isUspStarnet = dr.station.slug === 'usp-starnet';
         if (isIpmet) {
@@ -1072,19 +1089,8 @@ export default function AoVivoPage() {
           const sb = SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug];
           return { north: sb.north, south: sb.south, east: sb.east, west: sb.west };
         }
-        let configSlug = dr.station.slug;
-        if (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
-          configSlug = `${dr.station.slug}-redemet`;
-        }
-        const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
-        if (cfg?.customBounds) {
-          return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
-        }
-        if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
-          const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
-          const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
-          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
-        }
+        
+        // PRIORIDADE 3: Bounds calculados nativamente do CPTEC base
         const b = getRadarImageBounds(dr.station);
         return { north: b.north, south: b.south, east: b.east, west: b.west };
       }
@@ -2480,10 +2486,15 @@ export default function AoVivoPage() {
     const mapDiv = map.getDiv();
     const centerLat = editLiveCenter ? editLiveCenter.lat : editCenterLat;
     const centerLng = editLiveCenter ? editLiveCenter.lng : editCenterLng;
+    // Se o Admin estiver movendo as posições ativamente (`editLiveCenter`) ou se ele já tiver salvo algo (`editCenterLat`),
+    // o calculo dinâmico OBRIGATORIAMENTE anula os limites fixados (isIpmet/isUspStarnet),
+    // de forma que qualquer configuração salva ou movida no mapa obedeça de imediato.
     const isIpmet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'ipmet-bauru';
     const isUspStarnet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'usp-starnet';
-    const b = isIpmet ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw }
-      : isUspStarnet ? { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw }
+    const usingDefaultConfig = editCenterLat === editingRadar.station.lat && editCenterLng === editingRadar.station.lng;
+
+    const b = (isIpmet && usingDefaultConfig && !editLiveCenter) ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw }
+      : (isUspStarnet && usingDefaultConfig && !editLiveCenter) ? { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw }
       : calculateRadarBounds(centerLat, centerLng, editRangeKm);
     const latLngBounds = new google.maps.LatLngBounds(
       { lat: b.sw.lat, lng: b.sw.lng },
@@ -2523,9 +2534,7 @@ export default function AoVivoPage() {
           lastEditDragRef.current = { lat: newLat, lng: newLng };
           setEditLiveCenter({ lat: newLat, lng: newLng });
           const editSlug = editingRadar.type === 'cptec' ? editingRadar.station.slug : null;
-          const newB = editSlug === 'ipmet-bauru' ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw }
-            : editSlug === 'usp-starnet' ? { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw }
-            : calculateRadarBounds(newLat, newLng, editRangeKm);
+          const newB = calculateRadarBounds(newLat, newLng, editRangeKm);
           const newSw = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.sw.lat, newB.sw.lng));
           const newNe = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.ne.lat, newB.ne.lng));
           if (newSw && newNe) {
