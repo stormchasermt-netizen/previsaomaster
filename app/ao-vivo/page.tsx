@@ -2259,6 +2259,9 @@ export default function AoVivoPage() {
                   setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: entry.ts12 }));
                   setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
                   setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
+                  // Salvar SIPAM HD no Storage
+                  const sipamCacheSlug = dr.type === 'cptec' ? `${dr.station.slug}-sipamhd` : `argentina_${dr.station.id}`;
+                  cacheRadarImage(img.src, sipamCacheSlug, entry.ts12, productType);
                   applyNoiseFilter();
                   if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
                     markProcessed();
@@ -3051,6 +3054,16 @@ export default function AoVivoPage() {
                   className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 hover:accent-cyan-400 transition-all"
               />
             </div>
+              {/* Toggle Limites Municipais */}
+              <div>
+                <label className="flex items-center gap-3 py-2 cursor-pointer group">
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${showMunicipios ? 'bg-amber-500 border-amber-500' : 'border-slate-500 group-hover:border-amber-500/50'}`}>
+                    {showMunicipios && <Check className="w-3 h-3 text-black" />}
+                  </div>
+                  <input type="checkbox" checked={showMunicipios} onChange={() => setShowMunicipios(!showMunicipios)} className="hidden" />
+                  <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Limites Municipais</span>
+                </label>
+              </div>
               <div>
                 <p className="text-[10px] font-bold text-amber-400/90 mb-2 flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3474,18 +3487,6 @@ export default function AoVivoPage() {
             >
               <Layers className="w-4 h-4 transition-transform group-hover/prevots:scale-110" />
               Prevots
-            </button>
-            <button
-              onClick={() => setShowMunicipios(!showMunicipios)}
-              className={`group/mun flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-200 hover:scale-105 ${
-                showMunicipios 
-                  ? 'bg-amber-500/90 text-slate-900 shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:bg-amber-400' 
-                  : 'bg-[#0A0E17]/80 text-slate-400 border border-white/10 shadow-lg hover:text-white hover:border-amber-500/40'
-              }`}
-              title="Alternar Limites Municipais"
-            >
-              <MapPin className="w-4 h-4 transition-transform group-hover/mun:scale-110" />
-              Municípios
             </button>
             <AnimatePresence>
               {prevotsOverlayVisible && (
