@@ -427,10 +427,8 @@ export default function RastrosTornadosPage() {
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineSpeed, setTimelineSpeed] = useState<1 | 2 | 5>(1);
-  /** Pré-carregamento da timeline: estado, progresso e cache de URLs */
-  const [timelinePreloading, setTimelinePreloading] = useState(false);
-  const [timelinePreloadProgress, setTimelinePreloadProgress] = useState(0);
-  const timelinePreloadedUrlsRef = useRef<Map<string, string>>(new Map());
+  /** Tempos exatos encontrados das imagens de radar na timeline, por slug */
+  const [timelineFoundTimes, setTimelineFoundTimes] = useState<Record<string, string>>({});
   /** Radares selecionados para exibir na timeline (slugs) */
   const [timelineSelectedRadars, setTimelineSelectedRadars] = useState<Set<string>>(new Set());
   /** Tipo de produto na timeline: refletividade ou velocidade (Doppler) */
@@ -1247,81 +1245,7 @@ export default function RastrosTornadosPage() {
     setTimelineIndex((prev) => Math.min(prev, timelineDates.length - 1));
   }, [timelineDates.length]);
 
-  /** Pré-carregamento: busca todas as URLs de imagem para todos os timestamps da timeline e pré-carrega */
-  const handleTimelinePlay = useCallback(async () => {
-    if (timelinePlaying) {
-      setTimelinePlaying(false);
-      return;
-    }
-    const isDetailed = radarTimelineTimestamps.length > 0;
-    if (!isDetailed) {
-      // Timeline simples (datas): não precisa pré-carregar radar
-      setTimelinePlaying(true);
-      return;
-    }
-    // Já pré-carregou? (se as URLs estão em cache, inicia direto)
-    if (timelinePreloadedUrlsRef.current.size >= radarTimelineTimestamps.length) {
-      setTimelinePlaying(true);
-      return;
-    }
-    setTimelinePreloading(true);
-    setTimelinePreloadProgress(0);
-    const total = radarTimelineTimestamps.length;
-    let loaded = 0;
-    const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
-    const stations = allStations.filter(s => timelineSelectedRadars.has(s.slug));
-
-    for (let i = 0; i < total; i++) {
-      const nominalTs = radarTimelineTimestamps[i];
-      if (!nominalTs) { loaded++; setTimelinePreloadProgress(Math.round((loaded / total) * 100)); continue; }
-
-      // Para cada estação, buscar a URL (primeiro que funcionar via probe)
-      const probes = stations.map(async (station) => {
-        const ts12 = radarTimelineMode === 'mosaico' ? getNearestRadarTimestamp(nominalTs, station) : nominalTs;
-        const rawUrl = buildNowcastingPngUrl(station, ts12, timelineProductType);
-        const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
-
-        // Chapecó: tentar URL direta do CPTEC primeiro
-        if (station.slug === 'chapeco') {
-          const directUrl = buildNowcastingPngUrl(station, ts12, timelineProductType, true);
-          const [directProxy] = getRadarUrlsWithFallback(directUrl);
-          const ok2 = await probeRadarImageExists(directProxy);
-          if (ok2) {
-            await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = directProxy; });
-            return;
-          }
-        }
-        // Tenta CPTEC proxy/API
-        const ok = await probeRadarImageExists(proxyUrl);
-        if (ok) {
-          await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = proxyUrl; });
-          return;
-        }
-        // Redemet
-        if (hasRedemetFallback(station.slug)) {
-          const area = getRedemetArea(station.slug);
-          const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
-          if (res?.url) {
-            const rUrl = getProxiedRadarUrl(res.url);
-            await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = rUrl; });
-            return;
-          }
-        }
-        // Storage
-        const backupApiUrl = getRadarBackupUrl(station.slug, ts12, timelineProductType);
-        const data = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
-        if (data?.url) {
-          await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = data.url; });
-        }
-      });
-      await Promise.all(probes);
-      loaded++;
-      setTimelinePreloadProgress(Math.round((loaded / total) * 100));
-    }
-    setTimelinePreloading(false);
-    setTimelinePreloadProgress(100);
-    setTimelinePlaying(true);
-  }, [timelinePlaying, radarTimelineTimestamps, radarTimelineMode, intervalRadars, timelineActiveStation, timelineSelectedRadars, timelineProductType]);
+  // (handleTimelinePlay removido para não carregar todas as imagens de uma vez)
 
   useEffect(() => {
     if (!timelineEnabled || !timelinePlaying) return;
@@ -2925,22 +2849,33 @@ export default function RastrosTornadosPage() {
         if (!hasRedemetFb) return null;
         const area = getRedemetArea(station.slug);
         const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
-        return res?.url ? getProxiedRadarUrl(res.url) : null;
+        let foundTs = ts12;
+        if (res?.url) {
+          const m = res.url.match(/data=(\d{12})/);
+          if (m) foundTs = m[1];
+        }
+        return res?.url ? { url: getProxiedRadarUrl(res.url), ts: foundTs } : null;
       };
 
       const checkBackup = async () => {
         const backupApiUrl = getRadarBackupUrl(station.slug, ts12, timelineProductType);
         const data = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
-        return data?.url || null;
+        let foundTs = ts12;
+        if (data?.url && data.basename) {
+          foundTs = ts12.slice(0, 6) + data.basename; // Concatena YYYYMM + DDHHMM
+        }
+        return data?.url ? { url: data.url, ts: foundTs } : null;
       };
 
       let finalUrl = '';
+      let finalTs = ts12;
       
       // 1. Tenta URLs do CPTEC (Proxy e Direto)
       for (const entry of urlsToTry) {
         const ok = await probeRadarImageExists(entry.url);
         if (ok) {
           finalUrl = entry.url;
+          finalTs = ts12;
           usedSource = 'cptec';
           break;
         }
@@ -2948,23 +2883,37 @@ export default function RastrosTornadosPage() {
 
       // 2. Fallback para Redemet
       if (!finalUrl && hasRedemetFb) {
-        const rUrl = await checkRedemet();
-        if (rUrl) {
-          finalUrl = rUrl;
+        const rData = await checkRedemet();
+        if (rData) {
+          finalUrl = rData.url;
+          finalTs = rData.ts;
           usedSource = 'redemet';
         }
       }
 
       // 3. Fallback final para Storage Backup
       if (!finalUrl) {
-        const bUrl = await checkBackup();
-        if (bUrl) {
-          finalUrl = bUrl;
+        const bData = await checkBackup();
+        if (bData) {
+          finalUrl = bData.url;
+          finalTs = bData.ts;
           usedSource = 'backup';
         }
       }
 
-      if (!finalUrl) return; // Nada encontrado
+      if (!finalUrl) {
+        setTimelineFoundTimes((prev) => {
+          if (prev[station.slug]) {
+            const next = { ...prev };
+            delete next[station.slug];
+            return next;
+          }
+          return prev;
+        });
+        return; // Nada encontrado
+      }
+      
+      setTimelineFoundTimes((prev) => ({ ...prev, [station.slug]: finalTs }));
 
       let timelineCfgSlug = station.slug;
       if (usedSource === 'redemet') {
@@ -4922,8 +4871,8 @@ export default function RastrosTornadosPage() {
               </button>
               {timelineEnabled && (
                 <>
-                  <button type="button" onClick={handleTimelinePlay} disabled={timelinePreloading} className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all disabled:opacity-50" title={timelinePlaying ? 'Pausar' : 'Reproduzir'}>
-                    {timelinePreloading ? <Loader2 className="w-4 h-4 animate-spin" /> : timelinePlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  <button type="button" onClick={() => setTimelinePlaying((v) => !v)} className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all" title={timelinePlaying ? 'Pausar' : 'Reproduzir'}>
+                    {timelinePlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </button>
                   {/* Botão para abrir menu de radares da timeline */}
                   <button type="button" onClick={() => setShowTimelineRadarMenu(v => !v)} className={`p-2 rounded-xl border shrink-0 transition-all ${showTimelineRadarMenu ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400' : 'bg-white/5 border-white/10 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10'}`} title="Radares e Doppler">
@@ -4961,21 +4910,6 @@ export default function RastrosTornadosPage() {
         </div>
         </div>
 
-        {/* Popup de pré-carregamento da timeline */}
-        {timelinePreloading && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="bg-[#0F1629]/95 border border-cyan-500/30 rounded-2xl p-6 max-w-xs w-full mx-4 shadow-[0_0_40px_rgba(6,182,212,0.2)]">
-              <div className="flex items-center gap-3 mb-4">
-                <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
-                <span className="text-sm font-bold text-white">Carregando imagens...</span>
-              </div>
-              <div className="w-full bg-slate-800 rounded-full h-2.5 mb-2">
-                <div className="bg-gradient-to-r from-cyan-500 to-teal-400 h-2.5 rounded-full transition-all duration-300" style={{ width: `${timelinePreloadProgress}%` }} />
-              </div>
-              <p className="text-xs text-slate-400 text-center">{timelinePreloadProgress}%</p>
-            </div>
-          </div>
-        )}
 
         {/* Menu de radares da timeline */}
         {showTimelineRadarMenu && timelineEnabled && (
@@ -5010,7 +4944,16 @@ export default function RastrosTornadosPage() {
                     }}
                     className="w-3.5 h-3.5 rounded accent-cyan-500 cursor-pointer"
                   />
-                  <span className="text-xs text-slate-300">{r.name}</span>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-slate-300">{r.name}</span>
+                    {timelineSelectedRadars.has(r.slug) && (
+                      <span className="text-[10px] text-teal-400/80 font-mono -mt-0.5">
+                        {timelineFoundTimes[r.slug] 
+                          ? `${timelineFoundTimes[r.slug].substring(6,8)}/${timelineFoundTimes[r.slug].substring(4,6)} ${timelineFoundTimes[r.slug].substring(8,10)}:${timelineFoundTimes[r.slug].substring(10,12)}` 
+                          : 'Buscando...'}
+                      </span>
+                    )}
+                  </div>
                 </label>
               ))}
             </div>
