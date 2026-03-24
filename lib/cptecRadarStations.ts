@@ -131,9 +131,9 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   // Santarém - Ref/Doppler ids pendentes (sipam/santarem)
   { id: 'R12800000', slug: 'santarem', name: 'Santarém', lat: -2.44, lng: -54.71, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz' },
 
-  // Quixeramobim e Fortaleza (FUNCEME)
-  { id: 'GMWR1000SST', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.7319, lng: -38.5267, rangeKm: 250, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
-  { id: 'RMT0100DS', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.197, lng: -39.296, rangeKm: 250, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  // Quixeramobim e Fortaleza (FUNCEME) — bounds extraídos dos KML oficiais
+  { id: 'GMWR1000SST', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.893, lng: -38.458, rangeKm: 250, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMT0100DS', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.069, lng: -39.267, rangeKm: 350, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
 
   // Fontes especiais (WMS/proxy)
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.561, lng: -46.736, rangeKm: 85, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
@@ -170,6 +170,32 @@ export const USP_STARNET_FIXED_BOUNDS = {
   west: -47.134155,
   ne: { lat: -23.192604, lng: -46.337808 },
   sw: { lat: -23.930042, lng: -47.134155 },
+};
+
+/**
+ * Bounds fixos do Radar FUNCEME Fortaleza (GMWR1000SST).
+ * Extraído do KML oficial: rangeGMWR1000SST.kml
+ */
+export const FUNCEME_FORTALEZA_FIXED_BOUNDS = {
+  north: -2.753227,
+  south: -5.032130,
+  east: -37.323134,
+  west: -39.592087,
+  ne: { lat: -2.753227, lng: -37.323134 },
+  sw: { lat: -5.032130, lng: -39.592087 },
+};
+
+/**
+ * Bounds fixos do Radar FUNCEME Quixeramobim (RMT0100DS).
+ * Extraído do KML oficial: rangeRMT0100DS.kml
+ */
+export const FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS = {
+  north: -1.688086,
+  south: -8.449901,
+  east: -35.895440,
+  west: -42.638776,
+  ne: { lat: -1.688086, lng: -35.895440 },
+  sw: { lat: -8.449901, lng: -42.638776 },
 };
 
 /** Calcula distância em km entre dois pontos (Haversine). */

@@ -16,6 +16,8 @@ import {
   calculateRadarBounds,
   IPMET_FIXED_BOUNDS,
   USP_STARNET_FIXED_BOUNDS,
+  FUNCEME_FORTALEZA_FIXED_BOUNDS,
+  FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS,
   GET_RADAR_IPMET_URL,
   GET_RADAR_USP_URL,
   buildNowcastingPngUrl,
@@ -152,6 +154,73 @@ async function filterValidSliderMinutesAgo(
     // Ou seja: [60, 50, ..., 0]. Precisamos reverter.
     result.reverse();
     return result;
+  }
+
+  /** FUNCEME: busca frames reais da API ao invés de sondar URLs */
+  if (dr.type === 'cptec' && dr.station.org === 'funceme') {
+    const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
+    const dateStr = `${baseTs12.slice(0, 4)}-${baseTs12.slice(4, 6)}-${baseTs12.slice(6, 8)}`;
+    try {
+      const res = await fetch(`/api/funceme/frames?radar=${encodeURIComponent(dr.station.id)}&date=${dateStr}`, { cache: 'no-store', signal });
+      const data = await res.json().catch(() => ({ frames: [] }));
+      const frames: { ts12: string; datahora: string }[] = data.frames || [];
+      if (frames.length === 0) return [0];
+      const baseY = parseInt(baseTs12.slice(0, 4), 10);
+      const baseM = parseInt(baseTs12.slice(4, 6), 10) - 1;
+      const baseD = parseInt(baseTs12.slice(6, 8), 10);
+      const baseHH = parseInt(baseTs12.slice(8, 10), 10);
+      const baseMM = parseInt(baseTs12.slice(10, 12), 10);
+      const baseDateMs = Date.UTC(baseY, baseM, baseD, baseHH, baseMM);
+      const result: number[] = [];
+      frames.forEach(f => {
+        const fy = parseInt(f.ts12.slice(0, 4), 10);
+        const fm = parseInt(f.ts12.slice(4, 6), 10) - 1;
+        const fd = parseInt(f.ts12.slice(6, 8), 10);
+        const fhh = parseInt(f.ts12.slice(8, 10), 10);
+        const fmm = parseInt(f.ts12.slice(10, 12), 10);
+        const fileDateMs = Date.UTC(fy, fm, fd, fhh, fmm);
+        const diffMin = Math.round((baseDateMs - fileDateMs) / 60000);
+        if (diffMin >= 0 && diffMin <= maxMinutes) result.push(diffMin);
+      });
+      // frames veio do mais antigo ao mais recente, minutesAgo fica decrescente
+      result.sort((a, b) => b - a); // mais antigo (maior minutesAgo) primeiro
+      return result.length > 0 ? result : [0];
+    } catch {
+      return [0];
+    }
+  }
+
+  /** Chapecó (CPTEC Nowcasting): busca frames reais da API */
+  if (dr.type === 'cptec' && dr.station.slug === 'chapeco') {
+    const radarId = productType === 'velocidade' ? dr.station.velocityId : dr.station.id;
+    try {
+      const res = await fetch(`/api/nowcasting/chapeco/frames?radarId=${encodeURIComponent(radarId || dr.station.id)}`, { cache: 'no-store', signal });
+      const data = await res.json().catch(() => ({ frames: [] }));
+      const frames: { ts12: string; datahora: string }[] = data.frames || [];
+      if (frames.length === 0) return [0];
+      const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
+      const baseY = parseInt(baseTs12.slice(0, 4), 10);
+      const baseM = parseInt(baseTs12.slice(4, 6), 10) - 1;
+      const baseD = parseInt(baseTs12.slice(6, 8), 10);
+      const baseHH = parseInt(baseTs12.slice(8, 10), 10);
+      const baseMM = parseInt(baseTs12.slice(10, 12), 10);
+      const baseDateMs = Date.UTC(baseY, baseM, baseD, baseHH, baseMM);
+      const result: number[] = [];
+      frames.forEach(f => {
+        const fy = parseInt(f.ts12.slice(0, 4), 10);
+        const fm = parseInt(f.ts12.slice(4, 6), 10) - 1;
+        const fd = parseInt(f.ts12.slice(6, 8), 10);
+        const fhh = parseInt(f.ts12.slice(8, 10), 10);
+        const fmm = parseInt(f.ts12.slice(10, 12), 10);
+        const fileDateMs = Date.UTC(fy, fm, fd, fhh, fmm);
+        const diffMin = Math.round((baseDateMs - fileDateMs) / 60000);
+        if (diffMin >= 0 && diffMin <= maxMinutes) result.push(diffMin);
+      });
+      result.sort((a, b) => b - a);
+      return result.length > 0 ? result : [0];
+    } catch {
+      return [0];
+    }
   }
 
   const BATCH = 12;
@@ -950,6 +1019,12 @@ export default function AoVivoPage() {
         }
         if (isUspStarnet) {
           return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
+        }
+        if (dr.station.slug === 'funceme-fortaleza') {
+          return { north: FUNCEME_FORTALEZA_FIXED_BOUNDS.north, south: FUNCEME_FORTALEZA_FIXED_BOUNDS.south, east: FUNCEME_FORTALEZA_FIXED_BOUNDS.east, west: FUNCEME_FORTALEZA_FIXED_BOUNDS.west };
+        }
+        if (dr.station.slug === 'funceme-quixeramobim') {
+          return { north: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.north, south: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.south, east: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.east, west: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.west };
         }
         let configSlug = dr.station.slug;
         if (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
