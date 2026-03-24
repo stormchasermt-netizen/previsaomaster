@@ -2549,8 +2549,19 @@ export default function RastrosTornadosPage() {
         const [directProxy] = getRadarUrlsWithFallback(directCptecUrl);
         urlsToTry.push({ url: directProxy, source: 'cptec' });
         urlsToTry.push({ url: directCptecUrl, source: 'cptec' });
-        // API de metadados como fallback
-        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+        
+        // APENAS adiciona a API se não for histórico > 48h!
+        const y = ts12.slice(0, 4);
+        const m = ts12.slice(4, 6);
+        const d = ts12.slice(6, 8);
+        const h = ts12.slice(8, 10);
+        const mn = ts12.slice(10, 12);
+        const targetTimeEpoch = new Date(`${y}-${m}-${d}T${h}:${mn}:00Z`).getTime();
+        const diffHours = (Date.now() - targetTimeEpoch) / (1000 * 60 * 60);
+
+        if (diffHours <= 48 && diffHours >= -5) {
+          urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+        }
       } else {
         urlsToTry.push({ url: proxyUrl, source: 'cptec' });
         if (directUrl && directUrl !== proxyUrl) {
