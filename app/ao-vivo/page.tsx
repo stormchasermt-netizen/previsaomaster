@@ -1935,6 +1935,8 @@ export default function AoVivoPage() {
       let redemetFindPromise: Promise<string | null> | null = null;
       let ipmetStoragePromise: Promise<string | null> | null = null;
       let storageFallbackPromise: Promise<string | null> | null = null;
+      /** Promise que resolve para array de URLs SIPAM-HD (com timestamps exatos da API) */
+      let sipamFramesPromise: Promise<UrlEntry[] | null> | null = null;
       // Preparar Storage fallback para todos radares CPTEC
       if (dr.type === 'cptec' && dr.station.slug !== 'ipmet-bauru' && dr.station.slug !== 'usp-starnet' && dr.station.slug !== 'climatempo-poa') {
         const fbTs12 = useFallback ? getNowMinusMinutesTimestamp12UTC(3) : timestamp;
@@ -1965,8 +1967,12 @@ export default function AoVivoPage() {
         urlsToTry = [{ url: USP_URL, ts12: nominalTs, source: 'cptec' }];
       } else if (dr.type === 'cptec') {
         const isHdMode = radarSourceMode === 'hd';
+        const hasSipam = !!dr.station.sipamSlug;
+        const hasRedemet = hasRedemetFallback(dr.station.slug);
+        // Determinar se deve usar CPTEC (quando não tem SIPAM nem Redemet, ou quando não está em HD)
+        const useCptecUrls = !isHdMode || (!hasSipam && !hasRedemet);
         if (useFallback) {
-          if (!isHdMode) {
+          if (useCptecUrls) {
             const seenTs = new Set<string>();
             for (let back = 0; back <= 60; back += 6) {
               const baseTs = back === 0 ? nominalTs : subtractMinutesFromTimestamp12UTC(nominalTs, back);
@@ -1979,7 +1985,27 @@ export default function AoVivoPage() {
               urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
             }
           }
-          if (hasRedemetFallback(dr.station.slug)) {
+          // HD SIPAM: buscar frames reais da API e montar URLs com timestamps exatos
+          if (isHdMode && hasSipam && !sipamFramesPromise) {
+            const slug = dr.station.sipamSlug!;
+            const pt = productType;
+            sipamFramesPromise = fetch(`/api/sipam/frames?radar=${encodeURIComponent(slug)}`, { cache: 'no-store' })
+              .then(r => r.ok ? r.json() : { frames: [] })
+              .then(data => {
+                const frames: { ts12: string; sipamTs: string }[] = data.frames || [];
+                if (frames.length === 0) return null;
+                // API retorna sorted ascending (mais antigo primeiro) — pegar os 3 mais recentes
+                const recentFrames = frames.slice(-3).reverse();
+                const produto = pt === 'velocidade' ? 'rate' : 'dbz';
+                return recentFrames.map(f => ({
+                  url: `/api/sipam/image?radar=${slug}&produto=${produto}&timestamp=${f.sipamTs}`,
+                  ts12: f.ts12,
+                  source: 'cptec' as const,
+                }));
+              })
+              .catch(() => null);
+          }
+          if (hasRedemet) {
             const area = getRedemetArea(dr.station.slug)!;
             const ts12ForRedemet = getNearestRadarTimestamp(nominalTs, dr.station);
             redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=false`)
@@ -1995,7 +2021,7 @@ export default function AoVivoPage() {
               .catch(() => null);
           }
         } else {
-          if (!isHdMode) {
+          if (useCptecUrls) {
             const seenTs = new Set<string>();
             for (let back = 0; back <= 60; back += 6) {
               const baseTs = back === 0 ? timestamp : subtractMinutesFromTimestamp12UTC(timestamp, back);
@@ -2008,7 +2034,26 @@ export default function AoVivoPage() {
               urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
             }
           }
-          if (hasRedemetFallback(dr.station.slug)) {
+          // HD SIPAM: buscar frames reais da API
+          if (isHdMode && hasSipam && !sipamFramesPromise) {
+            const slug = dr.station.sipamSlug!;
+            const pt = productType;
+            sipamFramesPromise = fetch(`/api/sipam/frames?radar=${encodeURIComponent(slug)}`, { cache: 'no-store' })
+              .then(r => r.ok ? r.json() : { frames: [] })
+              .then(data => {
+                const frames: { ts12: string; sipamTs: string }[] = data.frames || [];
+                if (frames.length === 0) return null;
+                const recentFrames = frames.slice(-3).reverse();
+                const produto = pt === 'velocidade' ? 'rate' : 'dbz';
+                return recentFrames.map(f => ({
+                  url: `/api/sipam/image?radar=${slug}&produto=${produto}&timestamp=${f.sipamTs}`,
+                  ts12: f.ts12,
+                  source: 'cptec' as const,
+                }));
+              })
+              .catch(() => null);
+          }
+          if (hasRedemet) {
             const area = getRedemetArea(dr.station.slug)!;
             const ts12ForRedemet = getNearestRadarTimestamp(timestamp, dr.station);
             redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=true`)
@@ -2145,10 +2190,47 @@ export default function AoVivoPage() {
           markProcessed();
         };
         let ipmetStorageAttempted = false;
+        let sipamAttempted = false;
         const tryNext = () => {
           if (tryIndex < urlsToTry.length) {
             img.src = urlsToTry[tryIndex].url;
             tryIndex += 1;
+            return;
+          }
+          // SIPAM HD: tentar frames da API SIPAM (antes de storage/redemet)
+          if (!sipamAttempted && sipamFramesPromise) {
+            sipamAttempted = true;
+            sipamFramesPromise.then(sipamUrls => {
+              if (!sipamUrls || sipamUrls.length === 0) {
+                // SIPAM falhou → continuar para ipmet/redemet/storage
+                tryNext();
+                return;
+              }
+              let sipamIdx = 0;
+              const trySipamNext = () => {
+                if (sipamIdx >= sipamUrls.length) {
+                  // Todos SIPAM falharam → continuar cadeia
+                  tryNext();
+                  return;
+                }
+                const entry = sipamUrls[sipamIdx];
+                sipamIdx++;
+                img.onerror = () => trySipamNext();
+                img.onload = () => {
+                  recentNowcastingSuccessRef.current = Date.now();
+                  setNowcastingOffline(false);
+                  setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: entry.ts12 }));
+                  setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
+                  setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
+                  applyNoiseFilter();
+                  if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
+                    markProcessed();
+                  }
+                };
+                img.src = entry.url;
+              };
+              trySipamNext();
+            });
             return;
           }
           if (!ipmetStorageAttempted && ipmetStoragePromise) {
