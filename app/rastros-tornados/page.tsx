@@ -79,6 +79,17 @@ const RASTROS_USER_TYPES: { value: RastrosUserType; label: string }[] = [
 
 const BRAZIL_CENTER = { lat: -14.235, lng: -51.925 };
 
+/** Retorna [proxyUrl, directUrl] — fallback direto quando proxy retorna Backend Not Found (Firebase). */
+export function getRadarUrlsWithFallback(url: string): [string, string] {
+  if (typeof window === 'undefined') return [url, url];
+  if (url.startsWith('/api/')) {
+     // Se já é uma URL de API (proxy interno), não temos uma "directUrl" fácil sem reconstruir.
+     // Mas podemos retornar a própria URL e uma tentativa de reconstrução se for Chapecó.
+     return [url, url]; 
+  }
+  return [`/api/radar-proxy?url=${encodeURIComponent(url)}`, url];
+}
+
 /** Contorna CORS: imagens PNG do CPTEC não carregam em <img> cross-origin sem proxy. */
 function getProxiedRadarUrl(url: string): string {
   if (typeof window === 'undefined') return url;
@@ -2505,12 +2516,28 @@ export default function RastrosTornadosPage() {
     } else if (useNowcastingPng && radarStation) {
       const cptecStation = radarStation as CptecRadarStation;
       const ts12 = ts.slice(0, 12);
-      url = buildNowcastingPngUrl(cptecStation, ts12, radarProductType);
-      hasRedemetFb = hasRedemetFallback(cptecStation.slug);
+      const radarStationSlug = cptecStation.slug;
+
+      // Always try the proxied CPTEC URL first
+      const rawUrl = buildNowcastingPngUrl(cptecStation, ts12, radarProductType);
+      const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
+      urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+      // Also add the direct CPTEC URL as a fallback
+      if (directUrl) {
+        urlsToTry.push({ url: directUrl, source: 'cptec' });
+      }
+
+      // Se for Chapecó, tentamos também a URL direta via proxy (caso a API de metadados falhe)
+      if (radarStationSlug === 'chapeco') {
+        const directCptecUrl = buildNowcastingPngUrl(cptecStation, ts12, radarProductType, true);
+        const [directProxy] = getRadarUrlsWithFallback(directCptecUrl);
+        urlsToTry.push({ url: directProxy, source: 'cptec' });
+      }
+
+      hasRedemetFb = hasRedemetFallback(radarStationSlug);
       bounds = getRadarBounds() ?? getRadarImageBounds(cptecStation);
-      urlsToTry = radarSourceMode === 'hd' ? [] : [{ url: getProxiedRadarUrl(url), source: 'cptec' }];
       if (hasRedemetFb) {
-        const area = getRedemetArea(cptecStation.slug)!;
+        const area = getRedemetArea(radarStationSlug)!;
         redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`)
           .then(r => r.ok ? r.json() : null)
           .then(d => {
@@ -2776,56 +2803,67 @@ export default function RastrosTornadosPage() {
         ? getNearestRadarTimestamp(nominalTs, station)
         : nominalTs;
       
-      const cptecUrl = getProxiedRadarUrl(buildNowcastingPngUrl(station, ts12, radarProductType));
+      const rawUrl = buildNowcastingPngUrl(station, ts12, radarProductType);
+      const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
       const hasRedemetFb = hasRedemetFallback(station.slug);
       
-      let finalUrl = cptecUrl;
+      let urlsToTry: { url: string, source: 'cptec' | 'redemet' | 'backup' }[] = [
+        { url: proxyUrl, source: 'cptec' }
+      ];
+
+      // Para Chapecó, tenta também URL direta do CPTEC
+      if (station.slug === 'chapeco') {
+        const directUrl = buildNowcastingPngUrl(station, ts12, radarProductType, true);
+        const [directProxy] = getRadarUrlsWithFallback(directUrl);
+        urlsToTry.push({ url: directProxy, source: 'cptec' });
+      }
+
       let usedSource: 'cptec' | 'redemet' | 'backup' = 'cptec';
+
+      const checkRedemet = async () => {
+        if (!hasRedemetFb) return null;
+        const area = getRedemetArea(station.slug);
+        const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
+        return res?.url ? getProxiedRadarUrl(res.url) : null;
+      };
 
       const checkBackup = async () => {
         const backupApiUrl = getRadarBackupUrl(station.slug, ts12, radarProductType);
         const data = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
-        if (data?.url) {
-          return data.url;
-        }
-        return null;
+        return data?.url || null;
       };
 
-      // Tenta carregar CPTEC (fire-and-probe)
-      const cptecOk = await probeRadarImageExists(cptecUrl);
+      let finalUrl = '';
       
-      if (!cptecOk) {
-        // Fallback 1: Redemet (se for modo HD ou se CPTEC falhar)
-        if (hasRedemetFb) {
-          const area = getRedemetArea(station.slug);
-          const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
-          if (res?.url) {
-            finalUrl = getProxiedRadarUrl(res.url);
-            usedSource = 'redemet';
-          } else {
-            // Fallback 2: Storage Backup
-            const bUrl = await checkBackup();
-            if (bUrl) {
-              finalUrl = bUrl;
-              usedSource = 'backup';
-            }
-          }
-        } else {
-          // Fallback 2: Storage Backup
-          const bUrl = await checkBackup();
-          if (bUrl) {
-            finalUrl = bUrl;
-            usedSource = 'backup';
-          }
+      // 1. Tenta URLs do CPTEC (Proxy e Direto)
+      for (const entry of urlsToTry) {
+        const ok = await probeRadarImageExists(entry.url);
+        if (ok) {
+          finalUrl = entry.url;
+          usedSource = 'cptec';
+          break;
         }
-      } else if (radarSourceMode === 'hd' && hasRedemetFb) {
-        const area = getRedemetArea(station.slug);
-        const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
-        if (res?.url) {
-          finalUrl = getProxiedRadarUrl(res.url);
+      }
+
+      // 2. Fallback para Redemet
+      if (!finalUrl && hasRedemetFb) {
+        const rUrl = await checkRedemet();
+        if (rUrl) {
+          finalUrl = rUrl;
           usedSource = 'redemet';
         }
       }
+
+      // 3. Fallback final para Storage Backup
+      if (!finalUrl) {
+        const bUrl = await checkBackup();
+        if (bUrl) {
+          finalUrl = bUrl;
+          usedSource = 'backup';
+        }
+      }
+
+      if (!finalUrl) return; // Nada encontrado
 
       let timelineCfgSlug = station.slug;
       if (usedSource === 'redemet') {

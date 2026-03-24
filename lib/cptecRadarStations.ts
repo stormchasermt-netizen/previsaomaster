@@ -544,9 +544,10 @@ export function buildSipamHdPngUrl(
 export function buildNowcastingPngUrl(
   station: CptecRadarStation,
   ts12: string,
-  productType: 'reflectividade' | 'velocidade' = 'reflectividade'
+  productType: 'reflectividade' | 'velocidade' = 'reflectividade',
+  skipProxy = false
 ): string {
-  if (station.slug === 'chapeco') {
+  if (station.slug === 'chapeco' && !skipProxy) {
     const radarId = productType === 'velocidade' ? station.velocityId : station.id;
     return `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${ts12}`;
   }
