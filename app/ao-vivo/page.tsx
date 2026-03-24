@@ -525,6 +525,9 @@ export default function AoVivoPage() {
   const [minimizedNowcastingOffline, setMinimizedNowcastingOffline] = useState(false);
   /** Filtro de ruído de refletividade ativo (Super Res refletividade) — default: true */
   const [reflectivityFilterEnabled, setReflectivityFilterEnabled] = useState(true);
+  /** Overlay de limites municipais */
+  const [showMunicipios, setShowMunicipios] = useState(false);
+  const municipiosDataLayerRef = useRef<any>(null);
   /** Menu lateral aberto (hambúrguer) */
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   /** Split: 1 = painel único, 2 = Refletividade|Doppler lado a lado, 4 = grade 2x2 (simplificado por ora) */
@@ -1747,6 +1750,40 @@ export default function AoVivoPage() {
       prevotsPolygonsRef.current = [];
     };
   }, [mapReady, prevotsOverlayVisible, prevotsForecastToShow]);
+
+  /** Overlay de limites municipais (GeoJSON) */
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+    if (!showMunicipios) {
+      // Remover layer se já existir
+      if (municipiosDataLayerRef.current) {
+        municipiosDataLayerRef.current.setMap(null);
+        municipiosDataLayerRef.current = null;
+      }
+      return;
+    }
+    // Criar novo Data layer e carregar GeoJSON
+    const dataLayer = new google.maps.Data({ map });
+    dataLayer.setStyle({
+      strokeColor: '#9ca3af',
+      strokeWeight: 0.8,
+      strokeOpacity: 0.7,
+      fillOpacity: 0,
+      clickable: false,
+    });
+    municipiosDataLayerRef.current = dataLayer;
+    // Carregar GeoJSON de municípios do Brasil
+    dataLayer.loadGeoJson(
+      'https://raw.githubusercontent.com/tbrugz/geodata-br/refs/heads/master/geojson/geojs-100-mun.json'
+    );
+    return () => {
+      if (municipiosDataLayerRef.current) {
+        municipiosDataLayerRef.current.setMap(null);
+        municipiosDataLayerRef.current = null;
+      }
+    };
+  }, [mapReady, showMunicipios]);
 
   /** Detecta desktop (>= 1024px) para split vertical */
   useEffect(() => {
@@ -3437,6 +3474,18 @@ export default function AoVivoPage() {
             >
               <Layers className="w-4 h-4 transition-transform group-hover/prevots:scale-110" />
               Prevots
+            </button>
+            <button
+              onClick={() => setShowMunicipios(!showMunicipios)}
+              className={`group/mun flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-200 hover:scale-105 ${
+                showMunicipios 
+                  ? 'bg-amber-500/90 text-slate-900 shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:bg-amber-400' 
+                  : 'bg-[#0A0E17]/80 text-slate-400 border border-white/10 shadow-lg hover:text-white hover:border-amber-500/40'
+              }`}
+              title="Alternar Limites Municipais"
+            >
+              <MapPin className="w-4 h-4 transition-transform group-hover/mun:scale-110" />
+              Municípios
             </button>
             <AnimatePresence>
               {prevotsOverlayVisible && (

@@ -1735,9 +1735,13 @@ export default function RastrosTornadosPage() {
     setGoesLoading(false);
   };
 
-  /** Formata timestamp "20231015143010" → "15/10/2023 14:30 UTC" */
-  const formatGoesTimestamp = (ts: string) =>
-    `${ts.slice(6, 8)}/${ts.slice(4, 6)}/${ts.slice(0, 4)} ${ts.slice(8, 10)}:${ts.slice(10, 12)} UTC`;
+  /** Formata timestamp "20231015143010" ou "20260324T005000Z" → "15/10/2023 14:30 UTC" */
+  const formatGoesTimestamp = (ts: string) => {
+    if (!ts) return '';
+    // Remove T e Z para normalizar formato argentina ISO → YYYYMMDDHHMMSS
+    const clean = ts.replace('T', '').replace('Z', '');
+    return `${clean.slice(6, 8)}/${clean.slice(4, 6)}/${clean.slice(0, 4)} ${clean.slice(8, 10)}:${clean.slice(10, 12)} UTC`;
+  };
 
   const clearMeasure = () => {
     if (measurePolylineRef.current) {
