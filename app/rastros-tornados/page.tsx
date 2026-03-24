@@ -427,6 +427,16 @@ export default function RastrosTornadosPage() {
   const [timelineIndex, setTimelineIndex] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [timelineSpeed, setTimelineSpeed] = useState<1 | 2 | 5>(1);
+  /** Pré-carregamento da timeline: estado, progresso e cache de URLs */
+  const [timelinePreloading, setTimelinePreloading] = useState(false);
+  const [timelinePreloadProgress, setTimelinePreloadProgress] = useState(0);
+  const timelinePreloadedUrlsRef = useRef<Map<string, string>>(new Map());
+  /** Radares selecionados para exibir na timeline (slugs) */
+  const [timelineSelectedRadars, setTimelineSelectedRadars] = useState<Set<string>>(new Set());
+  /** Tipo de produto na timeline: refletividade ou velocidade (Doppler) */
+  const [timelineProductType, setTimelineProductType] = useState<'reflectividade' | 'velocidade'>('reflectividade');
+  /** Menu de radares da timeline visível */
+  const [showTimelineRadarMenu, setShowTimelineRadarMenu] = useState(false);
   const [dashboardCountry, setDashboardCountry] = useState<'all' | string>('all');
   const [newTrackNotifications, setNewTrackNotifications] = useState<TornadoTrack[]>([]);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
@@ -985,7 +995,7 @@ export default function RastrosTornadosPage() {
     });
   }, [tracks, yearFilter, intensityFilter]);
 
-  /** Datas permitidas para radar histórico: ±3 dias de cada rastro (evita uso indevido de imagens) */
+  /** Datas permitidas para radar histórico: ±1 dia de cada rastro */
   const allowedRadarDates = useMemo(() => {
     const set = new Set<string>();
     const addDays = (dateStr: string, delta: number): string => {
@@ -994,7 +1004,7 @@ export default function RastrosTornadosPage() {
       return d.toISOString().slice(0, 10);
     };
     tracksForRadarRestriction.forEach((t) => {
-      for (let d = -3; d <= 3; d++) set.add(addDays(t.date, d));
+      for (let d = -1; d <= 1; d++) set.add(addDays(t.date, d));
     });
     return set;
   }, [tracksForRadarRestriction]);
@@ -1060,6 +1070,15 @@ export default function RastrosTornadosPage() {
     }
     return [...CPTEC_RADAR_STATIONS];
   }, [showRadarTimelineSlider, intervalStartDate]);
+
+  /** Auto-selecionar todos os radares do intervalo por padrão */
+  useEffect(() => {
+    if (intervalRadars.length > 0) {
+      setTimelineSelectedRadars(new Set(intervalRadars.map(r => r.slug)));
+    } else {
+      setTimelineSelectedRadars(new Set());
+    }
+  }, [intervalRadars]);
 
   /** Estação ativa para timeline: único = selecionada, mosaico = primeira do raio */
   const timelineActiveStation = radarTimelineMode === 'unico'
@@ -1227,6 +1246,83 @@ export default function RastrosTornadosPage() {
     }
     setTimelineIndex((prev) => Math.min(prev, timelineDates.length - 1));
   }, [timelineDates.length]);
+
+  /** Pré-carregamento: busca todas as URLs de imagem para todos os timestamps da timeline e pré-carrega */
+  const handleTimelinePlay = useCallback(async () => {
+    if (timelinePlaying) {
+      setTimelinePlaying(false);
+      return;
+    }
+    const isDetailed = radarTimelineTimestamps.length > 0;
+    if (!isDetailed) {
+      // Timeline simples (datas): não precisa pré-carregar radar
+      setTimelinePlaying(true);
+      return;
+    }
+    // Já pré-carregou? (se as URLs estão em cache, inicia direto)
+    if (timelinePreloadedUrlsRef.current.size >= radarTimelineTimestamps.length) {
+      setTimelinePlaying(true);
+      return;
+    }
+    setTimelinePreloading(true);
+    setTimelinePreloadProgress(0);
+    const total = radarTimelineTimestamps.length;
+    let loaded = 0;
+    const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
+    const stations = allStations.filter(s => timelineSelectedRadars.has(s.slug));
+
+    for (let i = 0; i < total; i++) {
+      const nominalTs = radarTimelineTimestamps[i];
+      if (!nominalTs) { loaded++; setTimelinePreloadProgress(Math.round((loaded / total) * 100)); continue; }
+
+      // Para cada estação, buscar a URL (primeiro que funcionar via probe)
+      const probes = stations.map(async (station) => {
+        const ts12 = radarTimelineMode === 'mosaico' ? getNearestRadarTimestamp(nominalTs, station) : nominalTs;
+        const rawUrl = buildNowcastingPngUrl(station, ts12, timelineProductType);
+        const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
+
+        // Tenta CPTEC proxy
+        const ok = await probeRadarImageExists(proxyUrl);
+        if (ok) {
+          // Pré-carregar imagem no cache do browser
+          await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = proxyUrl; });
+          return;
+        }
+        // Chapecó direto
+        if (station.slug === 'chapeco') {
+          const directUrl = buildNowcastingPngUrl(station, ts12, timelineProductType, true);
+          const [directProxy] = getRadarUrlsWithFallback(directUrl);
+          const ok2 = await probeRadarImageExists(directProxy);
+          if (ok2) {
+            await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = directProxy; });
+            return;
+          }
+        }
+        // Redemet
+        if (hasRedemetFallback(station.slug)) {
+          const area = getRedemetArea(station.slug);
+          const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
+          if (res?.url) {
+            const rUrl = getProxiedRadarUrl(res.url);
+            await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = rUrl; });
+            return;
+          }
+        }
+        // Storage
+        const backupApiUrl = getRadarBackupUrl(station.slug, ts12, timelineProductType);
+        const data = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (data?.url) {
+          await new Promise<void>((resolve) => { const img = new Image(); img.onload = () => resolve(); img.onerror = () => resolve(); img.src = data.url; });
+        }
+      });
+      await Promise.all(probes);
+      loaded++;
+      setTimelinePreloadProgress(Math.round((loaded / total) * 100));
+    }
+    setTimelinePreloading(false);
+    setTimelinePreloadProgress(100);
+    setTimelinePlaying(true);
+  }, [timelinePlaying, radarTimelineTimestamps, radarTimelineMode, intervalRadars, timelineActiveStation, timelineSelectedRadars, timelineProductType]);
 
   useEffect(() => {
     if (!timelineEnabled || !timelinePlaying) return;
@@ -2796,14 +2892,15 @@ export default function RastrosTornadosPage() {
     if (!nominalTs) return;
 
     const map = mapInstanceRef.current;
-    const stations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
+    const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
+    const stations = allStations.filter(s => timelineSelectedRadars.has(s.slug));
 
     stations.forEach(async (station) => {
       const ts12 = radarTimelineMode === 'mosaico'
         ? getNearestRadarTimestamp(nominalTs, station)
         : nominalTs;
       
-      const rawUrl = buildNowcastingPngUrl(station, ts12, radarProductType);
+      const rawUrl = buildNowcastingPngUrl(station, ts12, timelineProductType);
       const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
       const hasRedemetFb = hasRedemetFallback(station.slug);
       
@@ -2813,7 +2910,7 @@ export default function RastrosTornadosPage() {
 
       // Para Chapecó, tenta também URL direta do CPTEC
       if (station.slug === 'chapeco') {
-        const directUrl = buildNowcastingPngUrl(station, ts12, radarProductType, true);
+        const directUrl = buildNowcastingPngUrl(station, ts12, timelineProductType, true);
         const [directProxy] = getRadarUrlsWithFallback(directUrl);
         urlsToTry.push({ url: directProxy, source: 'cptec' });
       }
@@ -2828,7 +2925,7 @@ export default function RastrosTornadosPage() {
       };
 
       const checkBackup = async () => {
-        const backupApiUrl = getRadarBackupUrl(station.slug, ts12, radarProductType);
+        const backupApiUrl = getRadarBackupUrl(station.slug, ts12, timelineProductType);
         const data = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
         return data?.url || null;
       };
@@ -2883,7 +2980,7 @@ export default function RastrosTornadosPage() {
       if (usedSource !== 'backup') {
         let cacheSlug = station.slug;
         if (usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
-        cacheRadarImage(finalUrl, cacheSlug, ts12, radarProductType);
+        cacheRadarImage(finalUrl, cacheSlug, ts12, timelineProductType);
       }
     });
 
@@ -2891,7 +2988,7 @@ export default function RastrosTornadosPage() {
       radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
       radarTimelineOverlaysRef.current = [];
     };
-  }, [showRadarTimelineSlider, radarTimelineMode, radarTimelineIndex, radarTimelineTimestamps, intervalRadars, timelineActiveStation, radarProductType, radarOpacity, radarConfigs, radarSourceMode]);
+  }, [showRadarTimelineSlider, radarTimelineMode, radarTimelineIndex, radarTimelineTimestamps, intervalRadars, timelineActiveStation, timelineProductType, radarOpacity, radarConfigs, radarSourceMode, timelineSelectedRadars]);
 
   // Radar play/pause
   useEffect(() => {
@@ -4821,8 +4918,12 @@ export default function RastrosTornadosPage() {
               </button>
               {timelineEnabled && (
                 <>
-                  <button type="button" onClick={() => setTimelinePlaying((v) => !v)} className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all" title={timelinePlaying ? 'Pausar' : 'Reproduzir'}>
-                    {timelinePlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  <button type="button" onClick={handleTimelinePlay} disabled={timelinePreloading} className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all disabled:opacity-50" title={timelinePlaying ? 'Pausar' : 'Reproduzir'}>
+                    {timelinePreloading ? <Loader2 className="w-4 h-4 animate-spin" /> : timelinePlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  </button>
+                  {/* Botão para abrir menu de radares da timeline */}
+                  <button type="button" onClick={() => setShowTimelineRadarMenu(v => !v)} className={`p-2 rounded-xl border shrink-0 transition-all ${showTimelineRadarMenu ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400' : 'bg-white/5 border-white/10 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10'}`} title="Radares e Doppler">
+                    <Radar className="w-4 h-4" />
                   </button>
                   <select
                     value={timelineSpeed}
@@ -4855,6 +4956,62 @@ export default function RastrosTornadosPage() {
           </div>
         </div>
         </div>
+
+        {/* Popup de pré-carregamento da timeline */}
+        {timelinePreloading && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-[#0F1629]/95 border border-cyan-500/30 rounded-2xl p-6 max-w-xs w-full mx-4 shadow-[0_0_40px_rgba(6,182,212,0.2)]">
+              <div className="flex items-center gap-3 mb-4">
+                <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+                <span className="text-sm font-bold text-white">Carregando imagens...</span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2.5 mb-2">
+                <div className="bg-gradient-to-r from-cyan-500 to-teal-400 h-2.5 rounded-full transition-all duration-300" style={{ width: `${timelinePreloadProgress}%` }} />
+              </div>
+              <p className="text-xs text-slate-400 text-center">{timelinePreloadProgress}%</p>
+            </div>
+          </div>
+        )}
+
+        {/* Menu de radares da timeline */}
+        {showTimelineRadarMenu && timelineEnabled && (
+          <div className="absolute top-16 left-4 z-[1000] bg-[#0F1629]/95 border border-white/10 rounded-2xl p-4 w-64 max-h-[60vh] overflow-y-auto shadow-[0_0_30px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Radares da Timeline</h3>
+              <button type="button" onClick={() => setShowTimelineRadarMenu(false)} className="text-slate-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex gap-1 mb-3">
+              <button type="button" onClick={() => setTimelineProductType('reflectividade')} className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${timelineProductType === 'reflectividade' ? 'bg-cyan-500 text-slate-900' : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'}`}>Reflet.</button>
+              <button type="button" onClick={() => setTimelineProductType('velocidade')} className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${timelineProductType === 'velocidade' ? 'bg-purple-500 text-white' : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'}`}>Doppler</button>
+            </div>
+            <div className="flex gap-1 mb-2">
+              <button type="button" onClick={() => setTimelineSelectedRadars(new Set(intervalRadars.map(r => r.slug)))} className="flex-1 text-[9px] text-cyan-400 hover:text-cyan-300 font-bold">Todos</button>
+              <button type="button" onClick={() => setTimelineSelectedRadars(new Set())} className="flex-1 text-[9px] text-slate-500 hover:text-slate-300 font-bold">Nenhum</button>
+            </div>
+            <div className="space-y-1">
+              {intervalRadars.map(r => (
+                <label key={r.slug} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={timelineSelectedRadars.has(r.slug)}
+                    onChange={(e) => {
+                      setTimelineSelectedRadars(prev => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(r.slug);
+                        else next.delete(r.slug);
+                        return next;
+                      });
+                    }}
+                    className="w-3.5 h-3.5 rounded accent-cyan-500 cursor-pointer"
+                  />
+                  <span className="text-xs text-slate-300">{r.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Backdrop para fechar painel Eventos no mobile */}
         {showMobileEventsPanel && (
