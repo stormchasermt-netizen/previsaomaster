@@ -54,14 +54,5 @@ export function getRadarBackupUrl(
   ts12: string,
   productType: 'reflectividade' | 'velocidade' = 'reflectividade'
 ): string {
-  const y = ts12.slice(0, 4);
-  const m = ts12.slice(4, 6);
-  const d = ts12.slice(6, 8);
-  const hh = ts12.slice(8, 10);
-  const mm = ts12.slice(10, 12);
-  const safeRadarId = radarId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const suffix = productType === 'velocidade' ? '_vel' : '';
-  const storagePath = `radar_backup/${safeRadarId}/${y}/${m}/${d}${hh}${mm}${suffix}.png`;
-  const bucket = 'studio-4398873450-7cc8f.firebasestorage.app';
-  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(storagePath)}?alt=media`;
+  return `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(ts12)}`;
 }

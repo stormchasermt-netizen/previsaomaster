@@ -2638,14 +2638,23 @@ export default function RastrosTornadosPage() {
         if (!backupAttempted) {
           backupAttempted = true;
           if (radarCfgSlug) {
-            const backupUrl = getRadarBackupUrl(radarCfgSlug, ts.slice(0, 12), radarProductType);
-            img.onerror = () => showError();
-            img.onload = () => {
-              setRadarError(null);
-              setRadarImageSource('backup');
-              showImage();
-            };
-            img.src = backupUrl;
+            const backupApiUrl = getRadarBackupUrl(radarCfgSlug, ts.slice(0, 12), radarProductType);
+            fetch(backupApiUrl)
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data?.url) {
+                  img.onerror = () => showError();
+                  img.onload = () => {
+                    setRadarError(null);
+                    setRadarImageSource('backup');
+                    showImage();
+                  };
+                  img.src = data.url;
+                } else {
+                  showError();
+                }
+              })
+              .catch(() => showError());
             return;
           }
         }
