@@ -93,3 +93,61 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export async function HEAD(req: NextRequest) {
+  const url = req.nextUrl.searchParams.get('url');
+  if (!url) {
+    return new NextResponse(null, { status: 400 });
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url, req.nextUrl.origin);
+  } catch {
+    return new NextResponse(null, { status: 400 });
+  }
+
+  if (parsed.origin === req.nextUrl.origin) {
+    return new NextResponse(null, { status: 400 });
+  }
+
+  if (!ALLOWED_HOSTS.includes(parsed.hostname) || url.includes('radar-proxy')) {
+    return new NextResponse(null, { status: 403 });
+  }
+
+  const isRedemet = ['redemet.decea.mil.br', 'estatico-redemet.decea.mil.br'].includes(parsed.hostname);
+  const headers: Record<string, string> = {
+    'User-Agent': isRedemet
+      ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      : 'Mozilla/5.0 (compatible; tornado-tracks-radar-proxy/1.0)',
+  };
+  if (isRedemet) {
+    headers['Referer'] = 'https://redemet.decea.mil.br/';
+  }
+
+  try {
+    const upstream = await fetch(url, {
+      method: 'HEAD',
+      headers,
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!upstream.ok) {
+      return new NextResponse(null, { status: upstream.status >= 400 && upstream.status < 500 ? upstream.status : 502 });
+    }
+
+    const contentType = upstream.headers.get('content-type') ?? 'image/png';
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=300',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch {
+    return new NextResponse(null, { status: 502 });
+  }
+}
