@@ -54,5 +54,5 @@ export function getRadarBackupUrl(
   ts12: string,
   productType: 'reflectividade' | 'velocidade' = 'reflectividade'
 ): string {
-  return `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(ts12)}`;
+  return `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(ts12)}&productType=${encodeURIComponent(productType)}`;
 }
