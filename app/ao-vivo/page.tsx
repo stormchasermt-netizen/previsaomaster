@@ -22,6 +22,8 @@ import {
   GET_RADAR_IPMET_URL,
   GET_RADAR_USP_URL,
   buildNowcastingPngUrl,
+  buildSipamHdPngUrl,
+  hasSipamHdFallback,
   getNearestRadarTimestamp,
   getNowMinusMinutesTimestamp12UTC,
   subtractMinutesFromTimestamp12UTC,
@@ -224,8 +226,8 @@ async function filterValidSliderMinutesAgo(
     }
   }
 
-  /** SIPAM-HD: busca frames reais da API SIPAM */
-  if (dr.type === 'cptec' && dr.station.org === 'sipam-hd' && dr.station.sipamSlug) {
+  /** SIPAM-HD: busca frames reais da API SIPAM (quando HD ativo e estação tem sipamSlug) */
+  if (dr.type === 'cptec' && dr.station.sipamSlug) {
     try {
       const res = await fetch(`/api/sipam/frames?radar=${encodeURIComponent(dr.station.sipamSlug)}`, { cache: 'no-store', signal });
       const data = await res.json().catch(() => ({ frames: [] }));
@@ -956,12 +958,16 @@ export default function AoVivoPage() {
       }
       if (dr.type === 'cptec') {
         const ts12 = getNearestRadarTimestamp(ts, dr.station);
+        // HD mode: se sipamSlug existe e modo é HD, usar SIPAM-HD
+        if (radarSourceMode === 'hd' && dr.station.sipamSlug) {
+          return getProxiedRadarUrl(buildSipamHdPngUrl(dr.station.sipamSlug, ts12, radarProductType));
+        }
         return getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, radarProductType));
       }
       const tsArg = getArgentinaRadarTimestamp(nominalDate, dr.station);
       return getProxiedRadarUrl(buildArgentinaRadarPngUrl(dr.station, tsArg, radarProductType));
     },
-    [editMinutesAgo, radarProductType]
+    [editMinutesAgo, radarProductType, radarSourceMode]
   );
 
   /** Template URL padrão para salvar (quando não há config) */
@@ -1059,7 +1065,7 @@ export default function AoVivoPage() {
         if (dr.station.slug === 'funceme-quixeramobim') {
           return { north: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.north, south: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.south, east: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.east, west: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.west };
         }
-        if (dr.station.org === 'sipam-hd' && dr.station.sipamSlug && SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug]) {
+        if (dr.station.sipamSlug && SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug] && radarSourceMode === 'hd') {
           const sb = SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug];
           return { north: sb.north, south: sb.south, east: sb.east, west: sb.west };
         }
@@ -3445,7 +3451,7 @@ export default function AoVivoPage() {
             >
               {reflectivityFilterEnabled ? '✨ Super Res' : '📡 Normal'}
             </button>
-            {redemetAvailableKeys.size > 0 && (
+            {(redemetAvailableKeys.size > 0 || displayRadars.some(dr => dr.type === 'cptec' && dr.station.sipamSlug)) && (
               <div className="flex gap-1 mt-1">
                 <button
                   onClick={() => setRadarSourceMode('superres')}
@@ -3465,7 +3471,7 @@ export default function AoVivoPage() {
                       ? 'bg-amber-500/30 border border-amber-400/60 text-amber-200'
                       : 'bg-[#0A0E17]/80 border border-white/10 text-slate-400 hover:text-white'
                   }`}
-                  title="REDEMET HD (maior cobertura)"
+                  title="HD (REDEMET / SIPAM — maior resolução)"
                 >
                   HD
                 </button>
