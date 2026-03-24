@@ -152,16 +152,16 @@ export const GET_RADAR_USP_URL = 'https://us-central1-studio-4398873450-7cc8f.cl
 
 /**
  * Bounds fixos da imagem IPMet (BBOX do getRadarIPMet Cloud Function).
- * A imagem WMS sempre usa BBOX=-26.5,-54.0,-18.5,-46.0 — usar estes valores
- * garante que Admin Radar e ao-vivo mostrem a mesma posição/extensão.
+ * Fonte WMS: BBOX=-5635549.220625,-2817774.6103125,-5322463.1528125,-2504688.5425 (EPSG:900913)
+ * Convertido para EPSG:4326.
  */
 export const IPMET_FIXED_BOUNDS = {
-  north: -18.5,
-  south: -26.5,
-  east: -46.0,
-  west: -54.0,
-  ne: { lat: -18.5, lng: -46.0 },
-  sw: { lat: -26.5, lng: -54.0 },
+  north: -21.943046,
+  south: -24.527135,
+  east: -47.8125,
+  west: -50.625,
+  ne: { lat: -21.943046, lng: -47.8125 },
+  sw: { lat: -24.527135, lng: -50.625 },
 };
 
 /**
