@@ -3347,15 +3347,15 @@ export default function RastrosTornadosPage() {
 
   // Listener para carregar os marcadores de comentários georreferenciados do banco
   useEffect(() => {
-    if (!selectedTrack || !mapInstanceRef.current) {
+    if (!selectedTrack || !mapInstanceRef.current || !db) {
       setTrackGeoPins([]);
       return;
     }
-    const isMeteorologist = rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista';
+    const isMeteorologist = (rastrosProfile?.userType as string) === 'admin' || rastrosProfile?.userType === 'meteorologista';
     if (!isMeteorologist) return;
 
     const q = query(
-      collection(db, 'track_comments'),
+      collection(db as any, 'track_comments'),
       where('trackId', '==', selectedTrack.id),
       where('location', '!=', null)
     );
@@ -3418,14 +3418,12 @@ export default function RastrosTornadosPage() {
   // Listener global de clique no mapa para Meteorologistas adicionarem Pins
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || measureMode || isRadarEditMode || splitCount === 2) return;
+    if (!map || measureMode || isRadarEditMode) return;
     
-    const isMeteorologist = rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista';
+    const isMeteorologist = (rastrosProfile?.userType as string) === 'admin' || rastrosProfile?.userType === 'meteorologista';
     if (!selectedTrack || !isMeteorologist) return;
 
     const listener = map.addListener('click', (e: any) => {
-      // Ignorar cliques se estivermos com Report Modal aberto ou outro popup modal
-      if (reportStep !== 'none') return;
       const lat = e.latLng.lat();
       const lng = e.latLng.lng();
       setMapPinCoordinate({ lat, lng });
@@ -3435,7 +3433,7 @@ export default function RastrosTornadosPage() {
       if (listener?.remove) listener.remove();
       else if (google?.maps?.event) google.maps.event.removeListener(listener);
     };
-  }, [mapReady, selectedTrack, rastrosProfile, measureMode, isRadarEditMode, splitCount, reportStep]);
+  }, [mapReady, selectedTrack, rastrosProfile, measureMode, isRadarEditMode]);
 
   if (!isMounted) {
     return (
@@ -5158,7 +5156,7 @@ export default function RastrosTornadosPage() {
               </span>
             </div>
           ) : (
-            (selectedTrack && (rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista')) ? (
+            (selectedTrack && ((rastrosProfile?.userType as string) === 'admin' || rastrosProfile?.userType === 'meteorologista')) ? (
               <MeteorologistCommentsPanel
                 trackId={selectedTrack.id}
                 currentUser={user}
@@ -5516,7 +5514,7 @@ export default function RastrosTornadosPage() {
       )}
 
       {/* Modal de Pin de Meteorologista no Mapa */}
-      {mapPinCoordinate && selectedTrack && (rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista') && (
+      {mapPinCoordinate && selectedTrack && ((rastrosProfile?.userType as string) === 'admin' || rastrosProfile?.userType === 'meteorologista') && (
         <MeteorologistMapPinModal
           trackId={selectedTrack.id}
           lat={mapPinCoordinate.lat}
