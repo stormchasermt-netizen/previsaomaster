@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { CloudLightning, ArrowRight } from 'lucide-react';
 
@@ -8,11 +8,18 @@ export default function Login() {
   const { loginWithGoogle, user } = useAuth();
   const router = useRouter();
 
+  const searchParams = useSearchParams();
+  
   useEffect(() => {
     if (user) {
-      router.push('/');
+      const trackId = searchParams.get('track');
+      if (trackId) {
+        router.push(`/rastros-tornados?track=${trackId}`);
+      } else {
+        router.push('/');
+      }
     }
-  }, [user, router]);
+  }, [user, router, searchParams]);
 
   const handleGoogleLogin = () => {
     loginWithGoogle();

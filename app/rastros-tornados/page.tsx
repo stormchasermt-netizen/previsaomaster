@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw, Eye } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -742,7 +742,7 @@ export default function RastrosTornadosPage() {
   const radarPlayIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Online users / presença
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const { addToast } = useToast();
   const [showOnlineUsers, setShowOnlineUsers] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<PresenceData[]>([]);
@@ -949,12 +949,14 @@ export default function RastrosTornadosPage() {
     if (found) setSelectedTrack(found);
   }, [tracks]);
 
-  // Exigir login para acessar a página de rastros
+  // Exigir login para acessar a página de rastros - CORREÇÃO: esperar carregar antes de chutar o balde
   useEffect(() => {
-    if (!user) {
-      router.push('/login');
+    if (!authLoading && !user) {
+      // Preservar o track ID na URL para o login poder devolver se quisermos (ou apenas evitar o refresh se já logado)
+      const currentParams = window.location.search;
+      router.push(`/login${currentParams}`);
     }
-  }, [user, router]);
+  }, [user, authLoading, router]);
 
   // Posição inicial do popup de detalhes (canto superior direito)
   useEffect(() => {
@@ -1311,7 +1313,7 @@ export default function RastrosTornadosPage() {
   }, [shareFeedback]);
 
   /** Centralizar mapa no rastro selecionado (bounds dos polígonos). */
-  const zoomToTrack = () => {
+  const zoomToTrack = useCallback(() => {
     if (!selectedTrack?.polygons?.length || !mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
     const bounds = new google.maps.LatLngBounds();
@@ -1321,7 +1323,14 @@ export default function RastrosTornadosPage() {
       ring.forEach(([lng, lat]) => bounds.extend({ lat, lng }));
     });
     map.fitBounds(bounds, { top: 80, right: 24, bottom: 80, left: 24 });
-  };
+  }, [selectedTrack]);
+
+  // Auto-zoom ao selecionar rastro (útil para links compartilhados)
+  useEffect(() => {
+    if (selectedTrack && mapReady) {
+      zoomToTrack();
+    }
+  }, [selectedTrack, mapReady, zoomToTrack]);
 
   const resetDateFilter = () => {
     setStartDate('');
