@@ -9,6 +9,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { BeforeAfterCompare } from '@/components/BeforeAfterCompare';
 import { updatePresence, removePresence, subscribeToPresence, type PresenceData } from '@/lib/presence';
+import MeteorologistCommentsPanel from './components/MeteorologistCommentsPanel';
+import MeteorologistMapPinModal from './components/MeteorologistMapPinModal';
+import { db } from '@/lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { MAP_STYLE_DARK, LOCATION_REQUEST_EXCLUDED_UIDS } from '../../lib/constants';
 import {
   TORNADO_TRACKS_DEMO,
@@ -757,6 +761,10 @@ export default function RastrosTornadosPage() {
   const onlineUserMarkersRef = useRef<any[]>([]);
   /** Visitas diárias do site (contador em tempo real) */
   const [todayVisitCount, setTodayVisitCount] = useState<number>(0);
+
+  const [mapPinCoordinate, setMapPinCoordinate] = useState<{lat: number; lng: number} | null>(null);
+  const [trackGeoPins, setTrackGeoPins] = useState<any[]>([]);
+  const trackGeoPinMarkersRef = useRef<any[]>([]);
 
   const heatmapOverlayRef = useRef<{ overlay: any; setPoints: (p: { lat: number; lng: number }[]) => void; remove: () => void } | null>(null);
   const trackImageGroundOverlayRef = useRef<any>(null);
@@ -3337,6 +3345,98 @@ export default function RastrosTornadosPage() {
     };
   }, [mapReady, measureMode]);
 
+  // Listener para carregar os marcadores de comentários georreferenciados do banco
+  useEffect(() => {
+    if (!selectedTrack || !mapInstanceRef.current) {
+      setTrackGeoPins([]);
+      return;
+    }
+    const isMeteorologist = rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista';
+    if (!isMeteorologist) return;
+
+    const q = query(
+      collection(db, 'track_comments'),
+      where('trackId', '==', selectedTrack.id),
+      where('location', '!=', null)
+    );
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const pins: any[] = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.location) pins.push({ id: doc.id, ...d });
+      });
+      setTrackGeoPins(pins);
+    });
+    return () => unsubscribe();
+  }, [selectedTrack, rastrosProfile]);
+
+  // Renderizar e limpar marcadores georreferenciados de Meteorologistas no Mapa
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const g = (window as any).google;
+    
+    trackGeoPinMarkersRef.current.forEach(m => m.setMap(null));
+    trackGeoPinMarkersRef.current = [];
+
+    trackGeoPins.forEach(pin => {
+      let marker;
+      if (g.maps.marker?.AdvancedMarkerElement) {
+        const el = document.createElement('div');
+        el.innerHTML = '<div style="background-color: #0284c7; padding: 4px; border-radius: 50%; border: 2px solid white; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.5);"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>';
+        
+        marker = new g.maps.marker.AdvancedMarkerElement({
+          position: pin.location,
+          map,
+          content: el,
+          title: `Comentário de ${pin.userName}`,
+        });
+      } else {
+        marker = new g.maps.Marker({
+          position: pin.location,
+          map,
+          title: `Comentário de ${pin.userName}`,
+          icon: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
+        });
+      }
+      
+      marker.addListener('click', () => {
+        setSelectedTrack(t => t); // Just in case
+        setSidebarCollapsed(false);
+        setShowMobileEventsPanel(true);
+      });
+      
+      trackGeoPinMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      trackGeoPinMarkersRef.current.forEach(m => m.setMap(null));
+      trackGeoPinMarkersRef.current = [];
+    };
+  }, [trackGeoPins, mapReady]);
+
+  // Listener global de clique no mapa para Meteorologistas adicionarem Pins
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || measureMode || isRadarEditMode || splitCount === 2) return;
+    
+    const isMeteorologist = rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista';
+    if (!selectedTrack || !isMeteorologist) return;
+
+    const listener = map.addListener('click', (e: any) => {
+      // Ignorar cliques se estivermos com Report Modal aberto ou outro popup modal
+      if (reportStep !== 'none') return;
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+      setMapPinCoordinate({ lat, lng });
+    });
+
+    return () => {
+      if (listener?.remove) listener.remove();
+      else if (google?.maps?.event) google.maps.event.removeListener(listener);
+    };
+  }, [mapReady, selectedTrack, rastrosProfile, measureMode, isRadarEditMode, splitCount, reportStep]);
+
   if (!isMounted) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-[#0A0E17] text-slate-500">
@@ -5058,6 +5158,19 @@ export default function RastrosTornadosPage() {
               </span>
             </div>
           ) : (
+            (selectedTrack && (rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista')) ? (
+              <MeteorologistCommentsPanel
+                trackId={selectedTrack.id}
+                currentUser={user}
+                userRole={rastrosProfile?.userType || null}
+                onClose={() => { setSidebarCollapsed(true); setShowMobileEventsPanel(false); }}
+                isMobile={showMobileEventsPanel}
+                onFlyToLocation={(lat, lng) => {
+                  mapInstanceRef.current?.panTo({ lat, lng });
+                  mapInstanceRef.current?.setZoom(14);
+                }}
+              />
+            ) : (
             <>
               <div className="flex items-center justify-between flex-shrink-0 p-3 border-b border-white/10">
                 <h3 className="font-bold text-cyan-400 text-xs uppercase tracking-widest flex items-center gap-2">
@@ -5246,6 +5359,7 @@ export default function RastrosTornadosPage() {
                 )}
               </div>
             </>
+            )
           )}
         </aside>
       </div>
@@ -5399,6 +5513,18 @@ export default function RastrosTornadosPage() {
             </>
           )}
         </div>
+      )}
+
+      {/* Modal de Pin de Meteorologista no Mapa */}
+      {mapPinCoordinate && selectedTrack && (rastrosProfile?.userType === 'admin' || rastrosProfile?.userType === 'meteorologista') && (
+        <MeteorologistMapPinModal
+          trackId={selectedTrack.id}
+          lat={mapPinCoordinate.lat}
+          lng={mapPinCoordinate.lng}
+          currentUser={user}
+          userRole={rastrosProfile.userType}
+          onClose={() => setMapPinCoordinate(null)}
+        />
       )}
     </div>
   );
