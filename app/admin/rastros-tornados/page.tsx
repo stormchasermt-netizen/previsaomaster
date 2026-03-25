@@ -637,15 +637,19 @@ export default function AdminRastrosTornadosPage() {
 
     rectInstanceRef.current = rect;
 
+    let timeoutId: NodeJS.Timeout | null = null;
     const updateBoundsState = () => {
       const b = rect.getBounds();
       if (!b) return;
-      const ne = b.getNorthEast();
-      const sw = b.getSouthWest();
-      setBoundsFunc({
-        ne: { lat: ne.lat(), lng: ne.lng() },
-        sw: { lat: sw.lat(), lng: sw.lng() },
-      });
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        const ne = b.getNorthEast();
+        const sw = b.getSouthWest();
+        setBoundsFunc({
+          ne: { lat: ne.lat(), lng: ne.lng() },
+          sw: { lat: sw.lat(), lng: sw.lng() },
+        });
+      }, 50);
     };
 
     rect.addListener('bounds_changed', updateBoundsState);

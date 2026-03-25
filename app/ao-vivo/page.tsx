@@ -1281,7 +1281,8 @@ export default function AoVivoPage() {
     setSliderValidVerifying(true);
     const ac = new AbortController();
     (async () => {
-      const valid = await filterValidSliderMinutesAgo(dr, radarProductType, maxMin, radarConfigs, ac.signal);
+      const productForTimeline = splitCount === 2 ? 'velocidade' : radarProductType;
+      const valid = await filterValidSliderMinutesAgo(dr, productForTimeline, maxMin, radarConfigs, ac.signal);
       if (!ac.signal.aborted) {
         setValidSliderMinutesAgo(valid);
         setSliderMinutesAgo((prev) => {
@@ -1293,7 +1294,7 @@ export default function AoVivoPage() {
       }
     })();
     return () => ac.abort();
-  }, [radarMode, focusedRadarKey, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs]);
+  }, [radarMode, focusedRadarKey, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs, splitCount]);
 
   /** Setas do teclado: controlam o slider de tempo do radar (evita mover o mapa). Captura no capture phase para ter prioridade sobre o mapa. */
   useEffect(() => {

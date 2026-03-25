@@ -1940,7 +1940,14 @@ export default function RastrosTornadosPage() {
 
     const map = mapInstanceRef.current;
     const addTrackListeners = (obj: any, track: TornadoTrack) => {
-      obj.addListener('click', () => setSelectedTrack(track));
+      obj.addListener('click', () => {
+        setSelectedTrack(track);
+        const key = `viewed_track_${track.id}`;
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, '1');
+          incrementTrackViews(track.id).catch(console.error);
+        }
+      });
     };
 
     const fillOpacityByF: Record<FScale, number> = {
@@ -5156,11 +5163,11 @@ export default function RastrosTornadosPage() {
               </span>
             </div>
           ) : (
-            (selectedTrack && ((rastrosProfile?.userType as string) === 'admin' || rastrosProfile?.userType === 'meteorologista')) ? (
+            (selectedTrack && (user?.type === 'admin' || rastrosProfile?.userType === 'meteorologista')) ? (
               <MeteorologistCommentsPanel
                 trackId={selectedTrack.id}
                 currentUser={user}
-                userRole={rastrosProfile?.userType || null}
+                userRole={user?.type === 'admin' ? 'admin' : (rastrosProfile?.userType || null)}
                 onClose={() => { setSidebarCollapsed(true); setShowMobileEventsPanel(false); }}
                 isMobile={showMobileEventsPanel}
                 onFlyToLocation={(lat, lng) => {
@@ -5514,13 +5521,13 @@ export default function RastrosTornadosPage() {
       )}
 
       {/* Modal de Pin de Meteorologista no Mapa */}
-      {mapPinCoordinate && selectedTrack && ((rastrosProfile?.userType as string) === 'admin' || rastrosProfile?.userType === 'meteorologista') && (
+      {mapPinCoordinate && selectedTrack && (user?.type === 'admin' || rastrosProfile?.userType === 'meteorologista') && (
         <MeteorologistMapPinModal
           trackId={selectedTrack.id}
           lat={mapPinCoordinate.lat}
           lng={mapPinCoordinate.lng}
           currentUser={user}
-          userRole={rastrosProfile.userType}
+          userRole={user?.type === 'admin' ? 'admin' : (rastrosProfile?.userType || 'civil')}
           onClose={() => setMapPinCoordinate(null)}
         />
       )}
