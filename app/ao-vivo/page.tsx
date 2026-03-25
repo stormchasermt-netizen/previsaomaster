@@ -1980,8 +1980,8 @@ export default function AoVivoPage() {
       let storageFallbackPromise: Promise<string | null> | null = null;
       /** Promise que resolve para array de URLs SIPAM-HD (com timestamps exatos da API) */
       let sipamFramesPromise: Promise<UrlEntry[] | null> | null = null;
-      // Preparar Storage fallback para todos radares CPTEC
-      if (dr.type === 'cptec' && dr.station.slug !== 'ipmet-bauru' && dr.station.slug !== 'usp-starnet' && dr.station.slug !== 'climatempo-poa') {
+      // Preparar Storage fallback apenas para reflectividade (storage não salva velocidade)
+      if (productType === 'reflectividade' && dr.type === 'cptec' && dr.station.slug !== 'ipmet-bauru' && dr.station.slug !== 'usp-starnet' && dr.station.slug !== 'climatempo-poa') {
         const fbTs12 = useFallback ? getNowMinusMinutesTimestamp12UTC(3) : timestamp;
         storageFallbackPromise = fetch(`/api/radar-storage-fallback?radarId=${encodeURIComponent(dr.station.slug)}&ts12=${encodeURIComponent(fbTs12)}`)
           .then(r => r.ok ? r.json() : null)
@@ -2048,7 +2048,7 @@ export default function AoVivoPage() {
               })
               .catch(() => null);
           }
-          if (hasRedemet) {
+          if (hasRedemet && productType === 'reflectividade') {
             const area = getRedemetArea(dr.station.slug)!;
             const ts12ForRedemet = getNearestRadarTimestamp(nominalTs, dr.station);
             redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=false`)
@@ -2096,7 +2096,7 @@ export default function AoVivoPage() {
               })
               .catch(() => null);
           }
-          if (hasRedemet) {
+          if (hasRedemet && productType === 'reflectividade') {
             const area = getRedemetArea(dr.station.slug)!;
             const ts12ForRedemet = getNearestRadarTimestamp(timestamp, dr.station);
             redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=true`)

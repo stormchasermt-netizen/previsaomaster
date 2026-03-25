@@ -340,7 +340,9 @@ export default function AdminRastrosTornadosPage() {
       chromaKey: number = 0,
       crop: { top: number; bottom: number; left: number; right: number } = { top: 0, bottom: 0, left: 0, right: 0 }
     ) => {
-      const ov = new google.maps.OverlayView();
+      const ov = new google.maps.OverlayView() as any;
+      ov._url = url;
+      ov._bounds = bounds;
       let divEl: HTMLDivElement | null = null;
       ov.onAdd = () => {
         divEl = document.createElement('div');
@@ -366,13 +368,25 @@ export default function AdminRastrosTornadosPage() {
         if (!divEl) return;
         const proj = ov.getProjection();
         if (!proj) return;
-        const sw = proj.fromLatLngToDivPixel(bounds.getSouthWest());
-        const ne = proj.fromLatLngToDivPixel(bounds.getNorthEast());
+        const sw = proj.fromLatLngToDivPixel(ov._bounds.getSouthWest());
+        const ne = proj.fromLatLngToDivPixel(ov._bounds.getNorthEast());
         if (!sw || !ne) return;
         divEl.style.left   = Math.min(sw.x, ne.x) + 'px';
         divEl.style.top    = Math.min(sw.y, ne.y) + 'px';
         divEl.style.width  = Math.abs(ne.x - sw.x) + 'px';
         divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
+      };
+      ov.update = (newBounds: any, newOpacity: number, newRotation: number = 0, newChromaKey: number = 0, newCrop: any = { top: 0, bottom: 0, left: 0, right: 0 }) => {
+        ov._bounds = newBounds;
+        if (divEl) {
+          const img = divEl.querySelector('img');
+          if (img) {
+            let mixBlend = newChromaKey > 0 ? 'mix-blend-mode: multiply;' : '';
+            let clipPath = (newCrop.top > 0 || newCrop.bottom > 0 || newCrop.left > 0 || newCrop.right > 0) ? `clip-path: inset(${newCrop.top}% ${newCrop.right}% ${newCrop.bottom}% ${newCrop.left}%);` : '';
+            img.style.cssText = `width:100%;height:100%;opacity:${newOpacity};object-fit:fill;image-rendering:auto;image-rendering:smooth;transform:rotate(${newRotation}deg);transform-origin:center;${mixBlend}${clipPath}`;
+          }
+        }
+        ov.draw();
       };
       ov.onRemove = () => {
         divEl?.parentNode?.removeChild(divEl);
@@ -382,40 +396,49 @@ export default function AdminRastrosTornadosPage() {
       return ov;
     };
 
-    if (overlayBeforeRef.current) {
-      (overlayBeforeRef.current as any).setMap?.(null);
-      overlayBeforeRef.current = null;
-    }
-    if (overlayAfterRef.current) {
-      (overlayAfterRef.current as any).setMap?.(null);
-      overlayAfterRef.current = null;
-    }
     if (!panelOpen) return;
 
     const beforeUrl = beforeImage?.trim();
     const afterUrl = afterImage?.trim();
 
-    // Limpar overlays de imagens secundárias existentes
-    Object.values(secondaryOverlaysRef.current).forEach((overlay: any) => overlay?.setMap?.(null));
-    secondaryOverlaysRef.current = {};
-
     if (showOverlayBefore && beforeUrl && beforeImageBounds) {
       const bounds = makeBounds(beforeImageBounds);
-      const overlay = createImageOverlay(beforeUrl, bounds, overlayBeforeOpacity);
-      overlayBeforeRef.current = overlay;
-      map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      if (overlayBeforeRef.current && (overlayBeforeRef.current as any)._url === beforeUrl) {
+         (overlayBeforeRef.current as any).update(bounds, overlayBeforeOpacity);
+      } else {
+         if (overlayBeforeRef.current) (overlayBeforeRef.current as any).setMap(null);
+         const overlay = createImageOverlay(beforeUrl, bounds, overlayBeforeOpacity);
+         overlayBeforeRef.current = overlay;
+         map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      }
+    } else {
+      if (overlayBeforeRef.current) {
+         (overlayBeforeRef.current as any).setMap(null);
+         overlayBeforeRef.current = null;
+      }
     }
+
     if (showOverlayAfter && afterUrl && afterImageBounds) {
       const bounds = makeBounds(afterImageBounds);
-      const overlay = createImageOverlay(afterUrl, bounds, overlayAfterOpacity);
-      overlayAfterRef.current = overlay;
-      // Somente faz fitBounds se não estiver no modo de mapeamento (para não atrapalhar o usuário editando)
-      if (imageMappingMode === 'none') {
-        map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      if (overlayAfterRef.current && (overlayAfterRef.current as any)._url === afterUrl) {
+         (overlayAfterRef.current as any).update(bounds, overlayAfterOpacity);
+      } else {
+         if (overlayAfterRef.current) (overlayAfterRef.current as any).setMap(null);
+         const overlay = createImageOverlay(afterUrl, bounds, overlayAfterOpacity);
+         overlayAfterRef.current = overlay;
+         if (imageMappingMode === 'none') {
+           map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+         }
+      }
+    } else {
+      if (overlayAfterRef.current) {
+         (overlayAfterRef.current as any).setMap(null);
+         overlayAfterRef.current = null;
       }
     }
 
     // Overlays para imagens secundárias baseadas no checkbox 'Mostrar no mapa' OU modo de mapeamento
+    const activeSecIds = new Set<string>();
     secondaryAfterImages.forEach(secImg => {
       if (!secImg.url || !secImg.bounds || !secImg.bounds.ne || !secImg.bounds.sw) return;
       if (isNaN(secImg.bounds.ne.lat) || isNaN(secImg.bounds.sw.lat)) return;
@@ -425,20 +448,34 @@ export default function AdminRastrosTornadosPage() {
       
       if (!isVisible) return;
       
+      activeSecIds.add(secImg.id);
       const bounds = makeBounds(secImg.bounds);
       const opacity = secImg.opacity ?? 0.8;
       const rotation = secImg.rotation ?? 0;
-      const overlay = createImageOverlay(secImg.url, bounds, opacity, rotation);
       
-      secondaryOverlaysRef.current[secImg.id] = overlay;
-      overlay.setMap(map);
+      if (secondaryOverlaysRef.current[secImg.id] && secondaryOverlaysRef.current[secImg.id]._url === secImg.url) {
+         secondaryOverlaysRef.current[secImg.id].update(bounds, opacity, rotation);
+      } else {
+         if (secondaryOverlaysRef.current[secImg.id]) secondaryOverlaysRef.current[secImg.id].setMap(null);
+         const overlay = createImageOverlay(secImg.url, bounds, opacity, rotation);
+         secondaryOverlaysRef.current[secImg.id] = overlay as any;
+         overlay.setMap(map);
+      }
       
       if (isMappingThis) {
-        (overlay as any)._isSecondaryMapping = true; // manter marcação para saber
+        secondaryOverlaysRef.current[secImg.id]._isSecondaryMapping = true; // manter marcação para saber
       }
+    });
+    // Limpar overlays inativos
+    Object.keys(secondaryOverlaysRef.current).forEach(id => {
+       if (!activeSecIds.has(id)) {
+          secondaryOverlaysRef.current[id]?.setMap?.(null);
+          delete secondaryOverlaysRef.current[id];
+       }
     });
 
     // Overlays para modelos numéricos
+    const activeNumIds = new Set<string>();
     numericalModels.forEach(numModel => {
       if (!numModel.url || !numModel.bounds || !numModel.bounds.ne || !numModel.bounds.sw) return;
       if (isNaN(numModel.bounds.ne.lat) || isNaN(numModel.bounds.sw.lat)) return;
@@ -448,36 +485,49 @@ export default function AdminRastrosTornadosPage() {
       
       if (!isVisible) return;
       
+      activeNumIds.add(numModel.id);
       const bounds = makeBounds(numModel.bounds);
       const opacity = numModel.opacity ?? 0.8;
       const rotation = numModel.rotation ?? 0;
       const chroma = numModel.chromaKey ?? 0;
-      const overlay = createImageOverlay(numModel.url, bounds, opacity, rotation, chroma, {
+      const cropCfg = {
         top: numModel.cropTop ?? 0,
         bottom: numModel.cropBottom ?? 0,
         left: numModel.cropLeft ?? 0,
         right: numModel.cropRight ?? 0
-      });
+      };
       
-      numericalOverlaysRef.current[numModel.id] = overlay;
-      overlay.setMap(map);
+      if (numericalOverlaysRef.current[numModel.id] && numericalOverlaysRef.current[numModel.id]._url === numModel.url) {
+         numericalOverlaysRef.current[numModel.id].update(bounds, opacity, rotation, chroma, cropCfg);
+      } else {
+         if (numericalOverlaysRef.current[numModel.id]) numericalOverlaysRef.current[numModel.id].setMap(null);
+         const overlay = createImageOverlay(numModel.url, bounds, opacity, rotation, chroma, cropCfg);
+         numericalOverlaysRef.current[numModel.id] = overlay as any;
+         overlay.setMap(map);
+      }
+    });
+    // Limpar overlays inativos
+    Object.keys(numericalOverlaysRef.current).forEach(id => {
+       if (!activeNumIds.has(id)) {
+          numericalOverlaysRef.current[id]?.setMap?.(null);
+          delete numericalOverlaysRef.current[id];
+       }
     });
 
+    // Removendo return function() {...} para não destruir as instâncias no ciclo de rendering
+  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode, showSecondaryOnMap, secondaryOpacities, secondaryAfterImages, numericalModels, showNumericalOnMap]);
+
+  // Limpeza de todos os overlays ao desmontar o componente ou caso mapReady fique false
+  useEffect(() => {
     return () => {
-      if (overlayBeforeRef.current) {
-        (overlayBeforeRef.current as any).setMap?.(null);
-        overlayBeforeRef.current = null;
-      }
-      if (overlayAfterRef.current) {
-        (overlayAfterRef.current as any).setMap?.(null);
-        overlayAfterRef.current = null;
-      }
+      if (overlayBeforeRef.current) { (overlayBeforeRef.current as any).setMap(null); overlayBeforeRef.current = null; }
+      if (overlayAfterRef.current) { (overlayAfterRef.current as any).setMap(null); overlayAfterRef.current = null; }
       Object.values(secondaryOverlaysRef.current).forEach((overlay: any) => overlay?.setMap?.(null));
       secondaryOverlaysRef.current = {};
       Object.values(numericalOverlaysRef.current).forEach((overlay: any) => overlay?.setMap?.(null));
       numericalOverlaysRef.current = {};
     };
-  }, [mapReady, panelOpen, showOverlayBefore, showOverlayAfter, beforeImage, beforeImageBounds, afterImage, afterImageBounds, overlayBeforeOpacity, overlayAfterOpacity, imageMappingMode, showSecondaryOnMap, secondaryOpacities, secondaryAfterImages, numericalModels, showNumericalOnMap]);
+  }, []);
 
   // Gerenciamento do Retângulo de Mapeamento de Imagem
   useEffect(() => {
