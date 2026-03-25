@@ -141,6 +141,17 @@ service cloud.firestore {
         resource.get('adminId', '') == '' || resource.data.adminId == request.auth.uid
       );
     }
+    
+    /**
+     * Fórum dos Meteorologistas / Comentários nos rastros.
+     * Leitura: qualquer usuário logado.
+     * Escrita: qualquer usuário logado (o painel já é restrito na UI para Meteorologistas/Admins).
+     */
+    match /track_comments/{commentId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
 
     /**
      * Configurações de radares meteorológicos (bounds, URL template).
