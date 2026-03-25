@@ -660,7 +660,8 @@ export default function AdminRastrosTornadosPage() {
         rectInstanceRef.current = null;
       }
     };
-  }, [imageMappingMode, mapReady, beforeImageBounds, afterImageBounds, secondaryAfterImages, numericalModels]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageMappingMode, mapReady]);
 
   // Desenhar todos os rastros no mapa (exceto o que está sendo editado); clique abre edição
   useEffect(() => {
