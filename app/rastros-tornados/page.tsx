@@ -1990,14 +1990,25 @@ export default function RastrosTornadosPage() {
           prevotsPolygonsRef.current.push(gPoly);
         });
       if (!track.polygons?.length) return;
+      const isSelectedView = !!selectedTrack;
+      const maxF = getMaxIntensity(track);
+
       track.polygons
         .sort((a, b) => F_SCALE_ORDER.indexOf(a.intensity) - F_SCALE_ORDER.indexOf(b.intensity))
         .forEach((poly) => {
           const ring = poly.coordinates[0];
           if (!ring || ring.length < 3) return;
           const path = ring.map(([lng, lat]) => ({ lat, lng }));
-          const color = TORNADO_TRACK_COLORS[poly.intensity];
-          const origFill = fillOpacityByF[poly.intensity];
+          
+          // Se for a visão de 'todos os rastros' (nenhum selecionado), 
+          // usaremos a cor do maxF para desenhar uma grande mancha sólida
+          const color = isSelectedView 
+            ? TORNADO_TRACK_COLORS[poly.intensity] 
+            : (maxF ? TORNADO_TRACK_COLORS[maxF] : TORNADO_TRACK_COLORS[poly.intensity]);
+            
+          const origFill = isSelectedView 
+            ? fillOpacityByF[poly.intensity] 
+            : (maxF ? fillOpacityByF[maxF] : fillOpacityByF[poly.intensity]);
           // Glow: polígono atrás com contorno mais grosso e semi-transparente
           const glowPoly = new google.maps.Polygon({
             paths: path,

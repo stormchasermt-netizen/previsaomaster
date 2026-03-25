@@ -145,12 +145,12 @@ export function previousFScale(f: FScale): FScale | null {
 
 /** Cores por intensidade (F) para o mapa — estilo NOAA: camada externa (F0) ciano/teal, depois verde, laranja, núcleo vermelho. */
 export const TORNADO_TRACK_COLORS: Record<FScale, string> = {
-  F0: '#2DD4BF',  // Ciano/teal — área mais externa do rastro
+  F0: '#3B82F6',  // Azul
   F1: '#22C55E',  // Verde
-  F2: '#84CC16',  // Verde-amarelo
-  F3: '#EAB308',  // Amarelo / amarelo-laranja
-  F4: '#F97316',  // Laranja
-  F5: '#B91C1C',  // Vermelho escuro — núcleo de maior intensidade
+  F2: '#EAB308',  // Amarelo
+  F3: '#F97316',  // Laranja
+  F4: '#EF4444',  // Vermelho
+  F5: '#A855F7',  // Roxo
 };
 
 /** Verifica se o ponto [lng, lat] está dentro do polígono (anel exterior = coordinates[0]). */
