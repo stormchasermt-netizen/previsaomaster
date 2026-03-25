@@ -11,6 +11,7 @@ import { BeforeAfterCompare } from '@/components/BeforeAfterCompare';
 import { updatePresence, removePresence, subscribeToPresence, type PresenceData } from '@/lib/presence';
 import MeteorologistCommentsPanel from './components/MeteorologistCommentsPanel';
 import MeteorologistMapPinModal from './components/MeteorologistMapPinModal';
+import RecentCommentPreview from './components/RecentCommentPreview';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { MAP_STYLE_DARK, LOCATION_REQUEST_EXCLUDED_UIDS } from '../../lib/constants';
@@ -5183,7 +5184,7 @@ export default function RastrosTornadosPage() {
               </span>
             </div>
           ) : (
-            (selectedTrack && (user?.type === 'admin' || rastrosProfile?.userType === 'meteorologista')) ? (
+            selectedTrack ? (
               <MeteorologistCommentsPanel
                 trackId={selectedTrack.id}
                 currentUser={user}
@@ -5373,6 +5374,7 @@ export default function RastrosTornadosPage() {
                                 )}
                               </div>
                             </div>
+                            <RecentCommentPreview trackId={t.id} />
                           </button>
                         </li>
                       );

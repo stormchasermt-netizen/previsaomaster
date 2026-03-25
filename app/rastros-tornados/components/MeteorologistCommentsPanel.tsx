@@ -43,6 +43,8 @@ export default function MeteorologistCommentsPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const hasPermission = userRole === 'admin' || userRole === 'meteorologista';
+
   useEffect(() => {
     if (!trackId) return;
 
@@ -140,7 +142,7 @@ export default function MeteorologistCommentsPanel({
       <div className="flex items-center justify-between p-3 border-b border-white/10 shrink-0 bg-blue-950/30">
         <h3 className="font-bold text-blue-400 text-xs flex items-center gap-2">
           <MessageSquare className="w-4 h-4" />
-          Fórum dos Meteorologistas
+          Fórum dos Meteorologistas {hasPermission ? '' : '(Leitura)'}
         </h3>
         <button
           onClick={onClose}
@@ -203,7 +205,7 @@ export default function MeteorologistCommentsPanel({
       </div>
 
       {/* File Preview */}
-      {files.length > 0 && (
+      {hasPermission && files.length > 0 && (
         <div className="shrink-0 p-2 border-t border-white/5 flex gap-2 overflow-x-auto bg-black/20">
           {files.map((f, i) => (
             <div key={i} className="relative shrink-0 w-12 h-12 bg-slate-800 rounded-md border border-white/10 overflow-hidden group">
@@ -232,7 +234,8 @@ export default function MeteorologistCommentsPanel({
       )}
 
       {/* Input Form */}
-      <div className="shrink-0 p-3 bg-slate-900 border-t border-white/10 flex gap-2 items-end">
+      {hasPermission ? (
+        <div className="shrink-0 p-3 bg-slate-900 border-t border-white/10 flex gap-2 items-end">
         <input 
           type="file" 
           ref={fileInputRef} 
@@ -271,6 +274,12 @@ export default function MeteorologistCommentsPanel({
           {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>
       </div>
+      ) : (
+        <div className="shrink-0 p-3 bg-slate-900 border-t border-white/10 text-center flex flex-col items-center justify-center gap-1">
+          <span className="text-xs text-slate-400 font-medium">Somente Leitura</span>
+          <span className="text-[10px] text-slate-500">Apenas a equipe técnica pode enviar mensagens e anexos neste fórum.</span>
+        </div>
+      )}
     </div>
   );
 }
