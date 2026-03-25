@@ -2017,15 +2017,40 @@ export default function AoVivoPage() {
         if (useFallback) {
           if (useCptecUrls) {
             const seenTs = new Set<string>();
+            const nowMs = Date.now();
             for (let back = 0; back <= 60; back += 6) {
               const baseTs = back === 0 ? nominalTs : subtractMinutesFromTimestamp12UTC(nominalTs, back);
               const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
               if (seenTs.has(ts12)) continue;
               seenTs.add(ts12);
-              const rawUrl = buildNowcastingPngUrl(dr.station, ts12, productType);
-              const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
-              urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
+
+              const directUrl = buildNowcastingPngUrl(dr.station, ts12, productType, true);
+              const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
+
+              // 1. Prioridade: Direto (WMS / S2)
               urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
+
+              // 2. Proxy/API: Apenas se for recente (< 48h) e se for diferente da direta
+              if (proxyUrl !== directUrl) {
+                const imgDate = new Date(Date.UTC(
+                  parseInt(ts12.slice(0, 4), 10),
+                  parseInt(ts12.slice(4, 6), 10) - 1,
+                  parseInt(ts12.slice(6, 8), 10),
+                  parseInt(ts12.slice(8, 10), 10),
+                  parseInt(ts12.slice(10, 12), 10)
+                ));
+                const hoursOld = (nowMs - imgDate.getTime()) / 3600000;
+                if (hoursOld < 48) {
+                  urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
+                }
+              } else {
+                // Para radares padrão, o skipProxy não muda a URL (já é S0-S3). 
+                // Nesse caso o getRadarUrlsWithFallback adiciona o radar-proxy se necessário.
+                const proxied = getProxiedRadarUrl(directUrl);
+                if (proxied !== directUrl) {
+                   urlsToTry.push({ url: proxied, ts12, source: 'cptec' });
+                }
+              }
             }
           }
           // HD SIPAM: buscar frames reais da API e montar URLs com timestamps exatos
@@ -2066,15 +2091,38 @@ export default function AoVivoPage() {
         } else {
           if (useCptecUrls) {
             const seenTs = new Set<string>();
+            const nowMs = Date.now();
             for (let back = 0; back <= 60; back += 6) {
               const baseTs = back === 0 ? timestamp : subtractMinutesFromTimestamp12UTC(timestamp, back);
               const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
               if (seenTs.has(ts12)) continue;
               seenTs.add(ts12);
-              const rawUrl = buildNowcastingPngUrl(dr.station, ts12, productType);
-              const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
-              urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
+
+              const directUrl = buildNowcastingPngUrl(dr.station, ts12, productType, true);
+              const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
+
+              // 1. Prioridade: Direto (WMS / S2)
               urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
+
+              // 2. Proxy/API: Apenas se for recente (< 48h) e se for diferente da direta
+              if (proxyUrl !== directUrl) {
+                const imgDate = new Date(Date.UTC(
+                  parseInt(ts12.slice(0, 4), 10),
+                  parseInt(ts12.slice(4, 6), 10) - 1,
+                  parseInt(ts12.slice(6, 8), 10),
+                  parseInt(ts12.slice(8, 10), 10),
+                  parseInt(ts12.slice(10, 12), 10)
+                ));
+                const hoursOld = (nowMs - imgDate.getTime()) / 3600000;
+                if (hoursOld < 48) {
+                  urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
+                }
+              } else {
+                const proxied = getProxiedRadarUrl(directUrl);
+                if (proxied !== directUrl) {
+                   urlsToTry.push({ url: proxied, ts12, source: 'cptec' });
+                }
+              }
             }
           }
           // HD SIPAM: buscar frames reais da API

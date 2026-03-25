@@ -21,25 +21,20 @@ export async function GET(req: NextRequest) {
   let parsed: URL;
   try {
     parsed = new URL(url);
-  } catch {
-    return NextResponse.json({ error: 'Invalid url' }, { status: 400 });
-  }
+    if (!ALLOWED_HOSTS.includes(parsed.hostname)) {
+      return NextResponse.json({ exists: false, hostNotAllowed: true });
+    }
 
-  if (!ALLOWED_HOSTS.includes(parsed.hostname)) {
-    return NextResponse.json({ error: 'Host not allowed' }, { status: 403 });
-  }
+    const isRedemet = ['redemet.decea.mil.br', 'estatico-redemet.decea.mil.br'].includes(parsed.hostname);
+    const headers: Record<string, string> = {
+      'User-Agent': isRedemet
+        ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        : 'Mozilla/5.0 (compatible; tornado-tracks-radar-check/1.0)',
+    };
+    if (isRedemet) {
+      headers['Referer'] = 'https://redemet.decea.mil.br/';
+    }
 
-  const isRedemet = ['redemet.decea.mil.br', 'estatico-redemet.decea.mil.br'].includes(parsed.hostname);
-  const headers: Record<string, string> = {
-    'User-Agent': isRedemet
-      ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      : 'Mozilla/5.0 (compatible; tornado-tracks-radar-check/1.0)',
-  };
-  if (isRedemet) {
-    headers['Referer'] = 'https://redemet.decea.mil.br/';
-  }
-
-  try {
     const upstream = await fetch(url, {
       method: 'HEAD',
       headers,
@@ -49,7 +44,10 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ exists: upstream.ok });
-  } catch {
+  } catch (err: any) {
+    if (err.name !== 'AbortError') {
+      console.error(`[radar-exists] Error checking ${url}:`, err.message);
+    }
     return NextResponse.json({ exists: false });
   }
 }

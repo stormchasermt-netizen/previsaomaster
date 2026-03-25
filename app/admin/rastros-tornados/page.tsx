@@ -560,6 +560,7 @@ export default function AdminRastrosTornadosPage() {
     } else if (imageMappingMode === 'after') {
       setBoundsFunc = setAfterImageBounds;
       initialBounds = afterImageBounds;
+    } else {
       const secImg = secondaryAfterImages.find(img => img.id === imageMappingMode);
       const numImg = numericalModels.find(img => img.id === imageMappingMode);
       
@@ -577,8 +578,6 @@ export default function AdminRastrosTornadosPage() {
           ));
         };
         initialBounds = numImg.bounds;
-      } else {
-        return;
       }
     }
 
@@ -661,7 +660,7 @@ export default function AdminRastrosTornadosPage() {
         rectInstanceRef.current = null;
       }
     };
-  }, [imageMappingMode, mapReady]);
+  }, [imageMappingMode, mapReady, beforeImageBounds, afterImageBounds, secondaryAfterImages, numericalModels]);
 
   // Desenhar todos os rastros no mapa (exceto o que está sendo editado); clique abre edição
   useEffect(() => {

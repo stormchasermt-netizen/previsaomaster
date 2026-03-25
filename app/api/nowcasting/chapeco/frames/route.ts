@@ -34,7 +34,8 @@ export async function GET(request: Request) {
   if (cached && now - cached.fetchTime < CACHE_TTL_MS) {
     products = cached.products;
   } else {
-    const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/2247/imagens?quantidade=400&nome=Chapecó`;
+    const encodedName = encodeURIComponent('Chapecó');
+    const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/2247/imagens?quantidade=400&nome=${encodedName}`;
 
     try {
       const res = await fetch(apiUrl, { cache: 'no-store', signal: AbortSignal.timeout(15000) });

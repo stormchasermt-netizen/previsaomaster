@@ -53,17 +53,19 @@ async function resolveNowcastingImageUrl(request: Request): Promise<{ status: nu
     products = cached.products;
   } else {
     // Busca até 40 horas de histórico (400 frames x 6 min = 40h)
-    const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/2247/imagens?quantidade=400&nome=Chapecó`;
+    const encodedName = encodeURIComponent('Chapecó');
+    const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/2247/imagens?quantidade=400&nome=${encodedName}`;
 
     try {
-      const res = await fetch(apiUrl, { next: { revalidate: 0 } });
+      const res = await fetch(apiUrl, { next: { revalidate: 0 }, signal: AbortSignal.timeout(10000) });
       if (!res.ok) {
         return { status: res.status, error: `Nowcasting API error: ${res.status}` };
       }
       products = await res.json() as NowcastingProduct[];
       jsonCache.set(cacheKey, { fetchTime: now, products });
     } catch (e: any) {
-      return { status: 500, error: `Fetch error: ${e.message}` };
+      console.error(`[Nowcasting Chapeco] Fetch error:`, e);
+      return { status: 502, error: `Fetch error: ${e.message}` };
     }
   }
 
