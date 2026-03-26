@@ -157,6 +157,8 @@ export default function AdminRastrosTornadosPage() {
   const [showNumericalOnMap, setShowNumericalOnMap] = useState<Record<string, boolean>>({});
   const [numericalOpacities, setNumericalOpacities] = useState<Record<string, number>>({});
   const numericalOverlaysRef = useRef<Record<string, any>>({});
+  const skewtFileInputRef = useRef<HTMLInputElement>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement>(null);
   
   // States para Radar Override Local
   const [radarOverrides, setRadarOverrides] = useState<Record<string, any>>({});
@@ -1300,6 +1302,24 @@ export default function AdminRastrosTornadosPage() {
     setSecondaryAfterImages(prev => [...prev, { id, url: '', bounds: { ne: { lat: 0, lng: 0 }, sw: { lat: 0, lng: 0 } } }]);
   };
 
+  const handleSkewtUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handler = makeImageUploadHandler(
+      (url) => setSkewts(prev => [...prev, url]),
+      () => {},
+      setSkewtUploading
+    );
+    await handler(e);
+  };
+
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handler = makeImageUploadHandler(
+      (url) => setGallery(prev => [...prev, url]),
+      () => {},
+      setGalleryUploading
+    );
+    await handler(e);
+  };
+
   const removeSecondaryImage = (id: string) => {
     setSecondaryAfterImages(prev => prev.filter(img => img.id !== id));
     if (imageMappingMode === id) setImageMappingMode('none');
@@ -1421,8 +1441,6 @@ export default function AdminRastrosTornadosPage() {
         id: editingId || undefined,
         date: date.trim(),
         time: time.trim() || undefined,
-        polygons,
-        prevotsPolygons: prevotsPolygons.filter((p) => p.level !== 0).length ? prevotsPolygons.filter((p) => p.level !== 0) : undefined,
         country: country.trim() || undefined,
         state: state.trim(),
         locality: locality.trim() || undefined,
@@ -1431,6 +1449,8 @@ export default function AdminRastrosTornadosPage() {
         radarWmsUrl: radarWmsUrl.trim() || undefined,
         radarStationId: radarStationId.trim() || undefined,
         radarOverrides: Object.keys(radarOverrides).length > 0 ? radarOverrides : undefined,
+        polygons,
+        prevotsPolygons: prevotsPolygons.filter((p) => p.level !== 0).length ? prevotsPolygons.filter((p) => p.level !== 0) : undefined,
         beforeImage: beforeImage.trim() || undefined,
         afterImage: afterImage.trim() || undefined,
         beforeImageBounds: beforeImageBounds || undefined,
@@ -1438,6 +1458,7 @@ export default function AdminRastrosTornadosPage() {
         trackImage: trackImage.trim() || undefined,
         trackImageBounds: trackImageBounds || undefined,
         secondaryAfterImages: secondaryAfterImages.length ? secondaryAfterImages : undefined,
+        numericalModels: numericalModels.length ? numericalModels : undefined,
         skewts: skewts.length ? skewts : undefined,
         victims: victims !== '' ? victims : undefined,
         damage: damage.trim() || undefined,
@@ -1840,13 +1861,31 @@ export default function AdminRastrosTornadosPage() {
                   <div className="space-y-2 border-t border-slate-700 pt-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">SkewTs (00z - 21z)</span>
-                      <button 
-                        type="button" 
-                        onClick={() => setSkewts(prev => [...prev, ''])}
-                        className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
-                      >
-                        <PlusCircle className="w-3 h-3" /> Adicionar SkewT
-                      </button>
+                      <div className="flex gap-2">
+                        <input 
+                          type="file" 
+                          ref={skewtFileInputRef} 
+                          accept="image/*" 
+                          onChange={handleSkewtUpload} 
+                          className="hidden" 
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => skewtFileInputRef.current?.click()}
+                          disabled={skewtUploading}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1"
+                        >
+                          {skewtUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                          Upload
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => setSkewts(prev => [...prev, ''])}
+                          className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
+                        >
+                          <PlusCircle className="w-3 h-3" /> Manual
+                        </button>
+                      </div>
                     </div>
                     {skewts.map((url, idx) => (
                       <div key={idx} className="flex gap-2">
@@ -1875,13 +1914,31 @@ export default function AdminRastrosTornadosPage() {
                   <div className="space-y-2 border-t border-slate-700 pt-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Galeria de Imagens (Slider)</span>
-                      <button 
-                        type="button" 
-                        onClick={() => setGallery(prev => [...prev, ''])}
-                        className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
-                      >
-                        <PlusCircle className="w-3 h-3" /> Adicionar Imagem
-                      </button>
+                      <div className="flex gap-2">
+                        <input 
+                          type="file" 
+                          ref={galleryFileInputRef} 
+                          accept="image/*" 
+                          onChange={handleGalleryUpload} 
+                          className="hidden" 
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => galleryFileInputRef.current?.click()}
+                          disabled={galleryUploading}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1"
+                        >
+                          {galleryUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                          Upload
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => setGallery(prev => [...prev, ''])}
+                          className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
+                        >
+                          <PlusCircle className="w-3 h-3" /> Manual
+                        </button>
+                      </div>
                     </div>
                     {gallery.map((url, idx) => (
                       <div key={idx} className="flex gap-2">

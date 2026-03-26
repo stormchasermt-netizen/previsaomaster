@@ -31,10 +31,17 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const radar = searchParams.get('radar');   // GMWR1000SST ou RMT0100DS
   const timestamp = searchParams.get('timestamp'); // YYYYMMDDHHmm
+  const produtoRequested = searchParams.get('produto') || 'reflectividade';
 
   if (!radar || !timestamp || timestamp.length !== 12) {
     return new NextResponse('Missing radar or matching 12-char timestamp', { status: 400 });
   }
+
+  // Mapeamento de produtos para a API da Funceme
+  let funcemeProd = 'prsf'; // Reflectividade padrão
+  if (produtoRequested === 'vil') funcemeProd = 'vil';
+  else if (produtoRequested === 'waldvogel') funcemeProd = 'waldvogel';
+  else if (produtoRequested === 'velocidade') funcemeProd = 'vel'; // Suposição baseada no padrão
 
   const yyyy = timestamp.substring(0, 4);
   const mm = timestamp.substring(4, 6);
@@ -58,7 +65,7 @@ export async function GET(request: Request) {
   const now = Date.now();
 
   for (const dateStr of datesToTry) {
-    const cacheKey = `${radar}_${dateStr}`;
+    const cacheKey = `${radar}_${funcemeProd}_${dateStr}`;
     const cached = jsonCache.get(cacheKey);
 
     if (cached && now - cached.fetchTime < CACHE_TTL_MS) {
@@ -66,7 +73,7 @@ export async function GET(request: Request) {
       items = cached.items;
     } else {
       // Buscar da API original — com headers obrigatórios
-      const apiUrl = `https://apil5.funceme.br/rpc/v1/produto-gerado?radar=${radar}&produto=prsf&tempo=20&data=${dateStr}&cache=no`;
+      const apiUrl = `https://apil5.funceme.br/rpc/v1/produto-gerado?radar=${radar}&produto=${funcemeProd}&tempo=20&data=${dateStr}&cache=no`;
 
       try {
         const res = await fetch(apiUrl, {

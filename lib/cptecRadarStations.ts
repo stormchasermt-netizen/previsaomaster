@@ -64,8 +64,8 @@ export interface CptecRadarStation {
   lng: number;
   /** Alcance em km (250 DECEA/Santiago, 450 Chapecó vigilância, 240 IPMET) */
   rangeKm: number;
-  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam, funceme */
-  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme';
+  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam, funceme, argentina */
+  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme' | 'argentina';
   /** Slug SIPAM para radares HD (usado nas URLs siger.sipam.gov.br). Ex: 'sbbv' */
   sipamSlug?: string;
   /** Servidor s0, s1, s2, s3 */
@@ -143,9 +143,35 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   // FUNCEME
   { id: 'R13851142', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.7944, lng: -38.5575, rangeKm: 480, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13851143', vilId: 'R13851137', waldvogelId: 'R13851141', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
   { id: 'R13967017', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 400, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13967018', vilId: 'R13967012', waldvogelId: 'R13967016', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMT0100DS', slug: 'funceme-ceara', name: 'Ceará Mosaico (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 600, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 },
+
+  // Argentina (WebMET / GRC) - Todos com rangeKm de 240km por padrão
+  { id: 'AR5', slug: 'argentina-pergamino', name: 'Pergamino (AR)', lat: -33.94612, lng: -60.56260, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'AR7', slug: 'argentina-parana', name: 'Paraná (AR)', lat: -31.84849, lng: -60.53724, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'AR8', slug: 'argentina-anguil', name: 'Anguil (AR)', lat: -36.53965, lng: -63.98984, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA1', slug: 'argentina-cordoba', name: 'Córdoba (AR)', lat: -31.44139, lng: -64.19194, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA2', slug: 'argentina-ezeiza', name: 'Ezeiza (AR)', lat: -34.80082, lng: -58.51557, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA3', slug: 'argentina-laslomitas', name: 'Las Lomitas (AR)', lat: -24.73028, lng: -60.55139, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA4', slug: 'argentina-resistencia', name: 'Resistencia (AR)', lat: -27.45167, lng: -59.05083, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA5', slug: 'argentina-bernardo', name: 'Bernardo de Irigoyen (AR)', lat: -26.27812, lng: -53.67085, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA6', slug: 'argentina-mardelplata', name: 'Mar del Plata (AR)', lat: -37.91306, lng: -57.52783, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA7', slug: 'argentina-neuquen', name: 'Neuquén (AR)', lat: -38.87662, lng: -68.14489, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA8', slug: 'argentina-mercedes', name: 'Mercedes (AR)', lat: -29.19591, lng: -58.04485, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA9', slug: 'argentina-riogrande', name: 'Rio Grande (AR)', lat: -53.78399, lng: -67.74426, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA10', slug: 'argentina-espora', name: 'Espora (AR)', lat: -38.73426, lng: -62.16341, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA11', slug: 'argentina-termas', name: 'Termas Rio Hondo (AR)', lat: -27.50260, lng: -64.90575, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA12', slug: 'argentina-lasgrutas', name: 'Las Grutas (AR)', lat: -40.77221, lng: -65.07604, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA13', slug: 'argentina-ituzaingo', name: 'Ituzaingo (AR)', lat: -27.62229, lng: -56.84181, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA14', slug: 'argentina-bolivar', name: 'Bolivar (AR)', lat: -36.18903, lng: -61.07041, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA15', slug: 'argentina-patquia', name: 'Patquia (AR)', lat: -30.03080, lng: -66.87630, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA16', slug: 'argentina-villareynolds', name: 'Villa Reynolds (AR)', lat: -33.71829, lng: -65.37546, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA17', slug: 'argentina-alejandro', name: 'Alejandro Roca (AR)', lat: -33.35140, lng: -63.70360, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA18', slug: 'argentina-santaisabel', name: 'Santa Isabel (AR)', lat: -36.22317, lng: -66.93639, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMA00', slug: 'argentina-bariloche', name: 'Bariloche (AR)', lat: -41.13944, lng: -71.14944, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'TH', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
   // Fontes especiais (WMS/proxy)
-  { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.561, lng: -46.736, rangeKm: 85, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  // Fontes especiais (WMS/proxy)
+  { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 120, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 ];
 
 /** URL da Cloud Function getRadarIPMet (proxy WMS mosaico estadual). */
@@ -173,12 +199,12 @@ export const IPMET_FIXED_BOUNDS = {
  * Fonte: ol.proj.transformExtent([-47.134155, -23.930042, -46.337808, -23.192604], ...)
  */
 export const USP_STARNET_FIXED_BOUNDS = {
-  north: -23.192604,
-  south: -23.930042,
-  east: -46.337808,
-  west: -47.134155,
-  ne: { lat: -23.192604, lng: -46.337808 },
-  sw: { lat: -23.930042, lng: -47.134155 },
+  north: -23.288351,
+  south: -23.755570,
+  east: -46.289584,
+  west: -46.946592,
+  ne: { lat: -23.288351, lng: -46.289584 },
+  sw: { lat: -23.755570, lng: -46.946592 },
 };
 
 /**
@@ -527,6 +553,30 @@ export function generateUnifiedTimelineTimestamps(startDate: string, endDate: st
 }
 
 /**
+ * Monta URL Argentina (WebMET) via HTTPS direto.
+ * Padrao: https://webmet.ohmc.ar/media/radares/images/{CODE}/{YYYY}/{MM}/{DD}/{CODE}_{YYYYMMDDTHHmm}00Z_{VAR}_00.png
+ */
+export function buildArgentinaRadarUrl(
+  code: string,
+  ts12: string,
+  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' = 'reflectividade'
+): string {
+  if (productType === 'vil' || productType === 'waldvogel') return '';
+  
+  const y = ts12.slice(0, 4);
+  const m = ts12.slice(4, 6);
+  const d = ts12.slice(6, 8);
+  const h = ts12.slice(8, 10);
+  const min = ts12.slice(10, 12);
+  
+  let vari = 'TH'; // Reflectividade padrão
+  if (productType === 'velocidade') vari = 'VRAD';
+  
+  // Argentina WebMET usa UTC nas imagens (mesmo padrão do CPTEC)
+  return `https://webmet.ohmc.ar/media/radares/images/${code}/${y}/${m}/${d}/${code}_${y}${m}${d}T${h}${min}00Z_${vari}_00.png`;
+}
+
+/**
  * Monta URL SIPAM-HD via proxy /api/sipam/image.
  * Chamado quando radarSourceMode==='hd' para estações com sipamSlug.
  */
@@ -551,12 +601,28 @@ export function buildNowcastingPngUrl(
   productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' = 'reflectividade',
   skipProxy = false
 ): string {
+  if (station.org === 'argentina') {
+    return buildArgentinaRadarUrl(station.id, ts12, productType);
+  }
   if (station.slug === 'chapeco' && !skipProxy) {
     const radarId = productType === 'velocidade' ? station.velocityId : station.id;
     return `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${ts12}`;
   }
+  if (station.slug === 'usp-starnet') {
+    if (productType === 'vil' || productType === 'waldvogel' || productType === 'velocidade') return '';
+    return GET_RADAR_USP_URL + `?t=${ts12}`;
+  }
+  if (station.slug === 'ipmet-bauru') {
+    if (productType === 'vil' || productType === 'waldvogel') return '';
+    return GET_RADAR_IPMET_URL + `?t=${ts12}`;
+  }
   if (station.org === 'funceme') {
-    return `/api/funceme/image?radar=${station.id}&timestamp=${ts12}`;
+    // Para FUNCEME, passamos o tipo de produto se for VIL ou Waldvogel
+    let prod = 'reflectividade';
+    if (productType === 'vil') prod = 'vil';
+    else if (productType === 'waldvogel') prod = 'waldvogel';
+    else if (productType === 'velocidade') prod = 'velocidade';
+    return `/api/funceme/image?radar=${station.id}&timestamp=${ts12}&produto=${prod}`;
   }
   if (station.slug === 'climatempo-poa') {
     return `https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png?nocache=${ts12}`;

@@ -2054,7 +2054,8 @@ export default function AoVivoPage() {
         if (useFallback) {
           /** Sempre a imagem mais atual: busca do servidor IPMET */
           const IPMET_URL = GET_RADAR_IPMET_URL;
-          urlsToTry = [{ url: IPMET_URL + `?t=${Date.now()}`, ts12: nominalTs, source: 'cptec' }];
+          const url = IPMET_URL + `?t=${Date.now()}`;
+          if (url) urlsToTry = [{ url, ts12: nominalTs, source: 'cptec' }];
         } else {
           /** Imagens antigas: busca no Firebase Storage (ipmet-bauru/YYYY/MM/HHMMSS.png) */
           ipmetStoragePromise = fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(timestamp)}`)
@@ -2064,7 +2065,7 @@ export default function AoVivoPage() {
         }
       } else if (dr.type === 'cptec' && dr.station.slug === 'usp-starnet') {
         const USP_URL = GET_RADAR_USP_URL + `?t=${Date.now()}`;
-        urlsToTry = [{ url: USP_URL, ts12: nominalTs, source: 'cptec' }];
+        if (USP_URL) urlsToTry = [{ url: USP_URL, ts12: nominalTs, source: 'cptec' }];
       } else if (dr.type === 'cptec') {
         const isHdMode = radarSourceMode === 'hd';
         const hasSipam = !!dr.station.sipamSlug;
@@ -2085,7 +2086,7 @@ export default function AoVivoPage() {
               const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
 
               // 1. Prioridade: Direto (WMS / S2)
-              urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
+              if (directUrl) urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
 
               // 2. Proxy/API: Apenas se for recente (< 48h) e se for diferente da direta
               if (proxyUrl !== directUrl) {
@@ -2097,7 +2098,7 @@ export default function AoVivoPage() {
                   parseInt(ts12.slice(10, 12), 10)
                 ));
                 const hoursOld = (nowMs - imgDate.getTime()) / 3600000;
-                if (hoursOld < 48) {
+                if (hoursOld < 48 && proxyUrl) {
                   urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
                 }
               } else {
@@ -2126,7 +2127,7 @@ export default function AoVivoPage() {
                   url: `/api/sipam/image?radar=${slug}&produto=${produto}&timestamp=${f.sipamTs}`,
                   ts12: f.ts12,
                   source: 'cptec' as const,
-                }));
+                })).filter(u => !!u.url);
               })
               .catch(() => null);
           }
@@ -2159,7 +2160,7 @@ export default function AoVivoPage() {
               const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
 
               // 1. Prioridade: Direto (WMS / S2)
-              urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
+              if (directUrl) urlsToTry.push({ url: directUrl, ts12, source: 'cptec' });
 
               // 2. Proxy/API: Apenas se for recente (< 48h) e se for diferente da direta
               if (proxyUrl !== directUrl) {
@@ -2171,12 +2172,12 @@ export default function AoVivoPage() {
                   parseInt(ts12.slice(10, 12), 10)
                 ));
                 const hoursOld = (nowMs - imgDate.getTime()) / 3600000;
-                if (hoursOld < 48) {
+                if (hoursOld < 48 && proxyUrl) {
                   urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
                 }
               } else {
                 const proxied = getProxiedRadarUrl(directUrl);
-                if (proxied !== directUrl) {
+                if (proxied && proxied !== directUrl) {
                    urlsToTry.push({ url: proxied, ts12, source: 'cptec' });
                 }
               }
@@ -2197,7 +2198,7 @@ export default function AoVivoPage() {
                   url: `/api/sipam/image?radar=${slug}&produto=${produto}&timestamp=${f.sipamTs}`,
                   ts12: f.ts12,
                   source: 'cptec' as const,
-                }));
+                })).filter(u => !!u.url);
               })
               .catch(() => null);
           }
@@ -2228,8 +2229,8 @@ export default function AoVivoPage() {
             seenTs.add(tsArg);
             const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType as any);
             const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
-            urlsToTry.push({ url: proxyUrl, ts12: tsArg, source: 'cptec' });
-            urlsToTry.push({ url: directUrl, ts12: tsArg, source: 'cptec' });
+            if (proxyUrl) urlsToTry.push({ url: proxyUrl, ts12: tsArg, source: 'cptec' });
+            if (directUrl) urlsToTry.push({ url: directUrl, ts12: tsArg, source: 'cptec' });
           }
         } else {
           /** Histórico Argentina: tenta horários próximos (intervalo do radar) */
@@ -2240,8 +2241,8 @@ export default function AoVivoPage() {
             seenTs.add(tsArg);
             const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType as any);
             const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
-            urlsToTry.push({ url: proxyUrl, ts12: tsArg, source: 'cptec' });
-            urlsToTry.push({ url: directUrl, ts12: tsArg, source: 'cptec' });
+            if (proxyUrl) urlsToTry.push({ url: proxyUrl, ts12: tsArg, source: 'cptec' });
+            if (directUrl) urlsToTry.push({ url: directUrl, ts12: tsArg, source: 'cptec' });
           }
         }
       }
@@ -2270,7 +2271,9 @@ export default function AoVivoPage() {
         const markProcessed = () => {
           if (isFullyProcessed) return;
           isFullyProcessed = true;
-          if (divEl) divEl.style.display = '';
+          if (divEl && img.src && !img.src.includes('localhost') && !img.src.endsWith('/')) {
+            divEl.style.display = '';
+          }
         };
 
         const applyNoiseFilter = () => {
@@ -2320,7 +2323,9 @@ export default function AoVivoPage() {
         let tryIndex = 0;
         let redemetAttempted = false;
         const markFailed = () => {
-          setFailedRadars((prev) => new Set(prev).add(radarKey));
+          if (productType === 'reflectividade' || productType === 'velocidade') {
+            setFailedRadars((prev) => new Set(prev).add(radarKey));
+          }
           setRadarEffectiveSource((prev) => {
             const next = { ...prev };
             delete next[radarKey];
