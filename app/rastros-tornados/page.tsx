@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw, Eye } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw, Eye, DollarSign } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { BeforeAfterCompare } from '@/components/BeforeAfterCompare';
@@ -442,7 +442,12 @@ export default function RastrosTornadosPage() {
   const [showTimelineRadarMenu, setShowTimelineRadarMenu] = useState(false);
   const [dashboardCountry, setDashboardCountry] = useState<'all' | string>('all');
   const [newTrackNotifications, setNewTrackNotifications] = useState<TornadoTrack[]>([]);
-  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
+
+  // Estados para o novo Painel de Informações do Tornado
+  const [infoPanelGalleryIdx, setInfoPanelGalleryIdx] = useState(0);
+  const [infoPanelSkewtUrl, setInfoPanelSkewtUrl] = useState<string | null>(null);
+
   const [shareFeedback, setShareFeedback] = useState('');
   const [popupDragging, setPopupDragging] = useState(false);
   const [trackPopupPosition, setTrackPopupPosition] = useState<{ x: number; y: number }>({ x: 16, y: 16 });
@@ -1295,6 +1300,12 @@ export default function RastrosTornadosPage() {
       setSelectedTrack(null);
     }
   }, [displayedTracks, selectedTrack]);
+
+  // Reset do estado do painel de informações ao selecionar rastro
+  useEffect(() => {
+    setInfoPanelGalleryIdx(0);
+    setInfoPanelSkewtUrl(selectedTrack?.skewts?.[0] || null);
+  }, [selectedTrack?.id]);
 
   /** Busca previsão Prevots da data do rastro (Admin) para overlay quando houver overlay do dia */
   useEffect(() => {
@@ -3932,142 +3943,363 @@ export default function RastrosTornadosPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700 flex-shrink-0">
-                <span className="text-xs font-semibold text-slate-400 uppercase">Painéis</span>
-                <button type="button" onClick={() => setLeftSidebarCollapsed(true)} className="hidden md:block p-1 rounded text-slate-400 hover:text-white" title="Minimizar">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button type="button" onClick={() => setMobileLeftPanel('none')} className="md:hidden p-1 rounded text-slate-400 hover:text-white" title="Fechar">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-3">
-                {/* Seção Radar — quando intervalo selecionado */}
-                {showRadarTimelineSlider && (
-                  <div className="rounded-lg border border-slate-600 bg-slate-800/60 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 flex-shrink-0 bg-black/20">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {selectedTrack ? 'Informações do Tornado' : 'Painéis'}
+                </span>
+                <div className="flex items-center gap-1">
+                  {selectedTrack && (
                     <button
                       type="button"
-                      onClick={() => setLeftPanelRadarCollapsed((v) => !v)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700/50"
+                      onClick={() => setSelectedTrack(null)}
+                      className="p-1 rounded text-slate-400 hover:text-white transition-colors"
+                      title="Fechar informações"
                     >
-                      <span className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5"><Radar className="w-4 h-4" />Radar</span>
-                      <span className="text-slate-500">{leftPanelRadarCollapsed ? '+' : '−'}</span>
+                      <X className="w-4 h-4" />
                     </button>
-                    {!leftPanelRadarCollapsed && (
-                      <div className="px-3 pb-3 space-y-2">
-                        <button type="button" onClick={() => { setRadarTimelineMode('mosaico'); setRadarTimelineStation(null); }} className={`w-full text-left px-2 py-1.5 rounded text-xs font-medium ${radarTimelineMode === 'mosaico' ? 'bg-cyan-500/30 text-cyan-200' : 'text-slate-300 hover:bg-slate-700'}`}>Mosaico (todos)</button>
-                        <button type="button" onClick={() => { setRadarTimelineMode('unico'); if (!radarTimelineStation && intervalRadars.length > 0) setRadarTimelineStation(intervalRadars[0]); }} className={`w-full text-left px-2 py-1.5 rounded text-xs font-medium ${radarTimelineMode === 'unico' ? 'bg-cyan-500/30 text-cyan-200' : 'text-slate-300 hover:bg-slate-700'}`}>Radar único</button>
-                        {radarTimelineMode === 'unico' && (
-                          <select value={radarTimelineStation?.slug ?? intervalRadars[0]?.slug ?? ''} onChange={(e) => { const s = intervalRadars.find((r) => r.slug === e.target.value); setRadarTimelineStation(s ?? null); }} className="w-full mt-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">
-                            {intervalRadars.map((r) => <option key={r.slug} value={r.slug}>{r.name}</option>)}
-                          </select>
-                        )}
-                        <div className="flex gap-1 pt-1">
-                          <button type="button" onClick={() => setRadarProductType('reflectividade')} className={`flex-1 px-2 py-1 rounded text-xs ${radarProductType === 'reflectividade' ? 'bg-cyan-500/40 text-cyan-200' : 'bg-slate-700 text-slate-300'}`}>Reflet.</button>
-                          <button type="button" onClick={() => setRadarProductType('velocidade')} className={`flex-1 px-2 py-1 rounded text-xs ${radarProductType === 'velocidade' ? 'bg-cyan-500/40 text-cyan-200' : 'bg-slate-700 text-slate-300'}`}>Doppler</button>
-                        </div>
-                        {radarProductType === 'velocidade' && (
-                          <label className="flex items-center gap-2 mt-1 cursor-pointer group">
-                            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${superResEnabled ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
-                              {superResEnabled && <Check className="w-2.5 h-2.5 text-black" />}
-                            </div>
-                            <input type="checkbox" checked={superResEnabled} onChange={() => setSuperResEnabled(!superResEnabled)} className="hidden" />
-                            <span className="text-xs text-slate-300 group-hover:text-white">Super Res</span>
-                          </label>
-                        )}
-                        {radarTimelineTimestamps.length > 0 && (
-                          <div className="pt-2 border-t border-slate-600 space-y-1">
-                            <input type="range" min={0} max={radarTimelineTimestamps.length - 1} value={radarTimelineIndex} onChange={(e) => setRadarTimelineIndex(parseInt(e.target.value, 10) || 0)} className="w-full accent-cyan-500" />
-                            <span className="text-[10px] font-mono text-cyan-300 block">
-                              {radarTimelineTimestamps[radarTimelineIndex]?.slice(0, 8)} {radarTimelineTimestamps[radarTimelineIndex]?.slice(8, 10)}:{radarTimelineTimestamps[radarTimelineIndex]?.slice(10, 12)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* Seção Online */}
-                {user && (
-                  <div className="rounded-lg border border-slate-600 bg-slate-800/60 overflow-hidden">
-                    <button type="button" onClick={() => setLeftPanelOnlineCollapsed((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700/50">
-                      <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5"><Users className="w-4 h-4" />Online {onlineUsers.length > 0 && <span className="text-emerald-300">({onlineUsers.length})</span>}</span>
-                      <span className="text-slate-500">{leftPanelOnlineCollapsed ? '+' : '−'}</span>
-                    </button>
-                    {!leftPanelOnlineCollapsed && (
-                      <div className="px-3 pb-3 space-y-2 max-h-48 overflow-y-auto">
-                        <button type="button" onClick={() => setShowOnlineUsers((v) => !v)} className={`w-full text-left px-2 py-1.5 rounded text-xs ${showOnlineUsers ? 'bg-emerald-500/30 text-emerald-200' : 'text-slate-300 hover:bg-slate-700'}`}>
-                          {showOnlineUsers ? 'Ocultar painel no mapa' : 'Mostrar painel no mapa'}
-                        </button>
-                        {locationPermission !== 'granted' ? (
-                          <button type="button" onClick={requestLocation} className="w-full text-xs px-2 py-1.5 rounded border border-sky-500/50 text-sky-400">📍 Compartilhar localização</button>
-                        ) : (
-                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                            <input type="checkbox" checked={shareLocation} onChange={(e) => setShareLocation(e.target.checked)} className="rounded accent-emerald-500" />
-                            Exibir no mapa
-                          </label>
-                        )}
-                        {onlineUsers.slice(0, 6).map((u) => (
-                          <div key={u.uid} className="flex items-center gap-2 py-1 cursor-default" onClick={() => { if (u.locationShared && u.lat && u.lng && mapInstanceRef.current) { mapInstanceRef.current.panTo({ lat: u.lat, lng: u.lng }); mapInstanceRef.current.setZoom(10); setMobileLeftPanel('none'); } }}>
-                            {u.photoURL ? <img src={u.photoURL} alt="" className="w-6 h-6 rounded-full" /> : <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-[10px] font-bold">{(u.displayName?.[0] ?? '?').toUpperCase()}</div>}
-                            <span className="text-xs text-slate-200 truncate">{u.displayName}{u.uid === user?.uid && ' (você)'}</span>
-                          </div>
-                        ))}
-                        {onlineUsers.length === 0 && <p className="text-[10px] text-slate-500 py-1">Nenhum online</p>}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* Seção Legenda — blocos fixos F0→F5 */}
-                <div className="rounded-xl border border-white/10 bg-[#0A0E17]/80 backdrop-blur-sm overflow-hidden">
-                  <button type="button" onClick={() => setLeftPanelLegendaCollapsed((v) => !v)} className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-white/5 transition-colors">
-                    <span className="text-[10px] font-bold tracking-widest uppercase text-cyan-400 flex items-center gap-2"><Layers className="w-4 h-4" />Legenda</span>
-                    <span className="text-slate-500 text-sm">{leftPanelLegendaCollapsed ? '+' : '−'}</span>
+                  )}
+                  <button type="button" onClick={() => setLeftSidebarCollapsed(true)} className="hidden md:block p-1 rounded text-slate-400 hover:text-white" title="Minimizar">
+                    <ChevronLeft className="w-4 h-4" />
                   </button>
-                  {!leftPanelLegendaCollapsed && (
-                    <div className="px-3 pb-4 space-y-4">
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Escala F (Fujita)</div>
-                        <div className="flex w-full rounded-lg overflow-hidden border border-white/10 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
-                          {F_SCALE_ORDER.map((f) => (
-                            <div
-                              key={f}
-                              className="flex-1 h-4 min-w-0"
-                              style={{ backgroundColor: TORNADO_TRACK_COLORS[f] }}
-                              title={f}
-                            />
-                          ))}
-                        </div>
-                        <div className="flex justify-between mt-1.5">
-                          {F_SCALE_ORDER.map((f) => (
-                            <span key={f} className="text-[9px] font-bold text-slate-400 flex-1 text-center">{f}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="pt-3 border-t border-white/10">
-                        <button
-                          type="button"
-                          onClick={() => setPrevotsOverlayVisible((v) => !v)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                            prevotsOverlayVisible ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.2)]' : 'border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                          }`}
-                        >
-                          <span className="inline-block w-3 h-3 rounded flex-shrink-0" style={{ backgroundColor: prevotsOverlayVisible ? PREVOTS_LEVEL_COLORS[1] : '#475569' }} />
-                          {prevotsOverlayVisible ? 'Overlay Prevots ativo' : 'Overlay Prevots'}
-                        </button>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-2">Tempestades (0–4)</div>
-                        <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1">
-                          {[0, 1, 2, 3, 4].map((lvl) => (
-                            <div key={lvl} className="flex items-center gap-2">
-                              <span className="w-3 h-2 rounded flex-shrink-0 border border-white/10" style={{ backgroundColor: PREVOTS_LEVEL_COLORS[lvl as 0|1|2|3|4] }} />
-                              <span className="text-slate-400 text-[10px] font-medium">{lvl === 0 ? 'Tempestades' : `Nível ${lvl}`}</span>
+                  <button type="button" onClick={() => setMobileLeftPanel('none')} className="md:hidden p-1 rounded text-slate-400 hover:text-white" title="Fechar">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 space-y-4">
+                {selectedTrack ? (
+                  <div className="space-y-4 pb-6">
+                    {/* Galeria de Imagens */}
+                    {selectedTrack.gallery && selectedTrack.gallery.length > 0 && (
+                      <div className="relative group rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-video shadow-2xl">
+                        <img
+                          src={selectedTrack.gallery[infoPanelGalleryIdx]}
+                          alt={`Imagem ${infoPanelGalleryIdx + 1}`}
+                          className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                        />
+                        {selectedTrack.gallery.length > 1 && (
+                          <>
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => setInfoPanelGalleryIdx(prev => (prev > 0 ? prev - 1 : selectedTrack.gallery!.length - 1))}
+                                className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-sm border border-white/10"
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                              </button>
                             </div>
-                          ))}
-                        </div>
+                            <div className="absolute inset-y-0 right-0 flex items-center pr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => setInfoPanelGalleryIdx(prev => (prev < selectedTrack.gallery!.length - 1 ? prev + 1 : 0))}
+                                className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 backdrop-blur-sm border border-white/10"
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 px-2 py-1 rounded-full bg-black/40 backdrop-blur-md">
+                              {selectedTrack.gallery.map((_, i) => (
+                                <div
+                                  key={i}
+                                  className={`w-1.5 h-1.5 rounded-full transition-all ${i === infoPanelGalleryIdx ? 'bg-cyan-400 w-3' : 'bg-white/30'}`}
+                                />
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Informações Básicas */}
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-bold text-white leading-tight">
+                        {selectedTrack.locality ? `${selectedTrack.locality}, ` : ''}{selectedTrack.state}
+                      </h3>
+                      <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
+                        <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>{selectedTrack.date}</span>
+                        {selectedTrack.time && <span>• {selectedTrack.time}</span>}
                       </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Vítimas e Prejuízo */}
+                    <div className="grid grid-cols-2 gap-2">
+                       <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 shadow-sm">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Users className="w-3.5 h-3.5 text-orange-400" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vítimas</span>
+                          </div>
+                          <p className="text-base font-black text-white">{selectedTrack.victims ?? 0}</p>
+                       </div>
+                       <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 shadow-sm">
+                          <div className="flex items-center gap-2 mb-1">
+                            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prejuízo</span>
+                          </div>
+                          <p className="text-sm font-bold text-white truncate" title={selectedTrack.damage || 'Não informado'}>
+                            {selectedTrack.damage || 'N/D'}
+                          </p>
+                       </div>
+                    </div>
+
+                    {/* SkewTs */}
+                    {selectedTrack.skewts && selectedTrack.skewts.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Skew-Ts (Radiossondagem)</span>
+                          <span className="text-[10px] text-cyan-500 font-bold">{selectedTrack.skewts.length} disponíveis</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {selectedTrack.skewts.map((url, i) => {
+                            // Extrair hora da URL se possível (ex: 00z, 12z)
+                            const match = url.match(/(\d{2})z/i);
+                            const label = match ? `${match[1]}Z` : `${i + 1}`;
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => setInfoPanelSkewtUrl(url)}
+                                className={`py-1.5 rounded-lg text-[10px] font-black transition-all border ${
+                                  infoPanelSkewtUrl === url
+                                    ? 'bg-cyan-500 border-cyan-400 text-black shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                                    : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {infoPanelSkewtUrl && (
+                          <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg aspect-square group">
+                            <img
+                              src={infoPanelSkewtUrl}
+                              alt="SkewT"
+                              className="w-full h-full object-contain cursor-zoom-in"
+                              onClick={() => window.open(infoPanelSkewtUrl, '_blank')}
+                            />
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => window.open(infoPanelSkewtUrl, '_blank')}
+                                className="p-1 px-2 rounded-md bg-black/60 text-[9px] font-bold text-white border border-white/20 flex items-center gap-1"
+                              >
+                                <ExternalLink className="w-3 h-3" /> Ampliar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Modelagem Numérica */}
+                    {selectedTrack.numericalModels && selectedTrack.numericalModels.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modelagem Numérica</span>
+                        <div className="space-y-2">
+                          {selectedTrack.numericalModels.map((model, i) => {
+                            const isVisible = !!secondaryOverlaysRef.current[`model_${i}`];
+                            return (
+                              <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-3 shadow-md">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-200">{model.round} +{model.forecastHour}h</span>
+                                  <button
+                                    onClick={() => {
+                                      const key = `model_${i}`;
+                                      if (isVisible) {
+                                        if (secondaryOverlaysRef.current[key]) {
+                                          secondaryOverlaysRef.current[key].setMap(null);
+                                          delete secondaryOverlaysRef.current[key];
+                                        }
+                                      } else {
+                                        // Adicionar overlay no mapa
+                                        if (mapInstanceRef.current && model.bounds) {
+                                          const overlay = new google.maps.GroundOverlay(model.url, {
+                                            north: model.bounds.ne.lat,
+                                            south: model.bounds.sw.lat,
+                                            east: model.bounds.ne.lng,
+                                            west: model.bounds.sw.lng,
+                                          });
+                                          overlay.setMap(mapInstanceRef.current);
+                                          overlay.setOpacity(0.7);
+                                          secondaryOverlaysRef.current[key] = overlay;
+                                        }
+                                      }
+                                      // Gatilho para re-render (hackish but effective in this file's context)
+                                      setShareFeedback(isVisible ? 'Modelo removido' : 'Modelo ativado');
+                                    }}
+                                    className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all ${
+                                      isVisible
+                                        ? 'bg-amber-500 text-black shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+                                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                                    }`}
+                                  >
+                                    {isVisible ? 'Ativo' : 'Sobrepor'}
+                                  </button>
+                                </div>
+                                <div className="relative rounded-lg overflow-hidden border border-white/5 bg-black/40 aspect-[4/3] group">
+                                  <img
+                                    src={model.url}
+                                    alt={`${model.round} +${model.forecastHour}h`}
+                                    className="w-full h-full object-cover cursor-zoom-in"
+                                    onClick={() => window.open(model.url, '_blank')}
+                                  />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Links Externos */}
+                    {selectedTrack.externalLinks && selectedTrack.externalLinks.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fontes e Links</span>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {selectedTrack.externalLinks.map((link, i) => (
+                            <a
+                              key={i}
+                              href={link.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition-all group shadow-sm"
+                            >
+                              <span className="font-medium truncate mr-2">{link.label}</span>
+                              <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 shrink-0" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* Seção Radar — quando intervalo selecionado */}
+                    {showRadarTimelineSlider && (
+                      <div className="rounded-lg border border-slate-600 bg-slate-800/60 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setLeftPanelRadarCollapsed((v) => !v)}
+                          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700/50"
+                        >
+                          <span className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5"><Radar className="w-4 h-4" />Radar</span>
+                          <span className="text-slate-500">{leftPanelRadarCollapsed ? '+' : '−'}</span>
+                        </button>
+                        {!leftPanelRadarCollapsed && (
+                          <div className="px-3 pb-3 space-y-2">
+                            <button type="button" onClick={() => { setRadarTimelineMode('mosaico'); setRadarTimelineStation(null); }} className={`w-full text-left px-2 py-1.5 rounded text-xs font-medium ${radarTimelineMode === 'mosaico' ? 'bg-cyan-500/30 text-cyan-200' : 'text-slate-300 hover:bg-slate-700'}`}>Mosaico (todos)</button>
+                            <button type="button" onClick={() => { setRadarTimelineMode('unico'); if (!radarTimelineStation && intervalRadars.length > 0) setRadarTimelineStation(intervalRadars[0]); }} className={`w-full text-left px-2 py-1.5 rounded text-xs font-medium ${radarTimelineMode === 'unico' ? 'bg-cyan-500/30 text-cyan-200' : 'text-slate-300 hover:bg-slate-700'}`}>Radar único</button>
+                            {radarTimelineMode === 'unico' && (
+                              <select value={radarTimelineStation?.slug ?? intervalRadars[0]?.slug ?? ''} onChange={(e) => { const s = intervalRadars.find((r) => r.slug === e.target.value); setRadarTimelineStation(s ?? null); }} className="w-full mt-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200">
+                                {intervalRadars.map((r) => <option key={r.slug} value={r.slug}>{r.name}</option>)}
+                              </select>
+                            )}
+                            <div className="flex gap-1 pt-1">
+                              <button type="button" onClick={() => setRadarProductType('reflectividade')} className={`flex-1 px-2 py-1 rounded text-xs ${radarProductType === 'reflectividade' ? 'bg-cyan-500/40 text-cyan-200' : 'bg-slate-700 text-slate-300'}`}>Reflet.</button>
+                              <button type="button" onClick={() => setRadarProductType('velocidade')} className={`flex-1 px-2 py-1 rounded text-xs ${radarProductType === 'velocidade' ? 'bg-cyan-500/40 text-cyan-200' : 'bg-slate-700 text-slate-300'}`}>Doppler</button>
+                            </div>
+                            {radarProductType === 'velocidade' && (
+                              <label className="flex items-center gap-2 mt-1 cursor-pointer group">
+                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${superResEnabled ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 group-hover:border-emerald-500/50'}`}>
+                                  {superResEnabled && <Check className="w-2.5 h-2.5 text-black" />}
+                                </div>
+                                <input type="checkbox" checked={superResEnabled} onChange={() => setSuperResEnabled(!superResEnabled)} className="hidden" />
+                                <span className="text-xs text-slate-300 group-hover:text-white">Super Res</span>
+                              </label>
+                            )}
+                            {radarTimelineTimestamps.length > 0 && (
+                              <div className="pt-2 border-t border-slate-600 space-y-1">
+                                <input type="range" min={0} max={radarTimelineTimestamps.length - 1} value={radarTimelineIndex} onChange={(e) => setRadarTimelineIndex(parseInt(e.target.value, 10) || 0)} className="w-full accent-cyan-500" />
+                                <span className="text-[10px] font-mono text-cyan-300 block">
+                                  {radarTimelineTimestamps[radarTimelineIndex]?.slice(0, 8)} {radarTimelineTimestamps[radarTimelineIndex]?.slice(8, 10)}:{radarTimelineTimestamps[radarTimelineIndex]?.slice(10, 12)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Seção Online */}
+                    {user && (
+                      <div className="rounded-lg border border-slate-600 bg-slate-800/60 overflow-hidden">
+                        <button type="button" onClick={() => setLeftPanelOnlineCollapsed((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700/50">
+                          <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5"><Users className="w-4 h-4" />Online {onlineUsers.length > 0 && <span className="text-emerald-300">({onlineUsers.length})</span>}</span>
+                          <span className="text-slate-500">{leftPanelOnlineCollapsed ? '+' : '−'}</span>
+                        </button>
+                        {!leftPanelOnlineCollapsed && (
+                          <div className="px-3 pb-3 space-y-2 max-h-48 overflow-y-auto">
+                            <button type="button" onClick={() => setShowOnlineUsers((v) => !v)} className={`w-full text-left px-2 py-1.5 rounded text-xs ${showOnlineUsers ? 'bg-emerald-500/30 text-emerald-200' : 'text-slate-300 hover:bg-slate-700'}`}>
+                              {showOnlineUsers ? 'Ocultar painel no mapa' : 'Mostrar painel no mapa'}
+                            </button>
+                            {locationPermission !== 'granted' ? (
+                              <button type="button" onClick={requestLocation} className="w-full text-xs px-2 py-1.5 rounded border border-sky-500/50 text-sky-400">📍 Compartilhar localização</button>
+                            ) : (
+                              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                <input type="checkbox" checked={shareLocation} onChange={(e) => setShareLocation(e.target.checked)} className="rounded accent-emerald-500" />
+                                Exibir no mapa
+                              </label>
+                            )}
+                            {onlineUsers.slice(0, 6).map((u) => (
+                              <div key={u.uid} className="flex items-center gap-2 py-1 cursor-default" onClick={() => { if (u.locationShared && u.lat && u.lng && mapInstanceRef.current) { mapInstanceRef.current.panTo({ lat: u.lat, lng: u.lng }); mapInstanceRef.current.setZoom(10); setMobileLeftPanel('none'); } }}>
+                                {u.photoURL ? <img src={u.photoURL} alt="" className="w-6 h-6 rounded-full" /> : <div className="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-[10px] font-bold">{(u.displayName?.[0] ?? '?').toUpperCase()}</div>}
+                                <span className="text-xs text-slate-200 truncate">{u.displayName}{u.uid === user?.uid && ' (você)'}</span>
+                              </div>
+                            ))}
+                            {onlineUsers.length === 0 && <p className="text-[10px] text-slate-500 py-1">Nenhum online</p>}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Seção Legenda — blocos fixos F0→F5 */}
+                    <div className="rounded-xl border border-white/10 bg-[#0A0E17]/80 backdrop-blur-sm overflow-hidden">
+                      <button type="button" onClick={() => setLeftPanelLegendaCollapsed((v) => !v)} className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-white/5 transition-colors">
+                        <span className="text-[10px] font-bold tracking-widest uppercase text-cyan-400 flex items-center gap-2"><Layers className="w-4 h-4" />Legenda</span>
+                        <span className="text-slate-500 text-sm">{leftPanelLegendaCollapsed ? '+' : '−'}</span>
+                      </button>
+                      {!leftPanelLegendaCollapsed && (
+                        <div className="px-3 pb-4 space-y-4">
+                          <div>
+                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Escala F (Fujita)</div>
+                            <div className="flex w-full rounded-lg overflow-hidden border border-white/10 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
+                              {F_SCALE_ORDER.map((f) => (
+                                <div
+                                  key={f}
+                                  className="flex-1 h-4 min-w-0"
+                                  style={{ backgroundColor: TORNADO_TRACK_COLORS[f] }}
+                                  title={f}
+                                />
+                              ))}
+                            </div>
+                            <div className="flex justify-between mt-1.5">
+                              {F_SCALE_ORDER.map((f) => (
+                                <span key={f} className="text-[9px] font-bold text-slate-400 flex-1 text-center">{f}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="pt-3 border-t border-white/10">
+                            <button
+                              type="button"
+                              onClick={() => setPrevotsOverlayVisible((v) => !v)}
+                              className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                                prevotsOverlayVisible ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.2)]' : 'border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                              }`}
+                            >
+                              <span className="inline-block w-3 h-3 rounded flex-shrink-0" style={{ backgroundColor: prevotsOverlayVisible ? PREVOTS_LEVEL_COLORS[1] : '#475569' }} />
+                              {prevotsOverlayVisible ? 'Overlay Prevots ativo' : 'Overlay Prevots'}
+                            </button>
+                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-2">Tempestades (0–4)</div>
+                            <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-1">
+                              {[0, 1, 2, 3, 4].map((lvl) => (
+                                <div key={lvl} className="flex items-center gap-2">
+                                  <span className="w-3 h-2 rounded flex-shrink-0 border border-white/10" style={{ backgroundColor: PREVOTS_LEVEL_COLORS[lvl as 0|1|2|3|4] }} />
+                                  <span className="text-slate-400 text-[10px] font-medium">{lvl === 0 ? 'Tempestades' : `Nível ${lvl}`}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}

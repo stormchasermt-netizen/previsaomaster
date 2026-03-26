@@ -2519,6 +2519,7 @@ export default function AdminRastrosTornadosPage() {
                     </button>
                   </div>
                 </div>
+              </div>
             </div>
           </div>
         </>
