@@ -1,13 +1,12 @@
 'use client';
-import React, { useEffect } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { CloudLightning, ArrowRight } from 'lucide-react';
 
-export default function Login() {
+function LoginContent() {
   const { loginWithGoogle, user } = useAuth();
   const router = useRouter();
-
   const searchParams = useSearchParams();
   
   useEffect(() => {
@@ -28,7 +27,6 @@ export default function Login() {
   return (
     <div className="min-h-[70vh] flex items-center justify-center animate-in fade-in duration-700">
       <div className="w-full max-w-md bg-[#161b22] border border-white/10 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
-         {/* Background decoration */}
          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-600"></div>
          
          <div className="flex flex-col items-center text-center mb-8">
@@ -57,5 +55,13 @@ export default function Login() {
          </div>
       </div>
     </div>
+  );
+}
+
+export default function Login() {
+  return (
+    <Suspense fallback={<div className="min-h-[70vh] flex items-center justify-center"><span className="text-slate-500">Carregando...</span></div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
