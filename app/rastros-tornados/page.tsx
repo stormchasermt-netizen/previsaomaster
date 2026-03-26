@@ -444,6 +444,12 @@ export default function RastrosTornadosPage() {
   const [newTrackNotifications, setNewTrackNotifications] = useState<TornadoTrack[]>([]);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>('default');
 
+  // Estados para Pré-carregamento da Timeline de Radar
+  const [isTimelinePreloading, setIsTimelinePreloading] = useState(false);
+  const [preloadProgress, setPreloadProgress] = useState(0);
+  const [preloadTotal, setPreloadTotal] = useState(0);
+  const radarTimelineEffectIdRef = useRef(0);
+
   // Estados para o novo Painel de Informações do Tornado
   const [infoPanelGalleryIdx, setInfoPanelGalleryIdx] = useState(0);
   const [infoPanelSkewtUrl, setInfoPanelSkewtUrl] = useState<string | null>(null);
@@ -1266,7 +1272,13 @@ export default function RastrosTornadosPage() {
 
   useEffect(() => {
     if (!timelineEnabled || !timelinePlaying) return;
+
+    // Se a timeline do radar estiver ativa, e não houver timestamps, algo está errado
     const isDetailed = radarTimelineTimestamps.length > 0;
+    
+    // Antes de começar a tocar, se for radar detalhado, garante que imagens estão "prontas" (opcional, mas o usuário pediu popup)
+    // Aqui apenas cuidamos da progressão do índice
+    
     const len = isDetailed ? radarTimelineTimestamps.length : timelineDates.length;
     if (len <= 1) return;
 
@@ -1294,6 +1306,48 @@ export default function RastrosTornadosPage() {
     }, intervalMs);
     return () => clearInterval(timer);
   }, [timelineEnabled, timelinePlaying, radarTimelineTimestamps.length, timelineDates.length, timelineSpeed]);
+
+  /** 
+   * Pré-carrega as imagens de radar para o intervalo da timeline.
+   * Isso evita flickers e garante que probeRadarImageExists já tenha os resultados em cache.
+   */
+  const preloadTimelineRadarImages = async () => {
+    if (!showRadarTimelineSlider || radarTimelineTimestamps.length === 0) return;
+    
+    setIsTimelinePreloading(true);
+    setPreloadProgress(0);
+    setPreloadTotal(radarTimelineTimestamps.length);
+
+    const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
+    const stations = allStations.filter(s => timelineSelectedRadars.has(s.slug));
+    
+    // Para simplificar, vamos carregar sequencialmente ou em pequenos chunks para não travar
+    for (let i = 0; i < radarTimelineTimestamps.length; i++) {
+        const ts = radarTimelineTimestamps[i];
+        
+        // Dispara probing para todas as estações selecionadas nesse TS
+        await Promise.all(stations.map(async (st) => {
+            const stTs = radarTimelineMode === 'mosaico' ? getNearestRadarTimestamp(ts, st) : ts;
+            const rawUrl = buildNowcastingPngUrl(st, stTs, timelineProductType);
+            const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
+            
+            // Tenta o CPTEC primeiro (isso já vai pro cache do navegador se der OK)
+            const ok = await probeRadarImageExists(proxyUrl);
+            if (!ok && hasRedemetFallback(st.slug)) {
+                // Tenta Redemet se CPTEC falhar
+                const area = getRedemetArea(st.slug);
+                const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${stTs}&historical=true`).then(r => r.json()).catch(() => null);
+                if (res?.url) {
+                    await probeRadarImageExists(getProxiedRadarUrl(res.url));
+                }
+            }
+        }));
+        
+        setPreloadProgress(i + 1);
+    }
+    
+    setIsTimelinePreloading(false);
+  };
 
   useEffect(() => {
     if (!selectedTrack) return;
@@ -2919,6 +2973,9 @@ export default function RastrosTornadosPage() {
 
   // Overlay de radar na timeline (quando período ≤ 3 dias)
   useEffect(() => {
+    // Sincronização: incrementa ID para cancelar asyncs anteriores
+    const effectId = ++radarTimelineEffectIdRef.current;
+
     radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
     radarTimelineOverlaysRef.current = [];
 
@@ -3032,6 +3089,9 @@ export default function RastrosTornadosPage() {
       const latLngBounds = cfg
         ? new google.maps.LatLngBounds(cfg.bounds.sw, cfg.bounds.ne)
         : (usedSource === 'redemet' ? getRadarImageBounds(station as CptecRadarStation, 400) : getRadarImageBounds(station as CptecRadarStation));
+
+      // Só adiciona ao mapa se este efeito ainda for o atual
+      if (effectId !== radarTimelineEffectIdRef.current) return;
 
       const ov = new google.maps.GroundOverlay(finalUrl, latLngBounds);
       ov.setOpacity(radarOpacity);
@@ -5325,7 +5385,19 @@ export default function RastrosTornadosPage() {
               </button>
               {timelineEnabled && (
                 <>
-                  <button type="button" onClick={() => setTimelinePlaying((v) => !v)} className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all" title={timelinePlaying ? 'Pausar' : 'Reproduzir'}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      if (!timelinePlaying && showRadarTimelineSlider && radarTimelineTimestamps.length > 0) {
+                        // Ao clicar em Play, se houver radar detalhado, pergunta/faz o preload
+                        preloadTimelineRadarImages().then(() => setTimelinePlaying(true));
+                      } else {
+                        setTimelinePlaying((v) => !v);
+                      }
+                    }} 
+                    className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all" 
+                    title={timelinePlaying ? 'Pausar' : 'Reproduzir'}
+                  >
                     {timelinePlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </button>
                   {/* Botão para abrir menu de radares da timeline */}
@@ -5817,6 +5889,36 @@ export default function RastrosTornadosPage() {
           userRole={user?.type === 'admin' ? 'admin' : (rastrosProfile?.userType || 'civil')}
           onClose={() => setMapPinCoordinate(null)}
         />
+      )}
+      {/* Popup de Carregamento da Timeline */}
+      {isTimelinePreloading && (
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/80 backdrop-blur-md">
+          <div className="bg-[#0A0E17]/90 border border-white/10 rounded-2xl p-6 w-80 text-center shadow-2xl">
+            <div className="relative w-20 h-20 mx-auto mb-4">
+              <div className="absolute inset-0 rounded-full border-4 border-white/5" />
+              <div 
+                className="absolute inset-0 rounded-full border-4 border-cyan-500 border-t-transparent animate-spin"
+                style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 100%)' }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Radar className="w-8 h-8 text-cyan-400" />
+              </div>
+            </div>
+            <h3 className="text-white font-bold text-lg mb-1">Carregando Radar</h3>
+            <p className="text-slate-400 text-xs mb-4 uppercase tracking-widest">Sincronizando frames...</p>
+            
+            <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden mb-2">
+              <div 
+                className="h-full bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.6)] transition-all duration-300"
+                style={{ width: `${(preloadProgress / preloadTotal) * 100}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+              <span>{preloadProgress} / {preloadTotal}</span>
+              <span>{Math.round((preloadProgress / preloadTotal) * 100)}%</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
