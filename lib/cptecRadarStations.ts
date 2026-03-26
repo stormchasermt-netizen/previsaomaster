@@ -148,7 +148,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
 
   // Fontes especiais (WMS/proxy)
   // Fontes especiais (WMS/proxy)
-  { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 120, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 36, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 ];
 
 /** URL da Cloud Function getRadarIPMet (proxy WMS mosaico estadual). */
