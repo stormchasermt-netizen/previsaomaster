@@ -82,8 +82,7 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
       allow create: if isAdmin() && isEventCreator();
-      allow update: if isAdmin() && isExistingEventOwner() && request.resource.data.adminId == resource.data.adminId;
-      allow delete: if isAdmin() && isExistingEventOwner();
+      allow update, delete: if isAdmin();
     }
 
     match /scores/{scoreId} {
@@ -123,11 +122,7 @@ service cloud.firestore {
     match /tornado_tracks/{trackId} {
       allow get, list: if isSignedIn();
       allow create: if isAdmin() && request.resource.data.adminId == request.auth.uid;
-      allow update: if isAdmin() && (
-        (resource.get('adminId', '') == '' ) ||
-        (resource.data.adminId == request.auth.uid && request.resource.data.adminId == resource.data.adminId)
-      );
-      allow delete: if isAdmin() && (resource.get('adminId', '') == '' || resource.data.adminId == request.auth.uid);
+      allow update, delete: if isAdmin();
     }
     
     /**
@@ -137,9 +132,7 @@ service cloud.firestore {
     match /prevots_forecasts/{forecastId} {
       allow get, list: if isSignedIn();
       allow create: if isAdmin() && request.resource.data.adminId == request.auth.uid;
-      allow update, delete: if isAdmin() && (
-        resource.get('adminId', '') == '' || resource.data.adminId == request.auth.uid
-      );
+      allow update, delete: if isAdmin();
     }
     
     /**
