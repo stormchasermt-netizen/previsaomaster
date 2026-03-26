@@ -124,7 +124,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
 
   // SIPAM - Norte/Centro-Oeste (Super Res = CPTEC/Nowcasting, HD = SIPAM via /api/sipam/image)
   { id: 'R12792141', slug: 'portovelho', name: 'Porto Velho', lat: -8.76, lng: -63.90, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12797370', sipamSlug: 'sbpv' },
-  { id: 'R12767583', slug: 'cruzeirodosul', name: 'Cruzeiro do Sul', lat: -7.63, lng: -72.67, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12767363', sipamSlug: 'sbcz' },
+  { id: 'R12767583', slug: 'cruzeirodosul', name: 'Cruzeiro do Sul', lat: -7.63, lng: -72.67, rangeKm: 250, org: 'sipam', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12767363', sipamSlug: 'sbcz', updateIntervalMinutes: 12, updateIntervalOffsetMinutes: 0 },
   { id: 'R12827598', slug: 'tabatinga', name: 'Tabatinga', lat: -4.25, lng: -69.94, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12827378', sipamSlug: 'sbtt' },
   { id: 'R12837597', slug: 'tefe', name: 'Tefé', lat: -3.35, lng: -64.71, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12837377', sipamSlug: 'sbtf' },
   { id: 'R12817594', slug: 'saogabriel', name: 'São Gabriel da Cachoeira (AM)', lat: -0.13, lng: -67.09, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12817374', sipamSlug: 'sbua' },
