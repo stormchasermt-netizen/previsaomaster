@@ -1173,7 +1173,7 @@ export default function AdminRadaresPage() {
                 <div className="flex items-center gap-3">
                   <input
                     type="range"
-                    min={50}
+                    min={10}
                     max={500}
                     step={10}
                     value={rangeKm}

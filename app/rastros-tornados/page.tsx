@@ -446,8 +446,10 @@ export default function RastrosTornadosPage() {
 
   // Estados para Pré-carregamento da Timeline de Radar
   const [isTimelinePreloading, setIsTimelinePreloading] = useState(false);
+  const [isTimelinePreloaded, setIsTimelinePreloaded] = useState(false);
   const [preloadProgress, setPreloadProgress] = useState(0);
   const [preloadTotal, setPreloadTotal] = useState(0);
+  const [verifiedRadarImages, setVerifiedRadarImages] = useState<Map<string, {url: string, ts: string, source: 'cptec' | 'redemet' | 'backup'}>>(new Map());
   const radarTimelineEffectIdRef = useRef(0);
 
   // Estados para o novo Painel de Informações do Tornado
@@ -1313,6 +1315,7 @@ export default function RastrosTornadosPage() {
    */
   const preloadTimelineRadarImages = async () => {
     if (!showRadarTimelineSlider || radarTimelineTimestamps.length === 0) return;
+    if (isTimelinePreloaded) return;
     
     setIsTimelinePreloading(true);
     setPreloadProgress(0);
@@ -1321,33 +1324,90 @@ export default function RastrosTornadosPage() {
     const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
     const stations = allStations.filter(s => timelineSelectedRadars.has(s.slug));
     
-    // Para simplificar, vamos carregar sequencialmente ou em pequenos chunks para não travar
-    for (let i = 0; i < radarTimelineTimestamps.length; i++) {
-        const ts = radarTimelineTimestamps[i];
+    const newVerified = new Map(verifiedRadarImages);
+    
+    // Processa os timestamps em chunks para paralelismo sem sobrecarregar o browser
+    const CHUNK_SIZE = 4;
+    for (let i = 0; i < radarTimelineTimestamps.length; i += CHUNK_SIZE) {
+        const chunk = radarTimelineTimestamps.slice(i, i + CHUNK_SIZE);
         
-        // Dispara probing para todas as estações selecionadas nesse TS
-        await Promise.all(stations.map(async (st) => {
-            const stTs = radarTimelineMode === 'mosaico' ? getNearestRadarTimestamp(ts, st) : ts;
-            const rawUrl = buildNowcastingPngUrl(st, stTs, timelineProductType);
-            const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
-            
-            // Tenta o CPTEC primeiro (isso já vai pro cache do navegador se der OK)
-            const ok = await probeRadarImageExists(proxyUrl);
-            if (!ok && hasRedemetFallback(st.slug)) {
-                // Tenta Redemet se CPTEC falhar
-                const area = getRedemetArea(st.slug);
-                const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${stTs}&historical=true`).then(r => r.json()).catch(() => null);
-                if (res?.url) {
-                    await probeRadarImageExists(getProxiedRadarUrl(res.url));
+        await Promise.all(chunk.map(async (ts, chunkIdx) => {
+            // Dispara probing para todas as estações selecionadas nesse TS
+            await Promise.all(stations.map(async (st) => {
+                const stTs = radarTimelineMode === 'mosaico' ? getNearestRadarTimestamp(ts, st) : ts;
+                const cacheKey = `${st.slug}-${stTs}-${timelineProductType}`;
+                if (newVerified.has(cacheKey)) return;
+
+                const rawUrl = buildNowcastingPngUrl(st, stTs, timelineProductType);
+                const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
+                
+                // 1. Tenta CPTEC
+                const ok = await probeRadarImageExists(proxyUrl);
+                if (ok) {
+                    newVerified.set(cacheKey, { url: proxyUrl, ts: stTs, source: 'cptec' });
+                    return;
                 }
-            }
+
+                // 2. Tenta Redemet
+                if (hasRedemetFallback(st.slug)) {
+                    const area = getRedemetArea(st.slug);
+                    const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${stTs}&historical=true`).then(r => r.json()).catch(() => null);
+                    if (res?.url) {
+                        const proxied = getProxiedRadarUrl(res.url);
+                        if (await probeRadarImageExists(proxied)) {
+                            const m = res.url.match(/data=(\d{12})/);
+                            newVerified.set(cacheKey, { url: proxied, ts: m ? m[1] : stTs, source: 'redemet' });
+                            return;
+                        }
+                    }
+                }
+
+                // 3. Tenta Backup
+                const backupApiUrl = getRadarBackupUrl(st.slug, stTs, timelineProductType);
+                const bRes = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
+                if (bRes?.url) {
+                   newVerified.set(cacheKey, { url: bRes.url, ts: stTs, source: 'backup' });
+                }
+            }));
+            setPreloadProgress(Math.min(i + chunkIdx + 1, radarTimelineTimestamps.length));
         }));
-        
-        setPreloadProgress(i + 1);
     }
     
+    setVerifiedRadarImages(newVerified);
+    setIsTimelinePreloaded(true);
     setIsTimelinePreloading(false);
   };
+
+  // Reset do pre-loading ao trocar parâmetros
+  useEffect(() => {
+    setIsTimelinePreloaded(false);
+    setVerifiedRadarImages(new Map());
+    
+    // Auto-carrega o primeiro frame imediatamente para evitar "mapa vazio"
+    if (showRadarTimelineSlider && radarTimelineTimestamps.length > 0) {
+      const firstTs = radarTimelineTimestamps[0];
+      const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
+      const stations = allStations.filter(s => timelineSelectedRadars.has(s.slug));
+      
+      if (stations.length > 0) {
+        stations.forEach(async (st) => {
+          const stTs = radarTimelineMode === 'mosaico' ? getNearestRadarTimestamp(firstTs, st) : firstTs;
+          const cacheKey = `${st.slug}-${stTs}-${timelineProductType}`;
+          
+          const rawUrl = buildNowcastingPngUrl(st, stTs, timelineProductType);
+          const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
+          
+          if (await probeRadarImageExists(proxyUrl)) {
+            setVerifiedRadarImages(prev => {
+              const next = new Map(prev);
+              next.set(cacheKey, { url: proxyUrl, ts: stTs, source: 'cptec' });
+              return next;
+            });
+          }
+        });
+      }
+    }
+  }, [radarTimelineMode, timelineActiveStation, intervalStartDate, intervalEndDate, timelineProductType, timelineSelectedRadars, radarTimelineTimestamps]);
 
   useEffect(() => {
     if (!selectedTrack) return;
@@ -2987,128 +3047,128 @@ export default function RastrosTornadosPage() {
     const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
     const stations = allStations.filter(s => timelineSelectedRadars.has(s.slug));
 
-    stations.forEach(async (station) => {
-      const ts12 = radarTimelineMode === 'mosaico'
-        ? getNearestRadarTimestamp(nominalTs, station)
-        : nominalTs;
-      
-      const rawUrl = buildNowcastingPngUrl(station, ts12, timelineProductType);
-      const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
-      const hasRedemetFb = hasRedemetFallback(station.slug);
-      
-      let urlsToTry: { url: string, source: 'cptec' | 'redemet' | 'backup' }[] = [];
+    const loadFrame = async () => {
+      // 1. Coleta todas as URLs em paralelo
+      const overlayData = await Promise.all(stations.map(async (station) => {
+        const ts12 = radarTimelineMode === 'mosaico'
+          ? getNearestRadarTimestamp(nominalTs, station)
+          : nominalTs;
+        
+        const cacheKey = `${station.slug}-${ts12}-${timelineProductType}`;
+        const cached = verifiedRadarImages.get(cacheKey);
 
-      if (station.slug === 'chapeco') {
-        // Chapecó: 1º URL direta do CPTEC (via proxy), 2º URL direta sem proxy, 3º API
-        const directUrl = buildNowcastingPngUrl(station, ts12, timelineProductType, true);
-        const [directProxy] = getRadarUrlsWithFallback(directUrl);
-        urlsToTry.push({ url: directProxy, source: 'cptec' });
-        urlsToTry.push({ url: directUrl, source: 'cptec' });
-        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
-      } else {
-        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
-      }
-
-      let usedSource: 'cptec' | 'redemet' | 'backup' = 'cptec';
-
-      const checkRedemet = async () => {
-        if (!hasRedemetFb) return null;
-        const area = getRedemetArea(station.slug);
-        const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
-        let foundTs = ts12;
-        if (res?.url) {
-          const m = res.url.match(/data=(\d{12})/);
-          if (m) foundTs = m[1];
+        if (cached) {
+          let timelineCfgSlug = station.slug;
+          if (cached.source === 'redemet') timelineCfgSlug = `${timelineCfgSlug}-redemet`;
+          const cfg = radarConfigs.find((c) => c.id === timelineCfgSlug || c.stationSlug === timelineCfgSlug);
+          const latLngBounds = cfg
+            ? new google.maps.LatLngBounds(cfg.bounds.sw, cfg.bounds.ne)
+            : (cached.source === 'redemet' ? getRadarImageBounds(station as CptecRadarStation, 400) : getRadarImageBounds(station as CptecRadarStation));
+          
+          return { finalUrl: cached.url, latLngBounds, stationSlug: station.slug, finalTs: cached.ts, usedSource: cached.source, ts12 };
         }
-        return res?.url ? { url: getProxiedRadarUrl(res.url), ts: foundTs } : null;
-      };
 
-      const checkBackup = async () => {
-        const backupApiUrl = getRadarBackupUrl(station.slug, ts12, timelineProductType);
-        const data = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
-        let foundTs = ts12;
-        if (data?.url && data.basename) {
-          foundTs = ts12.slice(0, 6) + data.basename; // Concatena YYYYMM + DDHHMM
+        const rawUrl = buildNowcastingPngUrl(station, ts12, timelineProductType);
+        const [proxyUrl] = getRadarUrlsWithFallback(rawUrl);
+        const hasRedemetFb = hasRedemetFallback(station.slug);
+        
+        let urlsToTry: { url: string, source: 'cptec' | 'redemet' | 'backup' }[] = [];
+        if (station.slug === 'chapeco') {
+          const directUrl = buildNowcastingPngUrl(station, ts12, timelineProductType, true);
+          const [directProxy] = getRadarUrlsWithFallback(directUrl);
+          urlsToTry.push({ url: directProxy, source: 'cptec' }, { url: directUrl, source: 'cptec' }, { url: proxyUrl, source: 'cptec' });
+        } else {
+          urlsToTry.push({ url: proxyUrl, source: 'cptec' });
         }
-        return data?.url ? { url: data.url, ts: foundTs } : null;
-      };
 
-      let finalUrl = '';
-      let finalTs = ts12;
-      
-      // 1. Tenta URLs do CPTEC (Proxy e Direto)
-      for (const entry of urlsToTry) {
-        const ok = await probeRadarImageExists(entry.url);
-        if (ok) {
-          finalUrl = entry.url;
-          finalTs = ts12;
-          usedSource = 'cptec';
-          break;
-        }
-      }
+        let finalUrl = '';
+        let finalTs = ts12;
+        let usedSource: 'cptec' | 'redemet' | 'backup' = 'cptec';
 
-      // 2. Fallback para Redemet
-      if (!finalUrl && hasRedemetFb) {
-        const rData = await checkRedemet();
-        if (rData) {
-          finalUrl = rData.url;
-          finalTs = rData.ts;
-          usedSource = 'redemet';
-        }
-      }
-
-      // 3. Fallback final para Storage Backup
-      if (!finalUrl) {
-        const bData = await checkBackup();
-        if (bData) {
-          finalUrl = bData.url;
-          finalTs = bData.ts;
-          usedSource = 'backup';
-        }
-      }
-
-      if (!finalUrl) {
-        setTimelineFoundTimes((prev) => {
-          if (prev[station.slug]) {
-            const next = { ...prev };
-            delete next[station.slug];
-            return next;
+        // Tenta CPTEC
+        for (const entry of urlsToTry) {
+          if (await probeRadarImageExists(entry.url)) {
+            finalUrl = entry.url;
+            usedSource = 'cptec';
+            break;
           }
-          return prev;
-        });
-        return; // Nada encontrado
-      }
-      
-      setTimelineFoundTimes((prev) => ({ ...prev, [station.slug]: finalTs }));
+        }
 
-      let timelineCfgSlug = station.slug;
-      if (usedSource === 'redemet') {
-        timelineCfgSlug = `${timelineCfgSlug}-redemet`;
-      }
-      const cfg = radarConfigs.find((c) => c.id === timelineCfgSlug || c.stationSlug === timelineCfgSlug);
-      const latLngBounds = cfg
-        ? new google.maps.LatLngBounds(cfg.bounds.sw, cfg.bounds.ne)
-        : (usedSource === 'redemet' ? getRadarImageBounds(station as CptecRadarStation, 400) : getRadarImageBounds(station as CptecRadarStation));
+        // Fallback Redemet
+        if (!finalUrl && hasRedemetFb) {
+          const area = getRedemetArea(station.slug);
+          const res = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.json()).catch(() => null);
+          if (res?.url) {
+            finalUrl = getProxiedRadarUrl(res.url);
+            const m = res.url.match(/data=(\d{12})/);
+            finalTs = m ? m[1] : ts12;
+            usedSource = 'redemet';
+          }
+        }
 
-      // Só adiciona ao mapa se este efeito ainda for o atual
+        // Fallback Backup
+        if (!finalUrl) {
+          const backupApiUrl = getRadarBackupUrl(station.slug, ts12, timelineProductType);
+          const bRes = await fetch(backupApiUrl).then(r => r.ok ? r.json() : null).catch(() => null);
+          if (bRes?.url) {
+            finalUrl = bRes.url;
+            finalTs = ts12.slice(0, 6) + (bRes.basename || ts12.slice(6));
+            usedSource = 'backup';
+          }
+        }
+
+        if (!finalUrl) return null;
+
+        let timelineCfgSlug = station.slug;
+        if (usedSource === 'redemet') timelineCfgSlug = `${timelineCfgSlug}-redemet`;
+        const cfg = radarConfigs.find((c) => c.id === timelineCfgSlug || c.stationSlug === timelineCfgSlug);
+        const latLngBounds = cfg
+          ? new google.maps.LatLngBounds(cfg.bounds.sw, cfg.bounds.ne)
+          : (usedSource === 'redemet' ? getRadarImageBounds(station as CptecRadarStation, 400) : getRadarImageBounds(station as CptecRadarStation));
+
+        return { finalUrl, latLngBounds, stationSlug: station.slug, finalTs, usedSource, ts12 };
+      }));
+
+      // 2. Se o efeito mudou durante o carregamento async, aborta
       if (effectId !== radarTimelineEffectIdRef.current) return;
 
-      const ov = new google.maps.GroundOverlay(finalUrl, latLngBounds);
-      ov.setOpacity(radarOpacity);
-      ov.setMap(map);
-      radarTimelineOverlaysRef.current.push(ov);
+      // 3. Aguarda todas as imagens serem carregadas pelo browser para evitar flicker
+      const validOverlays = overlayData.filter((d): d is NonNullable<typeof d> => d !== null);
+      await Promise.all(validOverlays.map(d => new Promise((resolve) => {
+          const img = new Image();
+          img.onload = resolve;
+          img.onerror = resolve;
+          img.src = d.finalUrl;
+      })));
 
-      // Fire-and-forget: salvar imagem no Storage para arquivo histórico se veio do CPTEC ou Redemet
-      if (usedSource !== 'backup') {
-        let cacheSlug = station.slug;
-        if (usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
-        cacheRadarImage(finalUrl, cacheSlug, ts12, timelineProductType);
-      }
-    });
+      if (effectId !== radarTimelineEffectIdRef.current) return;
+
+      // 4. Cria novos overlays mas ainda não remove os antigos para um crossfade suave
+      const newOverlays: any[] = [];
+      validOverlays.forEach((d) => {
+        const ov = new google.maps.GroundOverlay(d.finalUrl, d.latLngBounds);
+        ov.setOpacity(radarOpacity);
+        ov.setMap(map);
+        newOverlays.push(ov);
+        
+        setTimelineFoundTimes((prev) => ({ ...prev, [d.stationSlug]: d.finalTs }));
+        
+        if (d.usedSource !== 'backup') {
+          let cacheSlug = d.stationSlug;
+          if (d.usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
+          cacheRadarImage(d.finalUrl, cacheSlug, d.ts12, timelineProductType);
+        }
+      });
+
+      // 5. Remove overlays antigos agora que os novos estão no mapa (Double Buffering)
+      radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
+      radarTimelineOverlaysRef.current = newOverlays;
+    };
+
+    loadFrame();
 
     return () => {
-      radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
-      radarTimelineOverlaysRef.current = [];
+      // Cleanup padrão se o componente desmontar
     };
   }, [showRadarTimelineSlider, radarTimelineMode, radarTimelineIndex, radarTimelineTimestamps, intervalRadars, timelineActiveStation, timelineProductType, radarOpacity, radarConfigs, radarSourceMode, timelineSelectedRadars]);
 
@@ -5390,15 +5450,28 @@ export default function RastrosTornadosPage() {
                     onClick={() => {
                       if (!timelinePlaying && showRadarTimelineSlider && radarTimelineTimestamps.length > 0) {
                         // Ao clicar em Play, se houver radar detalhado, pergunta/faz o preload
-                        preloadTimelineRadarImages().then(() => setTimelinePlaying(true));
+                        if (isTimelinePreloaded) {
+                          setTimelinePlaying(true);
+                        } else {
+                          preloadTimelineRadarImages().then(() => setTimelinePlaying(true));
+                        }
                       } else {
                         setTimelinePlaying((v) => !v);
                       }
                     }} 
-                    className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all" 
+                    className="p-2 rounded-xl bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-slate-300 hover:text-cyan-400 shrink-0 transition-all relative flex items-center justify-center" 
                     title={timelinePlaying ? 'Pausar' : 'Reproduzir'}
                   >
-                    {timelinePlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                    {isTimelinePreloading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                    ) : timelinePlaying ? (
+                      <Pause className="w-4 h-4" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
+                    {isTimelinePreloading && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-400 rounded-full animate-ping" />
+                    )}
                   </button>
                   {/* Botão para abrir menu de radares da timeline */}
                   <button type="button" onClick={() => setShowTimelineRadarMenu(v => !v)} className={`p-2 rounded-xl border shrink-0 transition-all ${showTimelineRadarMenu ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400' : 'bg-white/5 border-white/10 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10'}`} title="Radares e Doppler">
@@ -5801,7 +5874,7 @@ export default function RastrosTornadosPage() {
                        <span>Raio do Radar (km)</span>
                        <span className="text-cyan-400 font-mono">{editRadarRangeKm} km</span>
                      </div>
-                     <input type="range" min={50} max={1000} step={1} value={editRadarRangeKm} onChange={e => setEditRadarRangeKm(parseInt(e.target.value))} className="w-full accent-cyan-500" />
+                     <input type="range" min={10} max={1000} step={1} value={editRadarRangeKm} onChange={e => setEditRadarRangeKm(parseInt(e.target.value))} className="w-full accent-cyan-500" />
                    </div>
 
                    <div className="pt-2 border-t border-slate-800">

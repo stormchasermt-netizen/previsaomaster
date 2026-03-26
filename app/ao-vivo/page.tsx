@@ -3977,7 +3977,7 @@ export default function AoVivoPage() {
                     <div className="flex items-center gap-2">
                       <input
                         type="range"
-                        min={50}
+                        min={10}
                         max={500}
                         step={10}
                         value={editRangeKm}
