@@ -14,7 +14,7 @@ import {
   buildArgentinaRadarPngUrl,
   type ArgentinaRadarStation,
 } from '@/lib/argentinaRadarStations';
-import { fetchRadarConfigs, saveRadarConfig, buildRadarPngUrl, type RadarConfig } from '@/lib/radarConfigStore';
+import { fetchRadarConfigs, subscribeToRadarConfigs, saveRadarConfig, buildRadarPngUrl, type RadarConfig } from '@/lib/radarConfigStore';
 
 type SelectedStation = { type: 'cptec'; station: CptecRadarStation } | { type: 'argentina'; station: ArgentinaRadarStation } | null;
 
@@ -143,34 +143,41 @@ export default function AdminRadaresPage() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     if (!user || (user.type !== 'admin' && user.type !== 'superadmin')) {
       router.push('/');
       return;
     }
-    loadConfigs();
+    const unsub = subscribeToRadarConfigs(setConfigs);
+    return unsub;
   }, [user, router]);
 
   useEffect(() => {
     if (!mapRef.current) return;
     let isMounted = true;
     const initMap = async () => {
-      try {
-        const { Map } = await google.maps.importLibrary('maps');
-        if (!isMounted) return;
-        const map = new Map(mapRef.current, {
-          center: BRAZIL_CENTER,
-          zoom: 4,
-          disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeId: 'satellite',
-        });
-        mapInstanceRef.current = map;
-        setMapReady(true);
-      } catch (err) {
-        console.error(err);
-      }
+      const tryInit = async () => {
+        if (typeof google === 'undefined' || !google.maps || !google.maps.importLibrary) {
+          setTimeout(tryInit, 200);
+          return;
+        }
+        try {
+          const { Map } = await (google as any).maps.importLibrary('maps');
+          if (!isMounted) return;
+          const map = new Map(mapRef.current, {
+            center: BRAZIL_CENTER,
+            zoom: 4,
+            disableDefaultUI: true,
+            zoomControl: true,
+            mapTypeId: 'satellite',
+          });
+          mapInstanceRef.current = map;
+          setMapReady(true);
+        } catch (err) {
+          console.error(err);
+        }
+      };
+      tryInit();
     };
     initMap();
     return () => { isMounted = false; };
@@ -417,7 +424,6 @@ export default function AdminRadaresPage() {
         superRes: superRes || undefined,
       });
       addToast('Posição salva automaticamente.', 'success');
-      await loadConfigs();
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
     } finally {
@@ -764,7 +770,6 @@ export default function AdminRadaresPage() {
         superRes: superRes || undefined,
       });
       addToast('Configuração salva.', 'success');
-      await loadConfigs();
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
     } finally {

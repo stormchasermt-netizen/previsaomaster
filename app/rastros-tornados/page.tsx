@@ -60,7 +60,7 @@ import {
   getArgentinaRadarTimestamp,
   type ArgentinaRadarStation,
 } from '../../lib/argentinaRadarStations';
-import { fetchRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
+import { fetchRadarConfigs, subscribeToRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
 import { hasRedemetFallback, getRedemetArea } from '../../lib/redemetRadar';
 import { filterDopplerSuperRes, filterRadarImageFromUrl } from '../../lib/radarImageFilter';
 import { cacheRadarImage, getRadarBackupUrl } from '../../lib/radarCacheClient';
@@ -2035,7 +2035,8 @@ export default function RastrosTornadosPage() {
   }, [isMounted]);
 
   useEffect(() => {
-    fetchRadarConfigs().then(setRadarConfigs).catch(() => {});
+    const unsub = subscribeToRadarConfigs(setRadarConfigs);
+    return unsub;
   }, []);
 
   useEffect(() => {

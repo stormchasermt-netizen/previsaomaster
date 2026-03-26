@@ -38,7 +38,7 @@ import {
   getArgentinaRadarBounds,
   type ArgentinaRadarStation,
 } from '@/lib/argentinaRadarStations';
-import { fetchRadarConfigs, saveRadarConfig, type RadarConfig } from '@/lib/radarConfigStore';
+import { fetchRadarConfigs, saveRadarConfig, subscribeToRadarConfigs, type RadarConfig } from '@/lib/radarConfigStore';
 import { groupRadarsByLocation } from '@/lib/radarGrouping';
 import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
@@ -1056,7 +1056,6 @@ export default function AoVivoPage() {
       addToast('Configuração salva.', 'success');
       setEditCenterLat(lat);
       setEditCenterLng(lng);
-      await fetchRadarConfigs().then(setRadarConfigs);
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
     } finally {
@@ -1206,7 +1205,8 @@ export default function AoVivoPage() {
   }, [user]);
 
   useEffect(() => {
-    fetchRadarConfigs().then(setRadarConfigs).catch(() => {});
+    const unsub = subscribeToRadarConfigs(setRadarConfigs);
+    return unsub;
   }, []);
 
   useEffect(() => {
