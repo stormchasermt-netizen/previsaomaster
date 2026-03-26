@@ -86,6 +86,10 @@ export interface CptecRadarStation {
   velocityServer?: string;
   /** ID no arquivo para ppivr, quando diferente de id. Ex.: Chapecó usa R12137761 (ppicz) e R12137762 (ppivr). */
   velocityId?: string;
+  /** ID no arquivo para VIL. */
+  vilId?: string;
+  /** ID no arquivo para Waldvogel. */
+  waldvogelId?: string;
 }
 
 /**
@@ -94,51 +98,51 @@ export interface CptecRadarStation {
  */
 export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   // Radares DECEA/SDCSC (Sul)
-  { id: 'R12558322', slug: 'santiago', name: 'Santiago', lat: -29.183, lng: -54.867, rangeKm: 400, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12558323', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12578316', slug: 'cangucu', name: 'Canguçu', lat: -31.387, lng: -52.696, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12577538', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12137761', slug: 'chapeco', name: 'Chapecó', lat: -27.04879621266378, lng: -52.60375894804104, rangeKm: 450, org: 'sdcsc', server: 's2', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityServer: 's3', velocityId: 'R12137762', updateIntervalMinutes: 6, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.23109712981659, lng: -49.461747790379526, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12227760', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.12, lng: -49.49, rangeKm: 400, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12558322', slug: 'santiago', name: 'Santiago', lat: -29.2045, lng: -54.9406, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12558323', vilId: 'R12558321', waldvogelId: 'R12554487', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12578316', slug: 'cangucu', name: 'Canguçu', lat: -31.3821, lng: -52.7126, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12577538', vilId: 'R12578315', waldvogelId: 'R12574488', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12137761', slug: 'chapeco', name: 'Chapecó', lat: -27.0335, lng: -52.5986, rangeKm: 250, org: 'sdcsc', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12137762', vilId: 'R12132556', waldvogelId: 'R12134629', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.2147, lng: -49.4559, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12227760', vilId: 'R12222198', waldvogelId: 'R12224626', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.1078, lng: -49.4719, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12544956', vilId: 'R12544955', waldvogelId: 'R12544489', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
-  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet Mosaico (PP/Bauru)', lat: -22.116, lng: -51.385, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'ppi', sigmaSubtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 }, // Unificado como mosaico centralizado em Prudente no mapa
+  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet Mosaico (PP/Bauru)', lat: -22.116, lng: -51.385, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 },
   { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
 
-  // DECEA - Sudeste
-  { id: 'R12537563', slug: 'saoroque', name: 'São Roque', lat: -23.53, lng: -47.13, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', sigmaProduct: 'cappi', sigmaSubtype: 'cappi3km', velocityId: 'R12537536', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12567564', slug: 'picocouto', name: 'Pico do Couto', lat: -22.95, lng: -43.25, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12567537', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12504961', slug: 'gama', name: 'Gama', lat: -15.94, lng: -48.05, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12507562', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  // DECEA - Sudeste/Centro-Oeste
+  { id: 'R12537563', slug: 'saoroque', name: 'São Roque', lat: -23.5988, lng: -47.0977, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12537536', vilId: 'R12537542', waldvogelId: 'R12534843', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12567564', slug: 'picocouto', name: 'Pico do Couto', lat: -22.4466, lng: -43.2971, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12567537', vilId: 'R12567556', waldvogelId: 'R12564846', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12507565', slug: 'gama', name: 'Gama', lat: -15.9648, lng: -48.0219, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12507562', vilId: 'R12507561', waldvogelId: 'R12504490', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
   // INEA - Rio de Janeiro
-  { id: 'R12957397', slug: 'guaratiba', name: 'Guaratiba', lat: -23.04, lng: -43.61, rangeKm: 250, org: 'inea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12957398' },
-  { id: 'R12992241', slug: 'macae', name: 'Macaé', lat: -22.37, lng: -41.79, rangeKm: 250, org: 'inea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12997758' },
+  { id: 'R12957397', slug: 'guaratiba', name: 'Guaratiba', lat: -22.9932, lng: -43.5879, rangeKm: 250, org: 'inea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12957398', vilId: 'R12952194', waldvogelId: 'R12954620', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12997399', slug: 'macae', name: 'Macaé', lat: -22.4058, lng: -41.8604, rangeKm: 250, org: 'inea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12997758', vilId: 'R12992196', waldvogelId: 'R12994623', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
   // CEMADEN
-  { id: 'R12977393', slug: 'santatereza', name: 'Santa Tereza', lat: -19.94, lng: -40.60, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12977394' },
-  { id: 'R12894966', slug: 'almenara', name: 'Almenara', lat: -16.18, lng: -40.69, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12897396' },
-  { id: 'R12457387', slug: 'saofrancisco', name: 'São Francisco', lat: -15.95, lng: -44.86, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12457388' },
-  { id: 'R12477391', slug: 'tresmarias', name: 'Três Marias', lat: -18.21, lng: -45.23, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12477392' },
-  { id: 'R12277383', slug: 'jaraguari', name: 'Jaraguari', lat: -20.14, lng: -54.40, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12277384' },
-  { id: 'R12247379', slug: 'natal', name: 'Natal', lat: -5.81, lng: -35.21, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12247380' },
-  { id: 'R12447385', slug: 'maceio', name: 'Maceió', lat: -9.67, lng: -35.73, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12447386' },
-  { id: 'R12467389', slug: 'salvador', name: 'Salvador', lat: -12.97, lng: -38.51, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12467390' },
+  { id: 'R12977393', slug: 'santatereza', name: 'Santa Tereza', lat: -19.9728, lng: -40.5452, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12977394', vilId: 'R12972190', waldvogelId: 'R12974614', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12897395', slug: 'almenara', name: 'Almenara', lat: -16.1891, lng: -40.6475, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12897396', vilId: 'R12892192', waldvogelId: 'R12894617', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12457387', slug: 'saofrancisco', name: 'São Francisco', lat: -16.0173, lng: -44.6952, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12457388', vilId: 'R12452184', waldvogelId: 'R12454605', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12477391', slug: 'tresmarias', name: 'Três Marias', lat: -18.2072, lng: -45.4605, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12477392', vilId: 'R12472188', waldvogelId: 'R12474611', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12277383', slug: 'jaraguari', name: 'Jaraguari', lat: -20.2785, lng: -54.4739, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12277384', vilId: 'R12272180', waldvogelId: 'R12274497', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12247379', slug: 'natal', name: 'Natal', lat: -5.9044, lng: -35.2540, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12247380', vilId: 'R12242177', waldvogelId: 'R12244491', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12447385', slug: 'maceio', name: 'Maceió', lat: -9.5513, lng: -35.7708, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12447386', vilId: 'R12442182', waldvogelId: 'R12444600', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12467389', slug: 'salvador', name: 'Salvador', lat: -12.9025, lng: -38.3266, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12467390', vilId: 'R12462186', waldvogelId: 'R12464608', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12257381', slug: 'petrolina', name: 'Petrolina', lat: -9.3670, lng: -40.5730, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12257382', vilId: 'R12252178', waldvogelId: 'R12254494', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
   // SIPAM - Norte/Centro-Oeste (Super Res = CPTEC/Nowcasting, HD = SIPAM via /api/sipam/image)
-  { id: 'R12792141', slug: 'portovelho', name: 'Porto Velho', lat: -8.76, lng: -63.90, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12797370', sipamSlug: 'sbpv' },
-  { id: 'R12767583', slug: 'cruzeirodosul', name: 'Cruzeiro do Sul', lat: -7.63, lng: -72.67, rangeKm: 250, org: 'sipam', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12767363', sipamSlug: 'sbcz', updateIntervalMinutes: 12, updateIntervalOffsetMinutes: 0 },
-  { id: 'R12827598', slug: 'tabatinga', name: 'Tabatinga', lat: -4.25, lng: -69.94, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12827378', sipamSlug: 'sbtt' },
-  { id: 'R12837597', slug: 'tefe', name: 'Tefé', lat: -3.35, lng: -64.71, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12837377', sipamSlug: 'sbtf' },
-  { id: 'R12817594', slug: 'saogabriel', name: 'São Gabriel da Cachoeira (AM)', lat: -0.13, lng: -67.09, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12817374', sipamSlug: 'sbua' },
-  { id: 'R12787587', slug: 'manaus', name: 'Manaus', lat: -3.15, lng: -60.02, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12787367', sipamSlug: 'sbmn' },
-  { id: 'R12757581', slug: 'boavista', name: 'Boa Vista', lat: 2.82, lng: -60.67, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12757361', sipamSlug: 'sbbv' },
-  { id: 'R12777586', slug: 'macapa', name: 'Macapá', lat: 0.03, lng: -51.07, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12777366', sipamSlug: 'sbmq' },
-  { id: 'R12800000', slug: 'santarem', name: 'Santarém', lat: -2.44, lng: -54.71, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbsn' },
-  // Belém e São Luís ainda não tinham entrada CPTEC — adicionados com sipamSlug para HD
-  { id: 'R12800001', slug: 'belem', name: 'Belém', lat: -1.4084, lng: -48.46128, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbbe' },
-  { id: 'R12800002', slug: 'saoluis', name: 'São Luís', lat: -2.60048, lng: -44.2393, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbsl' },
+  { id: 'R12797767', slug: 'portovelho', name: 'Porto Velho', lat: -8.7075, lng: -63.8892, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12797370', vilId: 'R12792393', waldvogelId: 'R12794665', sipamSlug: 'sbpv', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12767583', slug: 'cruzeirodosul', name: 'Cruzeiro do Sul', lat: -7.5884, lng: -72.7650, rangeKm: 500, org: 'sipam', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12767363', vilId: 'R12762566', waldvogelId: 'R12764641', sipamSlug: 'sbcz', updateIntervalMinutes: 12, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12827598', slug: 'tabatinga', name: 'Tabatinga', lat: -4.2425, lng: -69.9304, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12827378', vilId: 'R12822578', waldvogelId: 'R12824659', sipamSlug: 'sbtt', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12837597', slug: 'tefe', name: 'Tefé', lat: -3.3672, lng: -64.6886, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12837377', vilId: 'R12832572', waldvogelId: 'R12834650', sipamSlug: 'sbtf', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12817594', slug: 'saogabriel', name: 'São Gabriel da Cachoeira (AM)', lat: -0.1391, lng: -67.0525, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12817374', vilId: 'R12812574', waldvogelId: 'R12814653', sipamSlug: 'sbua', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12787587', slug: 'manaus', name: 'Manaus', lat: -3.1434, lng: -59.9869, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12787367', vilId: 'R12782570', waldvogelId: 'R12784647', sipamSlug: 'sbmn', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12757581', slug: 'boavista', name: 'Boa Vista', lat: 2.8479, lng: -60.6957, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12757361', vilId: 'R12752564', waldvogelId: 'R12754638', sipamSlug: 'sbbv', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12777586', slug: 'macapa', name: 'Macapá', lat: 0.0500, lng: -51.0923, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12777366', vilId: 'R12772568', waldvogelId: 'R12774644', sipamSlug: 'sbmq', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12807592', slug: 'santarem', name: 'Santarém', lat: -2.4245, lng: -54.7945, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12807372', vilId: 'R12802579', waldvogelId: 'R12804662', sipamSlug: 'sbsn', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12907765', slug: 'saoluis', name: 'São Luís', lat: -2.5952, lng: -44.2347, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12907766', vilId: 'R12902576', waldvogelId: 'R12904656', sipamSlug: 'sbsl', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12800001', slug: 'belem', name: 'Belém', lat: -1.4019, lng: -48.4573, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbbe', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
-  // Quixeramobim e Fortaleza (FUNCEME) — bounds extraídos dos KML oficiais
-  { id: 'GMWR1000SST', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.893, lng: -38.458, rangeKm: 250, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
-  { id: 'RMT0100DS', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.069, lng: -39.267, rangeKm: 350, org: 'funceme', server: 's1', product: 'ppi', subtype: 'prsf', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
+  // FUNCEME
+  { id: 'R13851142', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.7944, lng: -38.5575, rangeKm: 480, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13851143', vilId: 'R13851137', waldvogelId: 'R13851141', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R13967017', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 400, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13967018', vilId: 'R13967012', waldvogelId: 'R13967016', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 
   // Fontes especiais (WMS/proxy)
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.561, lng: -46.736, rangeKm: 85, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
@@ -544,7 +548,7 @@ export function buildSipamHdPngUrl(
 export function buildNowcastingPngUrl(
   station: CptecRadarStation,
   ts12: string,
-  productType: 'reflectividade' | 'velocidade' = 'reflectividade',
+  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' = 'reflectividade',
   skipProxy = false
 ): string {
   if (station.slug === 'chapeco' && !skipProxy) {
@@ -574,15 +578,27 @@ export function buildNowcastingPngUrl(
 
   const y = finalTs12.slice(0, 4);
   const m = finalTs12.slice(4, 6);
-  const sub =
-    productType === 'velocidade'
-      ? station.product === 'cappi'
-        ? 'cappi3km'
-        : 'ppivr'
-      : station.subtype;
-  const server = productType === 'velocidade' && station.velocityServer ? station.velocityServer : station.server;
-  const fileId = productType === 'velocidade' && station.velocityId ? station.velocityId : station.id;
-  return `https://${server}.cptec.inpe.br/radar/${station.org}/${station.slug}/${station.product}/${sub}/${y}/${m}/${fileId}_${finalTs12}.png`;
+
+  let prod: string = station.product;
+  let sub: string = station.subtype;
+  let fileId = station.id;
+
+  if (productType === 'vil') {
+    prod = 'agua_liquida';
+    sub = 'vil';
+    fileId = station.vilId || station.id;
+  } else if (productType === 'waldvogel') {
+    prod = 'echotop';
+    sub = 'waldvogel';
+    fileId = station.waldvogelId || station.id;
+  } else if (productType === 'velocidade') {
+    prod = station.product;
+    sub = station.product === 'cappi' ? 'ppivr' : 'ppivr'; // Usually ppivr for Both
+    fileId = station.velocityId || station.id;
+  }
+
+  const server = (productType === 'velocidade' && station.velocityServer) ? station.velocityServer : station.server;
+  return `https://${server}.cptec.inpe.br/radar/${station.org}/${station.slug}/${prod}/${sub}/${y}/${m}/${fileId}_${finalTs12}.png`;
 }
 
 /** Converte lat/lng para Web Mercator (EPSG:3857). */
