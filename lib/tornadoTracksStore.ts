@@ -119,6 +119,11 @@ export async function fetchTornadoTracks(): Promise<TornadoTrack[]> {
       radarOverrides: data.radarOverrides && typeof data.radarOverrides === 'object' ? data.radarOverrides : undefined,
       secondaryAfterImages: Array.isArray(data.secondaryAfterImages) ? data.secondaryAfterImages : undefined,
       numericalModels: Array.isArray(data.numericalModels) ? data.numericalModels : undefined,
+      skewts: Array.isArray(data.skewts) ? data.skewts : undefined,
+      victims: data.victims ?? undefined,
+      damage: data.damage ?? undefined,
+      gallery: Array.isArray(data.gallery) ? data.gallery : undefined,
+      externalLinks: Array.isArray(data.externalLinks) ? data.externalLinks : undefined,
     };
     return {
       ...baseTrack,
@@ -164,6 +169,11 @@ export async function saveTornadoTrack(track: TornadoTrackInput, adminId: string
     radarOverrides: track.radarOverrides ?? null,
     secondaryAfterImages: track.secondaryAfterImages ?? null,
     numericalModels: track.numericalModels ?? null,
+    skewts: track.skewts ?? null,
+    victims: track.victims ?? null,
+    damage: track.damage ?? null,
+    gallery: track.gallery ?? null,
+    externalLinks: track.externalLinks ?? null,
     adminId,
     updatedAt: serverTimestamp(),
   };

@@ -115,6 +115,13 @@ export interface TornadoTrack {
   radarCropLeft?: number;
   radarCropRight?: number;
   radarCustomBounds?: { north: number; south: number; east: number; west: number };
+  
+  /** Dados detalhados do Tornado (para Painel de Informações) */
+  skewts?: string[]; // URLs das SkewTs de 00z a 21z
+  victims?: number | string;
+  damage?: string;
+  gallery?: string[]; // URLs de imagens para o slider
+  externalLinks?: { label: string; url: string }[];
 
   /** Overrides de radar específicos, indexados pelo id (ex: 'santiago') ou WMS Url */
   radarOverrides?: Record<string, RadarOverride>;

@@ -162,6 +162,16 @@ export default function AdminRastrosTornadosPage() {
   const [radarOverrides, setRadarOverrides] = useState<Record<string, any>>({});
   const rectInstanceRef = useRef<any>(null);
 
+  // Novos campos para Painel de Informações
+  const [skewts, setSkewts] = useState<string[]>([]);
+  const [victims, setVictims] = useState<number | string>('');
+  const [damage, setDamage] = useState('');
+  const [gallery, setGallery] = useState<string[]>([]);
+  const [externalLinks, setExternalLinks] = useState<{ label: string; url: string }[]>([]);
+  
+  const [skewtUploading, setSkewtUploading] = useState(false);
+  const [galleryUploading, setGalleryUploading] = useState(false);
+
   // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
   const parseCoord = (val: string): number => {
     if (!val) return 0;
@@ -1056,6 +1066,11 @@ export default function AdminRastrosTornadosPage() {
     setSecondaryUploadingId(null);
     setNumericalModels([]);
     setNumericalUploadingId(null);
+    setSkewts([]);
+    setVictims('');
+    setDamage('');
+    setGallery([]);
+    setExternalLinks([]);
   };
 
   const openNewTrack = () => {
@@ -1364,6 +1379,11 @@ export default function AdminRastrosTornadosPage() {
     setShowBeforeAfterDialog(false);
     setSecondaryAfterImages(t.secondaryAfterImages || []);
     setNumericalModels(t.numericalModels || []);
+    setSkewts(t.skewts || []);
+    setVictims(t.victims ?? '');
+    setDamage(t.damage || '');
+    setGallery(t.gallery || []);
+    setExternalLinks(t.externalLinks || []);
     setPanelOpen(true);
   };
 
@@ -1418,6 +1438,11 @@ export default function AdminRastrosTornadosPage() {
         trackImage: trackImage.trim() || undefined,
         trackImageBounds: trackImageBounds || undefined,
         secondaryAfterImages: secondaryAfterImages.length ? secondaryAfterImages : undefined,
+        skewts: skewts.length ? skewts : undefined,
+        victims: victims !== '' ? victims : undefined,
+        damage: damage.trim() || undefined,
+        gallery: gallery.length ? gallery : undefined,
+        externalLinks: externalLinks.length ? externalLinks : undefined,
       }, user.uid);
       addToast(editingId ? 'Rastro atualizado.' : 'Rastro criado.', 'success');
       await loadTracks();
@@ -1798,6 +1823,137 @@ export default function AdminRastrosTornadosPage() {
                       <span className="text-slate-400 block mb-1">Estado</span>
                       <input value={state} onChange={(e) => setState(e.target.value)} placeholder="ex: RS" className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2" />
                     </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <label>
+                      <span className="text-slate-400 block mb-1">Vítimas</span>
+                      <input value={victims} onChange={(e) => setVictims(e.target.value)} placeholder="ex: 2 mortos, 15 feridos" className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2" />
+                    </label>
+                    <label>
+                      <span className="text-slate-400 block mb-1">Prejuízo</span>
+                      <input value={damage} onChange={(e) => setDamage(e.target.value)} placeholder="ex: R$ 50 mi" className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2" />
+                    </label>
+                  </div>
+
+                  {/* Seção SkewTs (00z - 21z) */}
+                  <div className="space-y-2 border-t border-slate-700 pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">SkewTs (00z - 21z)</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setSkewts(prev => [...prev, ''])}
+                        className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
+                      >
+                        <PlusCircle className="w-3 h-3" /> Adicionar SkewT
+                      </button>
+                    </div>
+                    {skewts.map((url, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input 
+                          value={url} 
+                          onChange={(e) => {
+                            const next = [...skewts];
+                            next[idx] = e.target.value;
+                            setSkewts(next);
+                          }}
+                          placeholder={`URL SkewT ${idx * 3}z`}
+                          className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs"
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => setSkewts(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 text-red-400 hover:bg-red-950/30 rounded"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Seção Galeria de Imagens */}
+                  <div className="space-y-2 border-t border-slate-700 pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Galeria de Imagens (Slider)</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setGallery(prev => [...prev, ''])}
+                        className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
+                      >
+                        <PlusCircle className="w-3 h-3" /> Adicionar Imagem
+                      </button>
+                    </div>
+                    {gallery.map((url, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <input 
+                          value={url} 
+                          onChange={(e) => {
+                            const next = [...gallery];
+                            next[idx] = e.target.value;
+                            setGallery(next);
+                          }}
+                          placeholder="URL da imagem"
+                          className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs"
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => setGallery(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 text-red-400 hover:bg-red-950/30 rounded"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Seção Links Externos */}
+                  <div className="space-y-2 border-t border-slate-700 pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Links Externos</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setExternalLinks(prev => [...prev, { label: '', url: '' }])}
+                        className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
+                      >
+                        <PlusCircle className="w-3 h-3" /> Adicionar Link
+                      </button>
+                    </div>
+                    {externalLinks.map((link, idx) => (
+                      <div key={idx} className="space-y-1 bg-slate-800/40 p-2 rounded-lg border border-slate-700/50">
+                        <div className="flex gap-2">
+                          <input 
+                            value={link.label} 
+                            onChange={(e) => {
+                              const next = [...externalLinks];
+                              next[idx].label = e.target.value;
+                              setExternalLinks(next);
+                            }}
+                            placeholder="Rótulo (ex: Relatório Inmet)"
+                            className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs"
+                          />
+                          <button 
+                            type="button" 
+                            onClick={() => setExternalLinks(prev => prev.filter((_, i) => i !== idx))}
+                            className="p-1 text-red-400 hover:bg-red-950/30 rounded"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <input 
+                          value={link.url} 
+                          onChange={(e) => {
+                            const next = [...externalLinks];
+                            next[idx].url = e.target.value;
+                            setExternalLinks(next);
+                          }}
+                          placeholder="URL"
+                          className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
                     <label className="col-span-2">
                       <span className="text-slate-400 block mb-1">Localidade</span>
                       <input value={locality} onChange={(e) => setLocality(e.target.value)} placeholder="ex: Vacaria" className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2" />
@@ -1811,32 +1967,28 @@ export default function AdminRastrosTornadosPage() {
                       <input value={source} onChange={(e) => setSource(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2" />
                     </label>
                     <label className="col-span-2">
-                      <span className="text-slate-400 block mb-1">Radar WMS (opcional — ao selecionar um radar abaixo, serão usadas as URLs padrão Nowcasting)</span>
+                      <span className="text-slate-400 block mb-1">Radar WMS (opcional)</span>
                       <input
                         value={radarWmsUrl}
                         onChange={(e) => setRadarWmsUrl(e.target.value)}
-                        placeholder="Cole aqui a URL completa do request WMS (GetMap) — deixe vazio para usar padrão Nowcasting"
+                        placeholder="URL WMS GetMap"
                         className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-xs"
                       />
                     </label>
                     <label className="col-span-2">
-                      <span className="text-slate-400 block mb-1 flex items-center gap-2">
-                        Radar preferido (quando há mais de um no raio de 300 km)
-                        <Link href="/admin/radares" className="text-cyan-400 hover:text-cyan-300 text-xs" title="Configurar radares">
-                          Configurar radares
-                        </Link>
-                      </span>
+                      <span className="text-slate-400 block mb-1">Radar preferido</span>
                       <select
                         value={radarStationId}
                         onChange={(e) => setRadarStationId(e.target.value)}
                         className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm"
                       >
-                        <option value="">Automático (mais próximo)</option>
+                        <option value="">Automático</option>
                         {CPTEC_RADAR_STATIONS.map((r) => (
                           <option key={r.slug} value={r.slug}>{r.name}</option>
                         ))}
                       </select>
                     </label>
+                  </div>
 
                     {/* Ajuste Fino de Radar Local (Override) */}
                     <div className="col-span-2 space-y-3 rounded-lg border border-slate-600 p-3 bg-slate-800/50">
@@ -2289,7 +2441,6 @@ export default function AdminRastrosTornadosPage() {
                         </button>
                       </div>
                     )}
-                  </div>
                   <div>
                     <span className="text-slate-400 text-sm block mb-2">Desenhar polígono (intensidade F)</span>
                     <div className="flex flex-wrap gap-2 items-center">
@@ -2358,7 +2509,6 @@ export default function AdminRastrosTornadosPage() {
                         </span>
                       ))}
                     </div>
-                  </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <button type="button" onClick={handleSave} disabled={saving} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium flex items-center gap-2">
                       {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
