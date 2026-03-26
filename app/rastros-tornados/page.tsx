@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw, Eye, DollarSign } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, Wind, Layers, Check, ExternalLink, X, ZoomIn, Search, Ruler, Calendar, Home, Filter, Info, MapPin, Flame, Loader2, Users, Bell, Play, Pause, Share2, ChevronDown, Radar, Target, Menu, Settings, RotateCcw, Save, Trash2, RefreshCw, Eye, DollarSign, CloudRain } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { BeforeAfterCompare } from '@/components/BeforeAfterCompare';
@@ -497,6 +497,7 @@ export default function RastrosTornadosPage() {
   const [radarProductType, setRadarProductType] = useState<'reflectividade' | 'velocidade'>('reflectividade');
   /** Super Res local toggle (filtro doppler) */
   const [superResEnabled, setSuperResEnabled] = useState(false);
+  const [showRadiosondeBanner, setShowRadiosondeBanner] = useState(true);
 
   const [isRadarEditMode, setIsRadarEditMode] = useState(false);
   const [editRadarLat, setEditRadarLat] = useState<number>(0);
@@ -3482,6 +3483,51 @@ export default function RastrosTornadosPage() {
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-[#0A0E17] text-white overflow-hidden">
+      {/* Banner de Novidade: Radiossondagens (Skew-T) — Glassmorphism Premium */}
+      {showRadiosondeBanner && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-[min(90%,400px)] animate-in fade-in zoom-in duration-500 pointer-events-none">
+           <div className="relative overflow-hidden rounded-2xl bg-[#0A0E17]/60 backdrop-blur-xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-4 flex flex-col gap-3 pointer-events-auto">
+              {/* Premium Glow effects */}
+              <div className="absolute -top-12 -right-12 w-24 h-24 bg-cyan-500/20 blur-3xl animate-pulse" />
+              <div className="absolute -bottom-12 -left-12 w-24 h-24 bg-amber-500/20 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
+              
+              <div className="flex items-start justify-between relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+                    <CloudRain className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
+                      Radiossondagens!
+                      <span className="px-1.5 py-0.5 rounded text-[8px] bg-cyan-500 text-black font-black uppercase">Novo</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-300 leading-tight mt-0.5">Explore perfis verticais (Skew-T) em tempo real agora nos rastros.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowRadiosondeBanner(false)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="relative z-10 bg-white/5 rounded-xl p-2 border border-white/5 flex items-center justify-between">
+                 <div className="flex items-center gap-2 text-[9px] font-bold text-cyan-400 uppercase tracking-widest px-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                    Recurso Premium Ativo
+                 </div>
+                 <button 
+                   onClick={() => setShowRadiosondeBanner(false)}
+                   className="text-[10px] font-bold text-slate-400 hover:text-white transition-colors px-2 underline decoration-cyan-500/30 underline-offset-2"
+                 >
+                   Entendi
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       {/* Modal de onboarding (localização, nome, tipo) — ao entrar em Rastros */}
       {showRastrosOnboarding && user && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm animate-in fade-in">
