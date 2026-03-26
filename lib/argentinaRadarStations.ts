@@ -77,7 +77,7 @@ export function getArgentinaRadarTimestamp(
 export function buildArgentinaRadarPngUrl(
   station: ArgentinaRadarStation,
   tsArgentina: string,
-  productType: 'reflectividade' | 'velocidade'
+  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel'
 ): string {
   const prod = productType === 'reflectividade' ? 'COLMAX' : 'VRAD';
   const y = tsArgentina.slice(0, 4);

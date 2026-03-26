@@ -94,7 +94,7 @@ function getRadarUrlsWithFallback(url: string): [string, string] {
 /** Filtra minutos atrás para manter apenas os que têm imagem disponível (slider sem repetições, modo único). */
 async function filterValidSliderMinutesAgo(
   dr: DisplayRadar,
-  productType: 'reflectividade' | 'velocidade',
+  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
   maxMinutes: number,
   radarConfigs: RadarConfig[],
   signal?: AbortSignal
@@ -275,7 +275,7 @@ async function filterValidSliderMinutesAgo(
           } else {
             const d = new Date(Date.now() - (3 + searchMin) * 60_000);
             const ts = getArgentinaRadarTimestamp(d, dr.station);
-            url = buildArgentinaRadarPngUrl(dr.station, ts, productType);
+            url = buildArgentinaRadarPngUrl(dr.station, ts, productType as any);
           }
           try {
             const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
@@ -402,6 +402,8 @@ export default function AoVivoPage() {
   const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
   const [sampledValue1, setSampledValue1] = useState<number | null>(null);
   const [sampledValue2, setSampledValue2] = useState<number | null>(null);
+  const [sampledValue3, setSampledValue3] = useState<number | null>(null);
+  const [sampledValue4, setSampledValue4] = useState<number | null>(null);
 
   const [radarViewsRecord, setRadarViewsRecord] = useState<Record<string, number>>({});
   const [calendarMode, setCalendarMode] = useState<'days' | 'months' | 'years'>('days');
@@ -783,8 +785,16 @@ export default function AoVivoPage() {
 
   const handleSampleAll = useCallback(() => {
     samplePixelFromOverlays(mapInstanceRef.current, radarOverlaysRef.current, setSampledValue1, dBZ_COLORS);
-    if (splitCount === 2) {
+    if (splitCount >= 2 && map2InstanceRef.current) {
         samplePixelFromOverlays(map2InstanceRef.current, radarOverlays2Ref.current, setSampledValue2, VEL_COLORS);
+    }
+    if (splitCount === 4 && map3InstanceRef.current) {
+        // VIL usa uma paleta similar ou específica? Vou usar dBZ_COLORS por ora ou criar uma de VIL
+        samplePixelFromOverlays(mapInstanceRef.current, radarOverlays3Ref.current, setSampledValue3, dBZ_COLORS);
+    }
+    if (splitCount === 4 && map4InstanceRef.current) {
+        // Echo Top (km) paleta específica?
+        samplePixelFromOverlays(mapInstanceRef.current, radarOverlays4Ref.current, setSampledValue4, dBZ_COLORS);
     }
   }, [samplePixelFromOverlays, splitCount]);
 
@@ -1496,6 +1506,7 @@ export default function AoVivoPage() {
         const map = new Map(mapRef.current, {
           center,
           zoom: myLocation ? 8 : 4,
+          mapId: 'radar_map_1',
           mapTypeId: 'roadmap',
           styles: MAP_STYLE_DARK,
           disableDefaultUI: false,
@@ -1519,6 +1530,38 @@ export default function AoVivoPage() {
       setMapReady(false);
     };
   }, [canShowMap, myLocation]);
+
+  /** Segundo mapa (Doppler) para split=2 ou 4 */
+  useEffect(() => {
+    if ((splitCount !== 2 && splitCount !== 4) || !mapReady || !mapInstanceRef.current) {
+      if (map2InstanceRef.current) { map2InstanceRef.current = null; setMap2Ready(false); }
+      return;
+    }
+    if (!map2Ref.current) return;
+    const g = (window as any).google;
+    if (!g?.maps) return;
+    const main = mapInstanceRef.current;
+    
+    const initMap2 = async () => {
+      const { Map } = await g.maps.importLibrary('maps');
+      if (map2Ref.current && !map2InstanceRef.current) {
+        const m2 = new Map(map2Ref.current, {
+          center: main.getCenter()?.toJSON?.() ?? { lat: -14, lng: -52 },
+          zoom: main.getZoom() ?? 8,
+          mapId: 'radar_map_2',
+          mapTypeId: main.getMapTypeId(),
+          styles: main.get('styles') ?? MAP_STYLE_DARK,
+          disableDefaultUI: true, zoomControl: false, mapTypeControl: false, fullscreenControl: false, streetViewControl: false, rotateControl: false,
+        });
+        map2InstanceRef.current = m2;
+        setMap2Ready(true);
+      }
+    };
+    initMap2();
+    return () => {
+      map2InstanceRef.current = null; setMap2Ready(false);
+    };
+  }, [splitCount, mapReady]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReady) return;
@@ -2183,7 +2226,7 @@ export default function AoVivoPage() {
             const tsArg = getArgentinaRadarTimestamp(d, dr.station);
             if (seenTs.has(tsArg)) continue;
             seenTs.add(tsArg);
-            const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType);
+            const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType as any);
             const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
             urlsToTry.push({ url: proxyUrl, ts12: tsArg, source: 'cptec' });
             urlsToTry.push({ url: directUrl, ts12: tsArg, source: 'cptec' });
@@ -2195,7 +2238,7 @@ export default function AoVivoPage() {
             const tsArg = getArgentinaRadarTimestamp(d, dr.station);
             if (seenTs.has(tsArg)) continue;
             seenTs.add(tsArg);
-            const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType);
+            const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType as any);
             const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
             urlsToTry.push({ url: proxyUrl, ts12: tsArg, source: 'cptec' });
             urlsToTry.push({ url: directUrl, ts12: tsArg, source: 'cptec' });
@@ -2329,7 +2372,7 @@ export default function AoVivoPage() {
                   setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
                   // Salvar SIPAM HD no Storage
                   const sipamCacheSlug = dr.type === 'cptec' ? `${dr.station.slug}-sipamhd` : `argentina_${dr.station.id}`;
-                  cacheRadarImage(img.src, sipamCacheSlug, entry.ts12, productType);
+                  cacheRadarImage(img.src, sipamCacheSlug, entry.ts12, productType as any);
                   applyNoiseFilter();
                   if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
                     markProcessed();
@@ -2467,7 +2510,7 @@ export default function AoVivoPage() {
           }
 
           // Fire-and-forget: salvar imagem no Storage para cache
-          cacheRadarImage(img.src, slug, effectiveTs12, productType);
+          cacheRadarImage(img.src, slug, effectiveTs12, productType as any);
           setFailedRadars((prev) => {
             const next = new Set(prev);
             next.delete(radarKey);
@@ -2515,7 +2558,7 @@ export default function AoVivoPage() {
     setRadarEffectiveSource({});
     radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
     radarOverlaysRef.current = [];
-    if (!mapInstanceRef.current || displayRadars.length === 0) return;
+    if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) return;
     
     // Na janela 1, usamos sempre Reflectividade se estiver em split, ou o produto selecionado se único
     const product = (splitCount >= 2) ? 'reflectividade' : radarProductType;
@@ -2538,6 +2581,69 @@ export default function AoVivoPage() {
       radarOverlaysRef.current = [];
     };
   }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, addRadarOverlays, editingRadar, radarConfigs]);
+
+  /** Overlays Mapa 2 (Doppler) */
+  useEffect(() => {
+    radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    radarOverlays2Ref.current = [];
+    if (!map2Ready || !map2InstanceRef.current || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) return;
+    
+    addRadarOverlays(
+      map2InstanceRef.current,
+      radarOverlays2Ref.current,
+      'velocidade',
+      displayRadars,
+      effectiveRadarTimestamp,
+      useFallbackForOverlays,
+      radarOpacity,
+    );
+    return () => {
+      radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      radarOverlays2Ref.current = [];
+    };
+  }, [map2Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
+
+  /** Overlays Mapa 3 (VIL) */
+  useEffect(() => {
+    radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    radarOverlays3Ref.current = [];
+    if (!map3Ready || !map3InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
+    
+    addRadarOverlays(
+      map3InstanceRef.current,
+      radarOverlays3Ref.current,
+      'vil',
+      displayRadars,
+      effectiveRadarTimestamp,
+      useFallbackForOverlays,
+      radarOpacity,
+    );
+    return () => {
+      radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      radarOverlays3Ref.current = [];
+    };
+  }, [map3Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
+
+  /** Overlays Mapa 4 (Waldvogel) */
+  useEffect(() => {
+    radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    radarOverlays4Ref.current = [];
+    if (!map4Ready || !map4InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
+    
+    addRadarOverlays(
+      map4InstanceRef.current,
+      radarOverlays4Ref.current,
+      'waldvogel',
+      displayRadars,
+      effectiveRadarTimestamp,
+      useFallbackForOverlays,
+      radarOpacity,
+    );
+    return () => {
+      radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      radarOverlays4Ref.current = [];
+    };
+  }, [map4Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
 
   /** Overlay editável (arrastável) para posicionar o radar — apenas quando editingRadar está setado */
   useEffect(() => {

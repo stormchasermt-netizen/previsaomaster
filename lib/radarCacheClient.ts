@@ -18,7 +18,7 @@ export function cacheRadarImage(
   imageUrl: string,
   radarId: string,
   ts12: string,
-  productType: 'reflectividade' | 'velocidade' = 'reflectividade'
+  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' = 'reflectividade'
 ): void {
   // Não tenta cachear URLs do próprio Storage (já está cacheado)
   if (imageUrl.includes('firebasestorage.googleapis.com')) return;
@@ -52,7 +52,7 @@ export function cacheRadarImage(
 export function getRadarBackupUrl(
   radarId: string,
   ts12: string,
-  productType: 'reflectividade' | 'velocidade' = 'reflectividade'
+  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' = 'reflectividade'
 ): string {
   return `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(ts12)}&productType=${encodeURIComponent(productType)}`;
 }
