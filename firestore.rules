@@ -48,7 +48,7 @@ service cloud.firestore {
      * This aligns server-side validation with the client-side logic.
      */
     function isAdmin() {
-      return request.auth.token.email in ['stormchasermt@gmail.com', 'admin@previsaomaster.com'];
+      return request.auth.token.email in ['stormchasermt@gmail.com', 'admin@previsaomaster.com', 'augustof12010@gmail.com'];
     }
 
     /**

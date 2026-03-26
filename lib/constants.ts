@@ -75,7 +75,8 @@ export const LOCATION_REQUEST_EXCLUDED_UIDS = [
 // Lista de emails que têm permissão de ADMIN
 export const ADMIN_EMAILS = [
   'stormchasermt@gmail.com', // Criador do App
-  'admin@previsaomaster.com'
+  'admin@previsaomaster.com',
+  'augustof12010@gmail.com'
 ];
 
 // Google Maps Dark Style (Dark Matter-ish)
