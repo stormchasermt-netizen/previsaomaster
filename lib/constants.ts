@@ -90,6 +90,11 @@ export const MAP_STYLE_DARK = [
     stylers: [{ color: "#757575" }],
   },
   {
+    featureType: "administrative.province",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#ffffff" }, { weight: 0.8 }, { visibility: "on" }],
+  },
+  {
     featureType: "administrative.country",
     elementType: "labels.text.fill",
     stylers: [{ color: "#9e9e9e" }],
