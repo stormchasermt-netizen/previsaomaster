@@ -53,12 +53,12 @@ type DisplayRadar = { type: 'cptec'; station: CptecRadarStation } | { type: 'arg
 type BaseMapId = 'dark' | 'light' | 'satellite' | 'hybrid' | 'roadmap' | 'terrain';
 
 const BASE_MAP_OPTIONS: { id: BaseMapId; label: string; previewType: 'static' | 'placeholder'; staticMapType?: 'satellite' | 'hybrid' | 'roadmap' | 'terrain'; placeholderBg?: string }[] = [
+  { id: 'dark', label: 'Escuro', previewType: 'placeholder', placeholderBg: '#1e293b' },
+  { id: 'light', label: 'Claro', previewType: 'placeholder', placeholderBg: '#e2e8f0' },
   { id: 'satellite', label: 'Satélite', previewType: 'static', staticMapType: 'satellite' },
   { id: 'hybrid', label: 'Satélite com rótulos', previewType: 'static', staticMapType: 'hybrid' },
   { id: 'roadmap', label: 'Padrão (ruas)', previewType: 'static', staticMapType: 'roadmap' },
   { id: 'terrain', label: 'Terreno', previewType: 'static', staticMapType: 'terrain' },
-  { id: 'dark', label: 'Escuro', previewType: 'placeholder', placeholderBg: '#1e293b' },
-  { id: 'light', label: 'Claro', previewType: 'placeholder', placeholderBg: '#e2e8f0' },
 ];
 
 function getStaticMapPreviewUrl(maptype: string): string {

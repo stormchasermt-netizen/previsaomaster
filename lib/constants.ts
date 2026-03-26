@@ -140,13 +140,28 @@ export const MAP_STYLE_DARK = [
   },
   {
     featureType: "road.highway",
-    elementType: "geometry",
-    stylers: [{ color: "#3c3c3c" }],
+    elementType: "geometry.fill",
+    stylers: [{ color: "#f59e0b" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#212121" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#ffffff" }],
   },
   {
     featureType: "road.highway.controlled_access",
-    elementType: "geometry",
-    stylers: [{ color: "#4e4e4e" }],
+    elementType: "geometry.fill",
+    stylers: [{ color: "#f97316" }],
+  },
+  {
+    featureType: "road.highway.controlled_access",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#212121" }],
   },
   {
     featureType: "road.local",
