@@ -1682,7 +1682,9 @@ export default function RastrosTornadosPage() {
       setRadarLoading(false);
       return;
     }
-    const radars = findRadarsWithinRadius(centroid, 350);
+    const cptecRadars = findRadarsWithinRadius(centroid, 350);
+    const argentinaRadars = findArgentinaRadarsWithinRadius(centroid, 350);
+    const radars = [...cptecRadars, ...argentinaRadars];
     if (!radars.length) {
       setRadarError('Nenhum radar no raio de 350 km.');
       setRadarLoading(false);
@@ -1694,10 +1696,10 @@ export default function RastrosTornadosPage() {
       return;
     }
     const preferred = track.radarStationId
-      ? radars.find((r) => r.slug === track.radarStationId)
+      ? radars.find((r) => 'slug' in r && r.slug === track.radarStationId)
       : radars[0];
     const station = preferred || radars[0];
-    const isArgentina = station.org === 'argentina';
+    const isArgentina = !('slug' in station);
     if (isArgentina) {
       const argStation = station;
       const dateStr = track.date.replace(/-/g, '');
@@ -1708,7 +1710,7 @@ export default function RastrosTornadosPage() {
         startMin = Math.max(0, center - 180);
         endMin = Math.min(23 * 60 + 59, center + 180);
       }
-      const interval = (argStation as any).updateIntervalMinutes ?? 10;
+      const interval = argStation.updateIntervalMinutes;
       const argTs: string[] = [];
       const safeInterval = interval || 10;
       for (let t = Math.floor(startMin / safeInterval) * safeInterval; t <= endMin; t += safeInterval) {
@@ -1721,10 +1723,10 @@ export default function RastrosTornadosPage() {
           parseInt(dateStr.slice(6, 8), 10),
           h, m, 0
         ));
-        argTs.push(getArgentinaRadarTimestamp(d, argStation as any));
+        argTs.push(getArgentinaRadarTimestamp(d, argStation as ArgentinaRadarStation));
       }
       setRadarsWithin300km(radars);
-      setRadarStation(argStation as any);
+      setRadarStation(argStation as ArgentinaRadarStation);
       setRadarTimestamps(argTs);
       setRadarFrameIdx(findClosestArgentinaFrameIdx(argTs, track.time));
       setRadarLoading(false);
@@ -1781,7 +1783,7 @@ export default function RastrosTornadosPage() {
       return;
     }
     const radarCfgForInterval = preferred
-      ? radarConfigs.find((c) => c.stationSlug === (preferred.slug || `argentina:${(preferred as any).id}`))
+      ? radarConfigs.find((c) => c.stationSlug === ('slug' in preferred ? preferred.slug : `argentina:${preferred.id}`))
       : null;
     const interval = radarCfgForInterval?.updateIntervalMinutes ?? preferred?.updateIntervalMinutes ?? 6;
     const offset = (preferred && 'slug' in preferred) ? (preferred.updateIntervalOffsetMinutes ?? 0) : 0;
