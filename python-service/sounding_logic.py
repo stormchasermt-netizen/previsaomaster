@@ -138,13 +138,8 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
     srh1km_val = srh1km[0] if srh1km[0] != prof.missing else 0
     srh3km_val = srh3km[0] if srh3km[0] != prof.missing else 0
     
-    # Low level shear
-    shr0_500m = winds.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=interp_p(prof, 500))
-    shr0_500m_mag = np.sqrt(shr0_500m[0]**2 + shr0_500m[1]**2) if shr0_500m[0] != prof.missing else 0
-    
     # Significant Tornado Parameter (STP) [LEFT MOVER]
     # Fixed formula for LM: using LM SRH and taking absolute values since LM SRH is often negative in SH.
-    # STP = (mlCAPE/1500) * ((2000-mlLCL)/1000) * (abs(srh1km)/150) * (EShear/20)
     def calc_stp(cape, lcl, srh, shear):
         c_term = cape / 1500.0
         l_term = (2000.0 - lcl) / 1000.0
@@ -154,43 +149,37 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
         sh_term = max(0.0, min(1.5, sh_term))
         return c_term * l_term * s_term * sh_term
 
-    # Approximate 0-500m STP using 500m shear and pseudo srh
+    # Approximate 0-500m STP logic
     srh500m = winds.helicity(prof, 0, 500, stu=lm_u, stv=lm_v)
     srh500m_val = srh500m[0] if srh500m[0] != prof.missing else 0
-    
     stp0_1km = calc_stp(mlcape, mllcl, srh1km_val, eff_shear_mag)
     stp0_500m = calc_stp(mlcape, mllcl, srh500m_val, shr0_500m_mag)
 
-    # Convert parcel path for rendering
-    parcel_temp = ml_pcl.ttrace
-    parcel_pres = ml_pcl.ptrace
-
-    # Pack profile data for frontend drawing (SkewT limits usually 1000 to 100hPa)
-    profile_data = []
-    for i in range(len(p)):
-        u, v = prof.u[i], prof.v[i]
-        profile_data.append({
-            "pressure": float(p[i]),
-            "height": float(z[i]),
-            "temp": float(t[i]),
-            "dwpt": float(td[i]),
-            "u": float(u) if u != prof.missing else None,
-            "v": float(v) if v != prof.missing else None
-        })
-        
-    parcel_data = [{"pressure": float(p_), "temp": float(t_)} for p_, t_ in zip(parcel_pres, parcel_temp)]
-
+    # Calculate additional parcel types for the SHARPpy table
+    sfc_pcl = params.parcelx(prof, flag=1) # Surface Based
+    mu_pcl = params.parcelx(prof, flag=3)  # Most Unstable
+    
+    # Pack indices for the complete table
     indices = {
-        "mlCAPE": float(mlcape),
-        "mlLCL": float(mllcl),
-        "CAPE03ml": float(cape03ml),
+        "SFC": {"CAPE": sfc_pcl.bplus, "CIN": sfc_pcl.bminus, "LCL": sfc_pcl.lclhght, "LFC": sfc_pcl.lfchght, "EL": sfc_pcl.elhght},
+        "ML": {"CAPE": ml_pcl.bplus, "CIN": ml_pcl.bminus, "LCL": ml_pcl.lclhght, "LFC": ml_pcl.lfchght, "EL": ml_pcl.elhght},
+        "MU": {"CAPE": mu_pcl.bplus, "CIN": mu_pcl.bminus, "LCL": mu_pcl.lclhght, "LFC": mu_pcl.lfchght, "EL": mu_pcl.elhght},
         "EFFshear": float(eff_shear_mag),
-        "Shr_0_500m": float(shr0_500m_mag),
         "srh_0_1km_LM_HS": float(srh1km_val),
         "srh_0_3km_LM_HS": float(srh3km_val),
         "STP_0_1km_HS": float(stp0_1km),
         "STP_0_500m_HS": float(stp0_500m)
     }
+
+    # Data for frontend profile plot (compatibility)
+    profile_data = []
+    for i in range(len(p)):
+        u, v = prof.u[i], prof.v[i]
+        profile_data.append({
+            "pressure": float(p[i]), "height": float(z[i]), "temp": float(t[i]), "dwpt": float(td[i]),
+            "u": float(u) if u != prof.missing else None, "v": float(v) if v != prof.missing else None
+        })
+    parcel_data = [{"pressure": float(p_), "temp": float(t_)} for p_, t_ in zip(mu_pcl.ptrace, mu_pcl.ttrace)]
 
     base64_img = None
     if generate_image:
@@ -201,11 +190,19 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             from metpy.plots import SkewT, Hodograph
             from metpy.units import units
 
-            fig = plt.figure(figsize=(12, 10))
+            # Theme Setup (Black / SHARPpy style)
+            plt.rcParams['figure.facecolor'] = 'black'
+            plt.rcParams['axes.facecolor'] = 'black'
+            plt.rcParams['text.color'] = 'white'
+            plt.rcParams['axes.labelcolor'] = 'white'
+            plt.rcParams['xtick.color'] = 'white'
+            plt.rcParams['ytick.color'] = 'white'
+
+            fig = plt.figure(figsize=(15, 11))
             
-            # Grid spec to hold Skew-T and Hodograph + Text
-            gs = fig.add_gridspec(3, 3)
-            skew = SkewT(fig, rotation=45, subplot=gs[:, :2])
+            # Grid spec
+            gs = fig.add_gridspec(4, 4)
+            skew = SkewT(fig, rotation=45, subplot=gs[:3, :3])
             
             p_units = p * units.hPa
             t_units = t * units.degC
@@ -214,64 +211,82 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             u_arr = np.array([u_ if u_ != prof.missing else np.nan for u_ in prof.u]) * units.knots
             v_arr = np.array([v_ if v_ != prof.missing else np.nan for v_ in prof.v]) * units.knots
             
-            # Plot data on Skew-T
-            skew.plot(p_units, t_units, 'r', linewidth=2)
-            skew.plot(p_units, td_units, 'g', linewidth=2)
+            # 1. Plot Temperature (Red) and Dewpoint (Green)
+            skew.plot(p_units, t_units, 'red', linewidth=3)
+            skew.plot(p_units, td_units, '#32CD32', linewidth=3) # Lime green
             
-            # Plot wind barbs (decimate for readability)
+            # 2. Wind Barbs (SH Convention: Flip barbs to point left)
             idx = np.arange(0, len(p_units), max(1, len(p_units)//25))
-            skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx])
+            # In MetPy, we use flip_barbs=True for Southern Hemisphere
+            skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], flip_barbs=True, color='white')
             
-            # Plot parcel profile
-            skew.plot(parcel_pres * units.hPa, parcel_temp * units.degC, 'k', linestyle='--', linewidth=1.5)
+            # 3. Plot Parcel (Cyan) - Using MU parcel for visual consistency
+            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'cyan', linestyle='--', linewidth=1.5)
             
-            # Additional Skew-T features
-            skew.ax.set_ylim(1000, 100)
-            skew.ax.set_xlim(-40, 40)
-            skew.plot_dry_adiabats(alpha=0.25)
-            skew.plot_moist_adiabats(alpha=0.25)
-            skew.plot_mixing_lines(alpha=0.25)
-            skew.ax.set_ylabel('Pressão (hPa)')
-            skew.ax.set_xlabel('Temperatura (°C)')
-            skew.ax.set_title(image_title, loc='left', fontsize=14, fontweight='bold')
+            # 4. Grid Lines (Subtle Grey)
+            skew.plot_dry_adiabats(color='grey', alpha=0.3)
+            skew.plot_moist_adiabats(color='grey', alpha=0.3)
+            skew.plot_mixing_lines(color='grey', alpha=0.3)
             
-            # Plot Hodograph
-            ax_hodo = fig.add_subplot(gs[0, 2])
+            skew.ax.set_ylim(1050, 100)
+            skew.ax.set_xlim(-50, 45)
+            skew.ax.set_ylabel('Pressao (hPa)')
+            skew.ax.set_xlabel('Temperatura (C)')
+            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=16, fontweight='bold', color='yellow')
+            
+            # 5. Hodograph (Top Right)
+            ax_hodo = fig.add_subplot(gs[:2, 3])
+            ax_hodo.set_facecolor('black')
             h = Hodograph(ax_hodo, component_range=80.)
-            h.add_grid(increment=20)
+            h.add_grid(increment=20, color='white', alpha=0.3)
             
-            # Interpolate wind for smooth color line
             z_mask = ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
             if np.any(z_mask):
-                # Height needs to be in meters correctly matched
-                h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask])
-            ax_hodo.set_title("Hodógrafo (nós)")
+                # Color the line by height (Official SHARPpy-like colors)
+                h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask], cmap='rainbow')
             
-            # Add text/indices
-            ax_text = fig.add_subplot(gs[1:, 2])
-            ax_text.axis('off')
+            # Plot Storm Motion (Left Mover)
+            ax_hodo.plot(lm_u, lm_v, 'wo', markersize=6) # White dot for storm motion
+            ax_hodo.set_title("Hodografo (nos)", color='white')
             
-            info = (
-                f"Parâmetros Termodinâmicos:\n"
-                f"mlCAPE: {mlcape:.0f} J/kg\n"
-                f"mlLCL: {mllcl:.0f} m\n"
-                f"CAPE 0-3km: {cape03ml:.0f} J/kg\n\n"
-                f"Parâmetros Cinemáticos:\n"
-                f"Shear Efetivo: {eff_shear_mag:.0f} kt\n"
-                f"Shear 0-500m: {shr0_500m_mag:.0f} kt\n"
-                f"SRH 0-1km (LM HS): {srh1km_val:.0f} m2/s2\n"
-                f"SRH 0-3km (LM HS): {srh3km_val:.0f} m2/s2\n\n"
-                f"Parâmetros Compostos:\n"
-                f"STP 0-1km: {stp0_1km:.2f}\n"
-                f"STP 0-500m: {stp0_500m:.2f}\n"
+            # 6. Parameter Table (Bottom Section like SHARPpy)
+            ax_table = fig.add_subplot(gs[3, :])
+            ax_table.axis('off')
+            
+            table_data = [
+                ["Parcela", "CAPE", "CINH", "LCL (m)", "LFC (m)", "EL (m)"],
+                ["SFC Based", f"{sfc_pcl.bplus:.0f}", f"{sfc_pcl.bminus:.0f}", f"{sfc_pcl.lclhght:.0f}", f"{sfc_pcl.lfchght:.0f}", f"{sfc_pcl.elhght:.0f}"],
+                ["Mixed L.", f"{ml_pcl.bplus:.0f}", f"{ml_pcl.bminus:.0f}", f"{ml_pcl.lclhght:.0f}", f"{ml_pcl.lfchght:.0f}", f"{ml_pcl.elhght:.0f}"],
+                ["Most Unst.", f"{mu_pcl.bplus:.0f}", f"{mu_pcl.bminus:.0f}", f"{mu_pcl.lclhght:.0f}", f"{mu_pcl.lfchght:.0f}", f"{mu_pcl.elhght:.0f}"],
+            ]
+            
+            the_table = ax_table.table(cellText=table_data, colWidths=[0.15]*6, cellLoc='center', loc='center')
+            the_table.auto_set_font_size(False)
+            the_table.set_fontsize(12)
+            for key, cell in the_table.get_celld().items():
+                cell.set_facecolor('black')
+                cell.set_text_props(color='white')
+                cell.set_edgecolor('grey')
+            
+            # 7. Side Parameters (Indices)
+            ax_params = fig.add_subplot(gs[2, 3:])
+            ax_params.axis('off')
+            
+            info_text = (
+                f"Shear Efetivo: {eff_shear_mag:.1f} kt\n"
+                f"SRH 0-1km (LM HS): {srh1km_val:.0f}\n"
+                f"SRH 0-3km (LM HS): {srh3km_val:.0f}\n"
+                f"STP 0-1km (HS): {stp0_1km:.2f}\n"
+                f"STP 0-500m (HS): {stp0_500m:.2f}\n\n"
+                f"CONFIGURADO PARA HEMISFERIO SUL\n"
+                f"Storm Motion: LEFT MOVER"
             )
-            ax_text.text(0.1, 0.9, info, fontsize=12, va='top', family='monospace')
-            
+            ax_params.text(0, 0.8, info_text, color='yellow', fontsize=12, va='top', family='monospace', fontweight='bold')
+
             plt.tight_layout()
             
-            # Save to BytesIO
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+            plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='black')
             plt.close(fig)
             
             base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
