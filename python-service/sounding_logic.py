@@ -94,9 +94,29 @@ def process_csv_content(csv_text: str):
     mllcl = ml_pcl.lclhght
     cape03ml = ml_pcl.b3km
     
-    # Effective Shear
-    eff_shear = params.effective_shear(prof, ml_pcl)
-    eff_shear_mag = eff_shear[0] if eff_shear[0] != prof.missing else 0
+    # Effective Shear (Bulk shear from effective inflow base to ~50% EL)
+    # Fallback to 0-6km shear if not available
+    eff_inflow = params.effective_inflow_layer(prof, 100, -250)
+    eff_shear_mag = 0
+    if eff_inflow and eff_inflow[0] != prof.missing and eff_inflow[1] != prof.missing:
+        ebot = eff_inflow[0]
+        el_p = ml_pcl.elhght
+        try:
+            el_agl = np.interp(el_p, prof.pres[::-1], prof.hght[::-1]) - prof.hght[prof.sfc]
+            etop_hght = el_agl * 0.5 + prof.hght[prof.sfc]
+            etop = np.interp(etop_hght, prof.hght, prof.pres)
+            eff_shear = params.wind_shear(prof, pbot=ebot, ptop=etop)
+            if eff_shear and eff_shear[0] != prof.missing:
+                eff_shear_mag = np.sqrt(eff_shear[0]**2 + eff_shear[1]**2)
+        except Exception:
+            pass
+            
+    if eff_shear_mag == 0:
+        # Fallback to 0-6km shear
+        p6km = np.interp(prof.hght[prof.sfc] + 6000, prof.hght, prof.pres)
+        s6km = params.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=p6km)
+        if s6km and s6km[0] != prof.missing:
+            eff_shear_mag = np.sqrt(s6km[0]**2 + s6km[1]**2)
     
     # Bunkers Storm Motion (Left Mover for Southern Hemisphere!)
     srwind = params.bunkers_storm_motion(prof)
@@ -173,4 +193,5 @@ def process_csv_content(csv_text: str):
 
 def interp_p(prof, hght_agl):
     """ Helper to interpolate pressure at a given AGL height """
-    return thermo.ctk(thermo.interp(hght_agl + prof.hght[prof.sfc], prof.hght, prof.pres))
+    target_hght = hght_agl + prof.hght[prof.sfc]
+    return np.interp(target_hght, prof.hght, prof.pres)
