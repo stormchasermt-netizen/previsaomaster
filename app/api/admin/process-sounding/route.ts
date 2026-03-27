@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   try {
     const { csvUrl, isAverage, csvUrls } = await req.json();
 
-    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'http://127.0.0.1:8095';
+    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'https://sounding-engine-303740989273.us-central1.run.app';
 
     if (isAverage) {
       if (!csvUrls || csvUrls.length === 0) {
