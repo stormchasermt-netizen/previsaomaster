@@ -5,8 +5,10 @@ WORKDIR /app
 COPY requirements.txt .
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget curl && \
-    rm -rf /var/lib/apt/lists/*
+    git \
+    wget curl libsm6 libxext6 libxrender-dev libgl1-mesa-glx \
+    libfontconfig1 \
+    && rm -rf /var/lib/apt/lists/*
     
 RUN pip install --no-cache-dir -r requirements.txt
 

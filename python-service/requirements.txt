@@ -3,7 +3,8 @@ uvicorn
 pydantic>=2.0
 pandas
 numpy
-sharppy
+# Repo oficial (sharppy.plot.skew, etc.)
+sharppy @ git+https://github.com/sharppy/sharppy.git
 requests
 Pillow
 metpy

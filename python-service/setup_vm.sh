@@ -40,12 +40,12 @@ echo "===== 4/5 SHARPpy oficial (inclui sharppy.viz.spc — layout SPC) ====="
 pip uninstall -y sharppy 2>/dev/null || true
 pip install "git+https://github.com/sharppy/sharppy.git"
 
-echo "===== 5/5 Verificar módulo SPC ====="
+echo "===== 5/5 Verificar sharppy.plot.skew (layout tipo SHARPpy / exemplo oficial) ====="
 python3 - <<'PY'
 import sys
 try:
-    import sharppy.viz.spc as spc
-    print("OK: sharppy.viz.spc carregado — SPCWindo disponível.")
+    import sharppy.plot.skew as skew  # noqa: F401
+    print("OK: sharppy.plot.skew disponível (o módulo sharppy.viz.spc antigo foi removido no upstream).")
 except ImportError as e:
     print("FALHA:", e, file=sys.stderr)
     sys.exit(1)
@@ -56,9 +56,9 @@ echo "===== Instalação concluída ====="
 echo "Ativa o venv sempre que fores testar:"
 echo "  cd $SCRIPT_DIR && source venv/bin/activate"
 echo ""
-echo "Teste rápido (precisas de um CSV com colunas: pres,hght,temp,dwpt,wdir,wspd):"
+echo "Teste rápido (CSV com colunas: pres,hght,temp,dwpt,wdir,wspd):"
 echo "  export SOUNDING_LATITUDE=-23.5"
-echo "  xvfb-run -a python3 sharppy_renderer.py teu_ficheiro.csv saida.png"
+echo "  python3 sharppy_renderer.py examples/minimal_sounding.csv /tmp/teste.png"
 echo ""
 echo "Integração com o site: aponta PYTHON_ENGINE_URL para o FastAPI (main.py) ou"
 echo "define NATIVE_SPC_RENDER=true no serviço que corre sounding_logic.py."

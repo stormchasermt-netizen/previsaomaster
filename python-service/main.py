@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import requests
 import asyncio
 import io
@@ -23,6 +23,10 @@ class ProcessRequest(BaseModel):
     csvUrl: str
     generateImage: bool = False
     imageTitle: str = "Previsao Master - Skew-T Profissional"
+    # Latitude do site (graus). <0 = Sul — SHARPpy + MetPy flip_barb. None = inferir do CSV ou -23.5.
+    latitude: Optional[float] = None
+    # Layout SPC nativo (SHARPpy SPCWindo + Qt + xvfb). Requer PyQt5 e xvfb-run no container/VM.
+    nativeSpcLayout: bool = False
 
 class AverageProcessRequest(BaseModel):
     csvUrls: List[str]
@@ -38,7 +42,13 @@ async def process_sounding(req: ProcessRequest):
         res.raise_for_status()
         csv_text = res.text
         
-        result = process_csv_content(csv_text, generate_image=req.generateImage, image_title=req.imageTitle)
+        result = process_csv_content(
+            csv_text,
+            generate_image=req.generateImage,
+            image_title=req.imageTitle,
+            latitude_override=req.latitude,
+            native_spc=req.nativeSpcLayout,
+        )
         return {"success": True, "data": result}
     except Exception as e:
         return {"success": False, "error": str(e)}
