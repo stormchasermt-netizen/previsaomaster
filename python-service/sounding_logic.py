@@ -141,40 +141,70 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
 
         sb_levs, ml_levs, mu_levs = _get_levels(p, t, td, parcel_prof), _get_levels(p, t, td, ml_prof), _get_levels(p, t, td, mu_prof)
 
-        # SCP/STP e Lapse Rates
+        # --- CÁLCULOS ADICIONAIS (NOVO BOX) ---
+        # 3CAPE (0-3km)
         try:
-            eff_shear = mpcalc.bulk_shear(p, u, v, depth=6000*units.m)
-            shear_mag = np.sqrt(eff_shear[0]**2 + eff_shear[1]**2).to('m/s').m
-            scp = (mucape.m / 1000.0) * (srh3k / 50.0) * (shear_mag / 20.0)
-            stp = (mlcape.m / 1500.0) * ((2000 - ml_levs[0])/1000.0) * (srh1k / 150.0) * (shear_mag / 20.0)
-            scp, stp = max(0, scp), max(0, stp)
-        except: scp = stp = 0.0
-
-        def _get_lr(z_top):
-            try:
-                idx = np.abs(h.m - z_top).argmin()
-                if idx <= 1: return 0.0
-                return - (t[idx].m - t[0].m) / (h[idx].m / 1000.0)
-            except: return 0.0
+            p_3k = p[h <= 3000*units.m]
+            t_3k = t[h <= 3000*units.m]
+            td_3k = td[h <= 3000*units.m]
+            prof_3k = ml_prof[h <= 3000*units.m]
+            cape_3k = mpcalc.cape_cin(p_3k, t_3k, td_3k, prof_3k)[0].m
+        except: cape_3k = 0.0
         
-        lr03, lr36 = _get_lr(3000), _get_lr(6000)
+        # DCAPE
+        dcape_val = 0.0
+        try:
+            # Downdraft CAPE: find min theta-e in lowest 6km
+            mask_6k = h <= 6000*units.m
+            theta_e = mpcalc.equivalent_potential_temperature(p[mask_6k], t[mask_6k], td[mask_6k])
+            idx_min = np.argmin(theta_e)
+            p_src, t_src, td_src = p[idx_size-len(p):][idx_min], t[idx_size-len(p):][idx_min], td[idx_size-len(p):][idx_min]
+            # Saturated parcel descent
+            # MetPy doesn't have a direct dcape function in all versions, let's approximate
+            # Or use downdraft_cape if available
+            dc_res = mpcalc.downdraft_cape(p, t, td)
+            dcape_val = float(dc_res[0].m)
+        except: dcape_val = 0.0
+
+        # WBZ / FZL
+        def _get_z_level(qty, target):
+            try:
+                # Interpolate to find where qty crosses target
+                idx = np.where(np.diff(np.sign(qty.m - target)))[0]
+                if len(idx) > 0:
+                    i = idx[0]
+                    # Linear interp
+                    fraction = (target - qty.m[i]) / (qty.m[i+1] - qty.m[i])
+                    z = h.m[i] + fraction * (h.m[i+1] - h.m[i])
+                    return int(z * 3.28084) # results in ft
+                return 0
+            except: return 0
+
+        fzl = _get_z_level(t.to('degC'), 0)
+        wb = mpcalc.wet_bulb_temperature(p, t, td).to('degC')
+        wbz = _get_z_level(wb, 0)
+        
+        # ESP / WNDG
+        esp = (cape_3k / 50.0) * (srh1k / 100.0) * (mlcape.m / 1000.0)
+        wndg = (mucape.m / 2000.0) * (dcape_val / 1000.0)
+        esp, wndg = max(0, esp), max(0, wndg)
 
         # 4. Plotagem (SPC Full Style)
-        base64_img = None
         if generate_image:
             plt.clf()
             fig = plt.figure(figsize=(22, 14), facecolor='white')
-            # Margens zeradas conforme pedido
             fig.subplots_adjust(left=0.02, right=0.98, bottom=0.32, top=0.95, wspace=0.1)
             
             # Skew-T
             skew = SkewT(fig, rotation=45, subplot=(1, 2, 1))
             skew.plot(p, t, 'r', linewidth=3)
             skew.plot(p, td, 'g', linewidth=3)
-            skew.plot(p, parcel_prof, 'k', linestyle='--', alpha=0.6)
-            skew.shade_cape(p, t, parcel_prof, alpha=0.2, facecolor='red')
-            skew.shade_cin(p, t, parcel_prof, alpha=0.1, facecolor='blue')
-            skew.plot_dry_adiabats(alpha=0.2); skew.plot_moist_adiabats(alpha=0.2); skew.plot_mixing_lines(alpha=0.2)
+            # USAR ML PARCEL NO DIAGRAMA
+            plot_prof = ml_prof if ml_prof is not None else parcel_prof
+            skew.plot(p, plot_prof, 'k', linestyle='--', alpha=0.7)
+            skew.shade_cape(p, t, plot_prof, alpha=0.2, facecolor='red')
+            skew.shade_cin(p, t, plot_prof, alpha=0.1, facecolor='blue')
+            skew.plot_dry_adiabats(alpha=0.15); skew.plot_moist_adiabats(alpha=0.15); skew.plot_mixing_lines(alpha=0.15)
             skew.ax.set_ylim(1050, 100); skew.ax.set_xlim(-40, 50)
             skew.ax.set_title(image_title, fontsize=18, fontweight='bold')
             skew.plot_barbs(p[::max(1, len(p)//30)], u_kt[::max(1, len(p)//30)], v_kt[::max(1, len(p)//30)], flip_barb=_flip)
@@ -183,6 +213,16 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
             hodo_ax = fig.add_subplot(1, 2, 2)
             hodo = Hodograph(hodo_ax, component_range=80.)
             hodo.add_grid(increment=20, color='gray', alpha=0.3, linestyle='--')
+            
+            # Sombra de Vorticidade (Streamwise)
+            try:
+                idx_500 = np.abs(h.m - 500).argmin()
+                u_h, v_h = u_kt[:idx_500+1].m, v_kt[:idx_500+1].m
+                hodo_ax.fill(np.append(u_h, [sm_u.to('knots').m, u_h[0]]), 
+                             np.append(v_h, [sm_v.to('knots').m, v_h[0]]), 
+                             'red', alpha=0.3)
+            except: pass
+
             z_m = h.m
             z_clrs = ['magenta', '#4B0082', 'red', 'orange', 'blue']
             for i, z_top in enumerate([500, 1000, 3000, 6000, 12000]):
@@ -197,13 +237,16 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
                 except: pass
             
             try:
+                # Vetor de Tempestade (Seta)
+                hodo_ax.arrow(0, 0, sm_u.to('knots').m, sm_v.to('knots').m, color='gray', 
+                              linewidth=3, head_width=2, head_length=3, length_includes_head=True, alpha=0.6)
                 hodo_ax.plot(lm[0].to('knots').m, lm[1].to('knots').m, 'ro', markersize=10, label='LM')
                 hodo_ax.plot(rm[0].to('knots').m, rm[1].to('knots').m, 'bo', markersize=10, label='RM')
                 hodo_ax.legend(loc='upper right', fontsize=12)
             except: pass
             hodo_ax.set_xlabel('knots', fontsize=12)
 
-            # --- TABELA DE PARÂMETROS ---
+            # --- TABELAS ---
             f_mono = dict(family='monospace', fontsize=15, va='top', ha='left', fontweight='bold')
             hdr = "PARCEL          CAPE  CINH  LCL    LI   LFC     EL"
             sbc_t = f"SFC (SB)      {int(sbcape.m):>5} {int(sbcin.m):>5} {int(sb_levs[0]):>5}m {int(sb_li):>4} {int(sb_levs[1]):>5}m {int(sb_levs[2]):>5}m"
@@ -211,9 +254,13 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
             muc_t = f"MOST UNSTABLE {int(mucape.m):>5} {int(mucin.m):>5} {int(mu_levs[0]):>5}m {int(mu_li):>4} {int(mu_levs[1]):>5}m {int(mu_levs[2]):>5}m"
             fig.text(0.04, 0.28, f"{hdr}\n{'-'*54}\n{sbc_t}\n{mlc_t}\n{muc_t}", **f_mono)
 
-            k_val = int(_safe_calc(mpcalc.k_index, p, t, td).m or 0)
-            col2 = f"PW  = {pw.m:>5.1f} mm\nK   = {k_val:>5}\nSfc-3km LR = {lr03:>4.1f} C/km\n3-6km Agl LR = {lr36:>4.1f} C/km"
-            fig.text(0.48, 0.28, col2, **f_mono)
+            # Novo Box de Parâmetros (Bottom Left)
+            box_txt = (
+                f"PW  = {pw.to('in').m:>4.2f} in   3CAPE = {int(cape_3k):>4} J/kg   WBZ = {int(wbz):>5} ft   WNDG = {wndg:>4.1f}\n"
+                f"K   = {int(k_val):>4}      DCAPE = {int(dcape_val):>4} J/kg   FZL = {int(fzl):>5} ft   ESP  = {esp:>4.1f}\n"
+                f"Sfc-3km LR = {lr03:>4.1f} C/km   3-6km Agl LR = {lr36:>4.1f} C/km"
+            )
+            fig.text(0.04, 0.16, box_txt, **f_mono, bbox=dict(facecolor='none', edgecolor='black', pad=10))
 
             scp_clr = 'red' if scp > 5 else 'black'
             stp_clr = 'red' if stp > 1 else 'black'
@@ -245,7 +292,7 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
                 "mlcape": float(mlcape.m), "mlcin": float(mlcin.m),
                 "mucape": float(mucape.m), "mucin": float(mucin.m),
                 "scp": float(scp), "stp": float(stp),
-                "pw": float(pw.m)
+                "pw": float(pw.m), "dcape": float(dcape_val), "3cape": float(cape_3k)
             },
             "base64_img": base64_img
         }
@@ -253,4 +300,3 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
     except Exception as e:
         import traceback
         return {"error": f"Erro MetPy: {str(e)}", "trace": traceback.format_exc()}
-```
