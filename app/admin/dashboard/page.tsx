@@ -43,6 +43,7 @@ export default function AdminDashboardPage() {
   const [allSoundingsData, setAllSoundingsData] = useState<PythonSoundingData[]>([]);
   const [averageData, setAverageData] = useState<PythonSoundingData | null>(null);
   const [isAveraging, setIsAveraging] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (!user || (user.type !== 'admin' && user.type !== 'superadmin')) {
@@ -212,57 +213,71 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* List of Tracks */}
-          <div className="lg:col-span-1 space-y-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-              <FileText className="w-5 h-5 text-cyan-400" />
-              CSVs (Sondagens)
-            </h2>
-            <div className="space-y-3 overflow-y-auto max-h-[70vh] pr-2 custom-scrollbar">
-              {tracks.length === 0 ? (
-                <div className="p-8 text-center bg-slate-900/50 rounded-xl border border-dashed border-slate-800">
-                  <p className="text-slate-500 text-sm">Sem arquivos registrados.</p>
-                </div>
-              ) : (
-                tracks.map(track => (
-                  <div key={track.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                    <div className="p-3 bg-slate-800/50 border-b border-slate-700">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{track.date}</p>
-                      <h3 className="font-bold text-white truncate">{track.locality || track.state}</h3>
+        <div className="flex gap-6 relative">
+          {/* List of Tracks (Collapsible Sidebar) */}
+          <div className={`${isSidebarOpen ? 'w-full lg:w-1/4' : 'w-0 overflow-hidden'} transition-all duration-300 ease-in-out space-y-4 relative`}>
+            {isSidebarOpen && (
+              <>
+                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                  <FileText className="w-5 h-5 text-cyan-400" />
+                  CSVs (Sondagens)
+                </h2>
+                <div className="space-y-3 overflow-y-auto max-h-[75vh] pr-2 custom-scrollbar">
+                  {tracks.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-900/50 rounded-xl border border-dashed border-slate-800">
+                      <p className="text-slate-500 text-sm">Sem arquivos registrados.</p>
                     </div>
-                    <div className="p-3 space-y-2">
-                      {track.soundingFiles?.map((file, fIdx) => (
-                        <div key={fIdx} className="flex items-center justify-between gap-2 p-2 rounded bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors">
-                          <span className="text-[10px] text-slate-400 truncate flex-1" title={file.name}>{file.name}</span>
-                          <button 
-                            onClick={() => processSounding(track, file.url, file.name)}
-                            disabled={processingId !== null || isAveraging}
-                            className="p-1.5 rounded bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500 hover:text-black disabled:opacity-50 transition-all"
-                            title="Processar Individualmente"
-                          >
-                            {processingId === `${track.id}_${file.name}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                          </button>
+                  ) : (
+                    tracks.map(track => (
+                      <div key={track.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="p-3 bg-slate-800/50 border-b border-slate-700">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{track.date}</p>
+                          <h3 className="font-bold text-white truncate">{track.locality || track.state}</h3>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+                        <div className="p-3 space-y-2">
+                          {track.soundingFiles?.map((file, fIdx) => (
+                            <div key={fIdx} className="flex items-center justify-between gap-2 p-2 rounded bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors">
+                              <span className="text-[10px] text-slate-400 truncate flex-1" title={file.name}>{file.name}</span>
+                              <button 
+                                onClick={() => processSounding(track, file.url, file.name)}
+                                disabled={processingId !== null || isAveraging}
+                                className="p-1.5 rounded bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500 hover:text-black disabled:opacity-50 transition-all"
+                                title="Processar Individualmente"
+                              >
+                                {processingId === `${track.id}_${file.name}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Visualization Area */}
-          <div className="lg:col-span-3 space-y-6">
-            {!currentDisplay ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 min-h-[500px] flex flex-col items-center justify-center shadow-2xl">
-                <Wind className="w-16 h-16 text-slate-800 mb-4" />
-                <h3 className="text-xl font-bold text-slate-400">Motor de Termodinâmica Inativo</h3>
-                <p className="text-slate-600 text-sm max-w-sm mt-2 text-center">Inicie o cálculo para carregar os arrays de parcelas adiabáticas e extrair as equações Bunkers Storm Motion.</p>
-              </div>
-            ) : (
-              <div className="space-y-6 animate-in fade-in duration-500">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+          <div className={`${isSidebarOpen ? 'lg:w-3/4' : 'w-full'} flex-1 transition-all duration-300 ease-in-out`}>
+            <div className="relative h-full">
+              {/* Toggle Button */}
+              <button 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="absolute -left-3 top-4 z-20 p-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition-all shadow-lg"
+                title={isSidebarOpen ? "Recolher Menu" : "Expandir Menu"}
+              >
+                {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <List className="w-4 h-4" />}
+              </button>
+
+              {!currentDisplay ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 min-h-[500px] h-full flex flex-col items-center justify-center shadow-2xl">
+                  <Wind className="w-16 h-16 text-slate-800 mb-4" />
+                  <h3 className="text-xl font-bold text-slate-400">Motor de Termodinâmica Inativo</h3>
+                  <p className="text-slate-600 text-sm max-w-sm mt-2 text-center">Inicie o cálculo para carregar os arrays de parcelas adiabáticas.</p>
+                </div>
+              ) : (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
                     <div className="border-b border-slate-800 pb-4 mb-6 flex justify-between items-end">
                       <div>
                         <h3 className="text-xl font-bold text-amber-500">
@@ -272,66 +287,62 @@ export default function AdminDashboardPage() {
                       </div>
                       {averageData && (
                         <span className="text-xs bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 px-3 py-1.5 rounded-full font-bold">
-                          {allSoundingsData.length} Perfis Processados
+                          {allSoundingsData.length} Perfis
                         </span>
                       )}
                     </div>
                     
                     {currentDisplay.base64_img && !currentDisplay.base64_img.startsWith("ERROR:") ? (
                       <div className="w-full bg-slate-50 rounded-xl overflow-hidden shadow-inner flex justify-center items-center min-h-[500px] border border-slate-300">
-                        <img src={currentDisplay.base64_img} alt="Detailed Professional Skew-T" className="w-full h-auto object-contain max-h-[85vh] drop-shadow-xl p-2" />
+                        <img src={currentDisplay.base64_img} alt="Professional Skew-T" className="w-full h-auto object-contain max-h-[92vh] drop-shadow-2xl p-2" />
                       </div>
                     ) : (
-                      <>
+                      <div className="space-y-8">
                         {currentDisplay.base64_img && currentDisplay.base64_img.startsWith("ERROR:") && (
-                          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm font-mono overflow-auto max-h-40">
-                            <strong>Erro Interno no Renderizador Python:</strong><br/>
-                            {currentDisplay.base64_img.replace("ERROR:", "")}
+                          <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm font-mono">
+                            <strong>Erro:</strong> {currentDisplay.base64_img.replace("ERROR:", "")}
                           </div>
                         )}
-                        {/* Charts Grid */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                           {/* SkewT */}
                            <div className="space-y-2">
-                               <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Wind className="w-4 h-4"/> Skew-T Log-P</h4>
+                               <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Wind className="w-4 h-4"/> Skew-T</h4>
                                <SkewTChart data={currentDisplay} meanData={averageData} />
                            </div>
-
-                       {/* Hodograph */}
-                       <div className="space-y-2">
-                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><TrendingUp className="w-4 h-4"/> Hodógrafa Cinemática</h4>
-                           <div className="bg-slate-50 aspect-square rounded-xl relative p-2 overflow-hidden shadow-inner">
-                             <HodographChart 
-                               data={currentDisplay.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))} 
-                               backgroundData={averageData ? allSoundingsData.map(d => d.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))) : undefined}
-                             />
+                           <div className="space-y-2">
+                               <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><TrendingUp className="w-4 h-4"/> Hodógrafa</h4>
+                               <div className="bg-slate-50 aspect-square rounded-xl relative p-2 overflow-hidden shadow-inner">
+                                 <HodographChart 
+                                   data={currentDisplay.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))} 
+                                   backgroundData={averageData ? allSoundingsData.map(d => d.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))) : undefined}
+                                 />
+                               </div>
                            </div>
-                       </div>
                         </div>
-                      </>
-                    )}
-                </div>
-
-                    {/* Boxplots / Stats (Only showing if NOT using the professional image) */}
-                    {!currentDisplay.base64_img && (
-                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl mt-6">
-                          <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Índices de Severidade (MetPy HS)</h4>
-                          {averageData ? (
-                             <StatsCharts dataList={allSoundingsData} />
-                          ) : (
-                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                 {Object.entries(currentDisplay.indices).map(([k, v]) => (
-                                     <div key={k} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
-                                         <p className="text-[10px] text-slate-400 uppercase font-bold">{k}</p>
-                                         <p className="text-lg font-bold text-white">{(v as number).toFixed(1)}</p>
-                                     </div>
-                                 ))}
-                             </div>
-                          )}
                       </div>
                     )}
-              </div>
-            )}
+                  </div>
+
+                  {/* Stats Cards (Only if no integrated image) */}
+                  {!currentDisplay.base64_img && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Índices de Severidade</h4>
+                        {averageData ? (
+                           <StatsCharts dataList={allSoundingsData} />
+                        ) : (
+                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                               {Object.entries(currentDisplay.indices).map(([k, v]) => (
+                                   <div key={k} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                                       <p className="text-[10px] text-slate-400 uppercase font-bold">{k}</p>
+                                       <p className="text-lg font-bold text-white">{(v as number).toFixed(1)}</p>
+                                   </div>
+                               ))}
+                           </div>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

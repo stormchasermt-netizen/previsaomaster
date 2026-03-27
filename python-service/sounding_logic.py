@@ -133,13 +133,26 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
             hodo = Hodograph(hodo_ax, component_range=80.)
             hodo.add_grid(increment=20, color='gray', alpha=0.3, linestyle='--')
             
+            # Segmentos coloridos (Nova Regra do Usuário)
             z_m = h.m
-            z_lvls = [0, 500, 3000, 6000, 10000]
-            z_clrs = ['magenta', 'red', 'green', 'blue']
+            z_lvls = [0, 500, 1000, 3000, 6000, 12000]
+            z_clrs = ['magenta', '#4B0082', 'red', 'orange', 'blue']
             for i in range(len(z_lvls)-1):
                 mask = (z_m >= z_lvls[i]) & (z_m <= z_lvls[i+1])
                 if np.sum(mask) >= 2:
-                    hodo.plot(u_kt[mask], v_kt[mask], color=z_clrs[i], linewidth=3)
+                    hodo.plot(u_kt[mask], v_kt[mask], color=z_clrs[i], linewidth=4)
+            
+            # Adicionar labels numéricos por nível (0, 1, 3, 6, 9, 12 km)
+            label_lvls = [0, 1000, 3000, 6000, 9000, 12000]
+            for lvl in label_lvls:
+                try:
+                    # Encontrar ponto mais próximo do nível
+                    idx = np.abs(z_m - lvl).argmin()
+                    if np.abs(z_m[idx] - lvl) < 500: # Garantir proximidade razoável
+                        hodo_ax.text(u_kt[idx].m, v_kt[idx].m, f"{lvl//1000}", 
+                                     fontsize=11, fontweight='bold', ha='center', va='center',
+                                     bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', pad=1))
+                except: pass
             
             if not np.isnan(sm_u.m):
                 hodo_ax.plot(sm_u.to('knots').m, sm_v.to('knots').m, 'ro', markersize=10, label=f'Storm Motion ({sm_label})')
