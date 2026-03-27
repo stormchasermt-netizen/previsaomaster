@@ -3,28 +3,45 @@ import { processCSVContent } from '@/lib/soundingUtils';
 
 export async function POST(req: NextRequest) {
   try {
-    const { csvUrl } = await req.json();
+    const { csvUrl, isAverage, csvUrls } = await req.json();
 
-    if (!csvUrl) {
-      return NextResponse.json({ error: 'URL do CSV não fornecida' }, { status: 400 });
+    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'http://localhost:8080';
+
+    if (isAverage) {
+      if (!csvUrls || csvUrls.length === 0) {
+        return NextResponse.json({ error: 'Nenhuma URL fornecida para média' }, { status: 400 });
+      }
+      
+      const response = await fetch(`${pythonServiceUrl}/api/process-average-sounding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvUrls })
+      });
+      
+      if (!response.ok) {
+        return NextResponse.json({ error: 'Falha no serviço Python ao gerar média' }, { status: 500 });
+      }
+      
+      const data = await response.json();
+      return NextResponse.json(data);
+    } else {
+      if (!csvUrl) {
+        return NextResponse.json({ error: 'URL do CSV não fornecida' }, { status: 400 });
+      }
+
+      const response = await fetch(`${pythonServiceUrl}/api/process-sounding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvUrl })
+      });
+      
+      if (!response.ok) {
+        return NextResponse.json({ error: 'Falha no serviço Python ao processar sondagem' }, { status: 500 });
+      }
+      
+      const data = await response.json();
+      return NextResponse.json(data);
     }
-
-    // 1. Baixar o CSV
-    const response = await fetch(csvUrl);
-    if (!response.ok) {
-      return NextResponse.json({ error: 'Falha ao baixar o CSV do Storage' }, { status: 500 });
-    }
-    const csvContent = await response.text();
-
-    // 2. Processar nativamente via utils
-    const result = processCSVContent(csvContent);
-
-    if ('error' in result) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
-    }
-
-    return NextResponse.json(result);
-
   } catch (err: any) {
     console.error('API Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

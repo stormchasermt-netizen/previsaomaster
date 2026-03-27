@@ -8,7 +8,24 @@ import { useToast } from '@/contexts/ToastContext';
 import { fetchTornadoTracks } from '@/lib/tornadoTracksStore';
 import { TornadoTrack } from '@/lib/tornadoTracksData';
 import { ChevronLeft, LayoutDashboard, FileText, Play, Loader2, List, Wind, TrendingUp } from 'lucide-react';
-import { SoundingPoint, processCSVContent, interpolateSounding } from '@/lib/soundingUtils';
+
+import { SkewTChart, PythonSoundingData } from './SkewTChart';
+import { StatsCharts } from './StatsCharts';
+
+// --- Utils ---
+function interpolateValue(h: number, profile: any[], field: string) {
+  if (profile.length < 2) return null;
+  for (let i = 0; i < profile.length - 1; i++) {
+    const p1 = profile[i];
+    const p2 = profile[i+1];
+    if ((p1.height <= h && p2.height >= h) || (p1.height >= h && p2.height <= h)) {
+      if (p1.height === p2.height) return p1[field];
+      const ratio = (h - p1.height) / (p2.height - p1.height);
+      return p1[field] + ratio * (p2[field] - p1[field]);
+    }
+  }
+  return null;
+}
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
@@ -18,12 +35,13 @@ export default function AdminDashboardPage() {
   const [tracks, setTracks] = useState<TornadoTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [activeData, setActiveData] = useState<SoundingPoint[] | null>(null);
+  
+  const [activeData, setActiveData] = useState<PythonSoundingData | null>(null);
   const [activeTrackName, setActiveTrackName] = useState<string>('');
   
-  // States for Average Hodograph
-  const [allSoundingsData, setAllSoundingsData] = useState<SoundingPoint[][]>([]);
-  const [averageData, setAverageData] = useState<SoundingPoint[] | null>(null);
+  // States for Average
+  const [allSoundingsData, setAllSoundingsData] = useState<PythonSoundingData[]>([]);
+  const [averageData, setAverageData] = useState<PythonSoundingData | null>(null);
   const [isAveraging, setIsAveraging] = useState(false);
 
   useEffect(() => {
@@ -51,7 +69,8 @@ export default function AdminDashboardPage() {
     const procId = `${track.id}_${fileName}`;
     setProcessingId(procId);
     setActiveTrackName(`${track.date} - ${track.locality || track.state} (${fileName})`);
-    setAverageData(null); // Clear average view when selecting specific
+    setAverageData(null);
+    setAllSoundingsData([]);
     
     try {
       const res = await fetch('/api/admin/process-sounding', {
@@ -66,7 +85,7 @@ export default function AdminDashboardPage() {
         setActiveData(result.data);
         addToast('Sondagem processada com sucesso!', 'success');
       } else {
-        addToast('Erro: ' + (result.error || 'Falha no processamento'), 'error');
+        addToast('Erro: ' + (result.error || 'Falha no processamento, tente novamente.'), 'error');
       }
     } catch (err: any) {
       addToast('Erro na requisição: ' + err.message, 'error');
@@ -81,55 +100,70 @@ export default function AdminDashboardPage() {
     setActiveTrackName('Média de Todos os Eventos');
     
     try {
-      const processed: SoundingPoint[][] = [];
-      const filesToProcess = tracks.flatMap(t => t.soundingFiles?.map(f => ({ url: f.url, name: f.name })) || []);
+      const filesToProcess = tracks.flatMap(t => t.soundingFiles?.map(f => f.url) || []);
       
       if (filesToProcess.length === 0) {
         addToast('Nenhum dado disponível para média.', 'warning');
         return;
       }
 
-      for (const file of filesToProcess) {
-        const res = await fetch('/api/admin/process-sounding', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ csvUrl: file.url })
-        });
-        const result = await res.json();
-        if (result.success && result.data) {
-          processed.push(result.data);
-        }
+      const res = await fetch('/api/admin/process-sounding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAverage: true, csvUrls: filesToProcess })
+      });
+      
+      const result = await res.json();
+      
+      if (!result.success || !result.data) {
+          throw new Error(result.error || 'Falha no processo backend.');
       }
 
-      setAllSoundingsData(processed);
+      const processedObjList: PythonSoundingData[] = result.data;
+      setAllSoundingsData(processedObjList);
 
-      // Simple averaging logic
-      const standardLevels = Array.from({ length: 121 }, (_, i) => i * 100); // 0 to 12000m every 100m
-      const meanSounding: SoundingPoint[] = [];
+      // Calculando o Mean Profile no Frontend
+      const standardLevels = Array.from({ length: 121 }, (_, i) => i * 100); 
+      const meanProfile: any[] = [];
 
       for (const h of standardLevels) {
-        let sumU = 0;
-        let sumV = 0;
-        let count = 0;
+        let u=0, v=0, t=0, td=0, p=0, count=0, t_count=0;
 
-        for (const points of processed) {
-          const val = interpolateSounding(points, h);
-          if (val) {
-            sumU += val.u;
-            sumV += val.v;
-            count++;
-          }
+        for (const data of processedObjList) {
+          if (!data.profile) continue;
+          const valU = interpolateValue(h, data.profile, 'u');
+          const valV = interpolateValue(h, data.profile, 'v');
+          const valT = interpolateValue(h, data.profile, 'temp');
+          const valTd = interpolateValue(h, data.profile, 'dwpt');
+          const valP = interpolateValue(h, data.profile, 'pressure');
+          
+          if (valU !== null && valV !== null) { u += valU; v += valV; count++; }
+          if (valT !== null && valTd !== null && valP !== null) { t += valT; td += valTd; p += valP; t_count++; }
         }
 
-        if (count > 0) {
-          meanSounding.push({ height: h, u: sumU / count, v: sumV / count });
+        if (count > 0 || t_count > 0) {
+          meanProfile.push({
+            height: h,
+            u: count > 0 ? u / count : null,
+            v: count > 0 ? v / count : null,
+            temp: t_count > 0 ? t / t_count : null,
+            dwpt: t_count > 0 ? td / t_count : null,
+            pressure: t_count > 0 ? p / t_count : null
+          });
         }
       }
 
-      setAverageData(meanSounding);
-      addToast(`Média gerada com base em ${processed.length} sondagens!`, 'success');
+      // We don't have mean 'indices' directly, we will let StatsCharts display the distributions
+      const meanData: PythonSoundingData = {
+          profile: meanProfile,
+          parcel: [],
+          indices: processedObjList[0]?.indices // dummy fallback
+      };
+
+      setAverageData(meanData);
+      addToast(`Média termodinâmica gerada com base em ${processedObjList.length} perfis!`, 'success');
     } catch (err: any) {
-        addToast('Erro ao gerar média: ' + err.message, 'error');
+        addToast('Erro ao gerar média: certifique-se que o backend Python Engine está rodando. ' + err.message, 'error');
     } finally {
         setIsAveraging(false);
     }
@@ -143,6 +177,8 @@ export default function AdminDashboardPage() {
     );
   }
 
+  const currentDisplay = averageData || activeData;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 p-4 sm:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -155,9 +191,9 @@ export default function AdminDashboardPage() {
             <div>
               <h1 className="text-2xl font-bold text-white flex items-center gap-2">
                 <LayoutDashboard className="w-7 h-7 text-amber-500" />
-                Hodograph Admin: Sondagens
+                Hodograph & Skew-T Engine
               </h1>
-              <p className="text-slate-500 text-sm">Processamento de dados brutos e geração de hodógrafas</p>
+              <p className="text-slate-500 text-sm">Motor Server-Side (Python SHARPpy) p/ Termodinâmica Global</p>
             </div>
           </div>
           <div className="flex gap-3">
@@ -167,27 +203,22 @@ export default function AdminDashboardPage() {
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-bold transition-colors disabled:opacity-50"
               >
                 {isAveraging ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
-                Gerar Sondagem Média
+                Processar Skew-T Média
               </button>
-             <Link href="/admin/rastros-tornados" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm font-medium transition-colors">
-               <List className="w-4 h-4" /> Gerenciar Rastros
-             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* List of Tracks with Soundings */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* List of Tracks */}
           <div className="lg:col-span-1 space-y-4">
             <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
               <FileText className="w-5 h-5 text-cyan-400" />
-              Eventos com Sondagem
+              CSVs (Sondagens)
             </h2>
-            
             <div className="space-y-3 overflow-y-auto max-h-[70vh] pr-2 custom-scrollbar">
               {tracks.length === 0 ? (
                 <div className="p-8 text-center bg-slate-900/50 rounded-xl border border-dashed border-slate-800">
-                  <p className="text-slate-500 text-sm">Nenhum rastro com arquivos CSV anexados.</p>
-                  <Link href="/admin/rastros-tornados" className="text-amber-500 hover:underline text-xs mt-2 inline-block">Adicionar CSVs no Admin de Rastros</Link>
+                  <p className="text-slate-500 text-sm">Sem arquivos registrados.</p>
                 </div>
               ) : (
                 tracks.map(track => (
@@ -199,12 +230,12 @@ export default function AdminDashboardPage() {
                     <div className="p-3 space-y-2">
                       {track.soundingFiles?.map((file, fIdx) => (
                         <div key={fIdx} className="flex items-center justify-between gap-2 p-2 rounded bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors">
-                          <span className="text-xs text-slate-400 truncate flex-1" title={file.name}>{file.name}</span>
+                          <span className="text-[10px] text-slate-400 truncate flex-1" title={file.name}>{file.name}</span>
                           <button 
                             onClick={() => processSounding(track, file.url, file.name)}
                             disabled={processingId !== null || isAveraging}
-                            className="p-1.5 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-black disabled:opacity-50 transition-all"
-                            title="Processar Hodógrafa"
+                            className="p-1.5 rounded bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500 hover:text-black disabled:opacity-50 transition-all"
+                            title="Processar Individualmente"
                           >
                             {processingId === `${track.id}_${file.name}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                           </button>
@@ -218,92 +249,70 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Visualization Area */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 min-h-[500px] flex flex-col shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-5">
-                <Wind className="w-32 h-32" />
+          <div className="lg:col-span-3 space-y-6">
+            {!currentDisplay ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 min-h-[500px] flex flex-col items-center justify-center shadow-2xl">
+                <Wind className="w-16 h-16 text-slate-800 mb-4" />
+                <h3 className="text-xl font-bold text-slate-400">Motor de Termodinâmica Inativo</h3>
+                <p className="text-slate-600 text-sm max-w-sm mt-2 text-center">Inicie o cálculo para carregar os arrays de parcelas adiabáticas e extrair as equações Bunkers Storm Motion.</p>
               </div>
-
-              {!activeData && !averageData ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
-                  <div className="p-4 rounded-full bg-slate-800/50 border border-slate-700">
-                    <TrendingUp className="w-12 h-12 text-slate-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-400">Nenhuma sondagem selecionada</h3>
-                    <p className="text-slate-600 text-sm max-w-xs mx-auto">Selecione um arquivo CSV à esquerda ou clique em "Gerar Sondagem Média" para análise agregada.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col space-y-6 animate-in fade-in duration-500">
-                  <div className="border-b border-slate-800 pb-4 flex justify-between items-end">
-                    <div>
-                      <h3 className="text-lg font-bold text-amber-500">
-                        {averageData ? 'Hodógrafa Média (Composta)' : 'Hodógrafa Analítica (0-12km)'}
-                      </h3>
-                      <p className="text-sm text-slate-400">{activeTrackName}</p>
+            ) : (
+              <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                    <div className="border-b border-slate-800 pb-4 mb-6 flex justify-between items-end">
+                      <div>
+                        <h3 className="text-xl font-bold text-amber-500">
+                          {averageData ? 'Composição Estocástica e Perfil Médio' : 'Análise Convectiva Individual'}
+                        </h3>
+                        <p className="text-sm text-slate-400">{activeTrackName}</p>
+                      </div>
+                      {averageData && (
+                        <span className="text-xs bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 px-3 py-1.5 rounded-full font-bold">
+                          {allSoundingsData.length} Perfis Processados
+                        </span>
+                      )}
                     </div>
-                    {averageData && (
-                      <span className="text-xs bg-slate-800 border border-slate-700 px-2 py-1 rounded text-slate-400 font-bold">
-                        {allSoundingsData.length} Casos
-                      </span>
+                    
+                    {/* Charts Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                       {/* SkewT */}
+                       <div className="space-y-2">
+                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Wind className="w-4 h-4"/> Skew-T Log-P</h4>
+                           <SkewTChart data={currentDisplay} meanData={averageData} />
+                       </div>
+
+                       {/* Hodograph */}
+                       <div className="space-y-2">
+                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><TrendingUp className="w-4 h-4"/> Hodógrafa Cinemática</h4>
+                           <div className="bg-slate-50 aspect-square rounded-xl relative p-2 overflow-hidden shadow-inner">
+                             <HodographChart 
+                               data={currentDisplay.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))} 
+                               backgroundData={averageData ? allSoundingsData.map(d => d.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))) : undefined}
+                             />
+                           </div>
+                       </div>
+                    </div>
+                </div>
+
+                {/* Boxplots / Stats */}
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Índices de Severidade (Left Mover HS)</h4>
+                    {averageData ? (
+                       <StatsCharts dataList={allSoundingsData} />
+                    ) : (
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           {/* Render individual stats */}
+                           {Object.entries(currentDisplay.indices).map(([k, v]) => (
+                               <div key={k} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                                   <p className="text-[10px] text-slate-400 uppercase font-bold">{k}</p>
+                                   <p className="text-lg font-bold text-white">{(v as number).toFixed(1)}</p>
+                               </div>
+                           ))}
+                       </div>
                     )}
-                  </div>
-
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                    {/* Hodograph Chart (SVG) */}
-                    <div className="aspect-square bg-white rounded-xl border border-slate-200 flex items-center justify-center p-4 relative shadow-md">
-                      <HodographChart 
-                        data={(averageData || activeData || []).filter(d => d.height <= 12100)} 
-                        backgroundData={averageData ? allSoundingsData : undefined}
-                      />
-                    </div>
-
-                    {/* Data Summary / Stats */}
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700">
-                          <p className="text-[10px] text-slate-500 uppercase font-bold">Máx Vento (Vetor)</p>
-                          <p className="text-xl font-bold text-white">
-                            {Math.max(...(averageData || activeData || []).map(d => Math.sqrt(d.u**2 + d.v**2))).toFixed(1)} <span className="text-xs font-normal text-slate-500">kt/s</span>
-                          </p>
-                        </div>
-                        <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700">
-                          <p className="text-[10px] text-slate-500 uppercase font-bold">Níveis</p>
-                          <p className="text-xl font-bold text-white">{(averageData || activeData || []).length}</p>
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-800/20 rounded-xl border border-slate-800 p-4">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase mb-3">Tabela de Níveis</h4>
-                        <div className="max-h-64 overflow-y-auto pr-2 custom-scrollbar text-[10px]">
-                          <table className="w-full text-left">
-                            <thead className="text-slate-500 border-b border-slate-700">
-                              <tr>
-                                <th className="pb-2">Altura (Agl)</th>
-                                <th className="pb-2">U</th>
-                                <th className="pb-2">V</th>
-                                <th className="pb-2">Vel</th>
-                              </tr>
-                            </thead>
-                            <tbody className="text-slate-300">
-                              {(averageData || activeData || []).map((d, i) => (
-                                <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
-                                  <td className="py-1.5">{Math.round(d.height)}</td>
-                                  <td>{d.u.toFixed(1)}</td>
-                                  <td>{d.v.toFixed(1)}</td>
-                                  <td className="font-bold text-amber-500/80">{Math.sqrt(d.u**2+d.v**2).toFixed(1)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -311,31 +320,30 @@ export default function AdminDashboardPage() {
   );
 }
 
-function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backgroundData?: SoundingPoint[][] }) {
+// --- Hodograph Chart Local Component (kept for compatibility) ---
+function HodographChart({ data, backgroundData }: { data: any[], backgroundData?: any[][] }) {
   const size = 400;
   const padding = 25;
   const center = size / 2;
   
-  // Find max amplitude across all data (main + background)
   const allPoints = backgroundData ? [...data, ...backgroundData.flat()] : data;
-  const maxAmp = Math.max(...allPoints.map(d => Math.abs(d.u)), ...allPoints.map(d => Math.abs(d.v)), 40);
+  if(allPoints.length === 0) return null;
+
+  const maxAmp = Math.max(...allPoints.map(d => Math.abs(d.u || 0)), ...allPoints.map(d => Math.abs(d.v || 0)), 40);
   const scale = (size / 2 - padding) / maxAmp;
   
-  // Segment color logic
   const getSegmentColor = (h: number) => {
-    if (h <= 1000) return '#cf0af0'; // Magenta
-    if (h <= 3000) return '#ff0000'; // Red
-    if (h <= 6000) return '#ff9100'; // Orange
-    if (h <= 9000) return '#ffff00'; // Yellow
-    if (h <= 12000) return '#00f2ff'; // Cyan
+    if (h <= 1000) return '#cf0af0'; 
+    if (h <= 3000) return '#ff0000'; 
+    if (h <= 6000) return '#ff9100'; 
+    if (h <= 9000) return '#ffff00'; 
+    if (h <= 12000) return '#00f2ff'; 
     return '#cbd5e1';
   };
 
-  // Guide circles
   const guides = [10, 20, 30, 40, 50, 60, 75, 100].filter(g => g <= maxAmp * 1.5);
   if (guides.length === 0) guides.push(20);
 
-  // Labels for height
   const heightLabels = [1000, 3000, 6000, 9000, 12000];
 
   return (
@@ -352,43 +360,32 @@ function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backg
               cx={center} cy={center} r={g * scale} 
               fill="none" stroke="#e2e8f0" strokeWidth="1" strokeDasharray={g % 20 === 0 ? "0" : "4 4"}
             />
-            <text 
-              x={center + 2} y={center - g * scale - 2} 
-              className="fill-slate-400 text-[9px] font-medium"
-            >
-              {g}
-            </text>
+            <text x={center + 2} y={center - g * scale - 2} className="fill-slate-400 text-[9px] font-medium">{g}</text>
           </g>
         ))}
 
-        {/* Axis Labels */}
         <text x={size-padding-15} y={center-5} className="fill-slate-400 text-[10px] italic">u</text>
         <text x={center+5} y={padding+10} className="fill-slate-400 text-[10px] italic">v</text>
 
-        {/* Background "Shadow" Soundings */}
+        {/* Background Shadows */}
         {backgroundData?.map((points, pIdx) => (
           <polyline
             key={pIdx}
-            points={points.filter(p => p.height <= 12050).map(p => `${center + p.u * scale},${center - p.v * scale}`).join(' ')}
-            fill="none"
-            stroke="#cbd5e1"
-            strokeWidth="1.2"
-            strokeOpacity="0.4"
+            points={points.filter(p => p.height <= 12050 && p.u).map(p => `${center + p.u * scale},${center - p.v * scale}`).join(' ')}
+            fill="none" stroke="#cbd5e1" strokeWidth="1.2" strokeOpacity="0.4"
           />
         ))}
 
-        {/* Main Hodograph Line Segments */}
+        {/* Main Line */}
         {data.slice(0, -1).map((d, i) => {
           const next = data[i+1];
-          const x1 = center + d.u * scale;
-          const y1 = center - d.v * scale;
-          const x2 = center + next.u * scale;
-          const y2 = center - next.v * scale;
+          if(!d.u || !next.u) return null;
+          const x1 = center + d.u * scale; const y1 = center - d.v * scale;
+          const x2 = center + next.u * scale; const y2 = center - next.v * scale;
           
           return (
             <line 
-              key={i} 
-              x1={x1} y1={y1} x2={x2} y2={y2} 
+              key={i} x1={x1} y1={y1} x2={x2} y2={y2} 
               stroke={getSegmentColor(next.height)} 
               strokeWidth={backgroundData ? "5.5" : "4"} 
               strokeLinecap="round" 
@@ -397,10 +394,11 @@ function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backg
           );
         })}
 
-        {/* Height Labels and Points */}
+        {/* Points */}
         {(() => {
           const drawnLabels = new Set<number>();
           return data.map((d, i) => {
+            if(!d.u) return null;
             const hKm = Math.round(d.height / 1000);
             const isLabelHeight = heightLabels.some(lh => Math.abs(d.height - lh) < 100) || i === 0;
 
@@ -413,10 +411,7 @@ function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backg
             return (
               <g key={i}>
                 <circle cx={x} cy={y} r={backgroundData ? "3.5" : "2.5"} fill={backgroundData ? "white" : "black"} />
-                <text 
-                  x={x+5} y={y-5} 
-                  className={`text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px] fill-black`}
-                >
+                <text x={x+5} y={y-5} className="text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px] fill-black">
                   {hKm}
                 </text>
               </g>
