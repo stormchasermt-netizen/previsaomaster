@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   try {
     const { csvUrl, isAverage, csvUrls } = await req.json();
 
-    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'http://127.0.0.1:8080';
+    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'http://127.0.0.1:8095';
 
     if (isAverage) {
       if (!csvUrls || csvUrls.length === 0) {
@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
       });
       
       if (!response.ok) {
-        return NextResponse.json({ error: 'Falha no serviço Python ao gerar média' }, { status: 500 });
+        const textErr = await response.text();
+        return NextResponse.json({ error: `Engine Python Retornou: ${response.status} - ${textErr}` }, { status: 500 });
       }
       
       const data = await response.json();
@@ -36,7 +37,8 @@ export async function POST(req: NextRequest) {
       });
       
       if (!response.ok) {
-        return NextResponse.json({ error: 'Falha no serviço Python ao processar sondagem' }, { status: 500 });
+        const textErr = await response.text();
+        return NextResponse.json({ error: `Engine Python Retornou: ${response.status} - ${textErr}` }, { status: 500 });
       }
       
       const data = await response.json();
