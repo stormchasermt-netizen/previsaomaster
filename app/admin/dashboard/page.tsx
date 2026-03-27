@@ -90,9 +90,12 @@ export default function AdminDashboardPage() {
       }
 
       for (const file of filesToProcess) {
-        const res = await fetch(file.url);
-        const csv = await res.text();
-        const result = processCSVContent(csv);
+        const res = await fetch('/api/admin/process-sounding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ csvUrl: file.url })
+        });
+        const result = await res.json();
         if (result.success && result.data) {
           processed.push(result.data);
         }
@@ -277,7 +280,7 @@ export default function AdminDashboardPage() {
                           <table className="w-full text-left">
                             <thead className="text-slate-500 border-b border-slate-700">
                               <tr>
-                                <th className="pb-2">Altura (m)</th>
+                                <th className="pb-2">Altura (Agl)</th>
                                 <th className="pb-2">U</th>
                                 <th className="pb-2">V</th>
                                 <th className="pb-2">Vel</th>
@@ -395,25 +398,31 @@ function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backg
         })}
 
         {/* Height Labels and Points */}
-        {data.map((d, i) => {
-          const isLabelHeight = heightLabels.some(lh => Math.abs(d.height - lh) < 100) || i === 0;
-          const x = center + d.u * scale;
-          const y = center - d.v * scale;
-          
-          if (!isLabelHeight) return null;
+        {(() => {
+          const drawnLabels = new Set<number>();
+          return data.map((d, i) => {
+            const hKm = Math.round(d.height / 1000);
+            const isLabelHeight = heightLabels.some(lh => Math.abs(d.height - lh) < 100) || i === 0;
 
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r={backgroundData ? "3" : "2.5"} fill={backgroundData ? "#ef4444" : "black"} />
-              <text 
-                x={x+5} y={y-5} 
-                className={`text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px] ${backgroundData ? "fill-red-600" : "fill-black"}`}
-              >
-                {Math.round(d.height/1000)}
-              </text>
-            </g>
-          );
-        })}
+            if (!isLabelHeight || drawnLabels.has(hKm)) return null;
+            drawnLabels.add(hKm);
+
+            const x = center + d.u * scale;
+            const y = center - d.v * scale;
+
+            return (
+              <g key={i}>
+                <circle cx={x} cy={y} r={backgroundData ? "3" : "2.5"} fill={backgroundData ? "#ef4444" : "black"} />
+                <text 
+                  x={x+5} y={y-5} 
+                  className={`text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px] ${backgroundData ? "fill-red-600" : "fill-black"}`}
+                >
+                  {hKm}
+                </text>
+              </g>
+            );
+          });
+        })()}
       </svg>
     </div>
   );
