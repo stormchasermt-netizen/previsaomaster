@@ -29,18 +29,18 @@ def process_csv_content(csv_text: str):
     except Exception as e:
         raise ValueError(f"Failed to parse CSV: {str(e)}")
         
-    # Normalize columns to lowercase
-    df.columns = [c.strip().lower() for c in df.columns]
+    # Normalize columns to lowercase and remove quotes just in case
+    df.columns = [str(c).strip().lower().replace('"', '').replace("'", "") for c in df.columns]
     
     # Required columns mapping
     # Hght, Pres, Temp, Dwpt, Wdir, Wspd
     col_map = {
-        'height': ['height', 'hght', 'z'],
+        'height': ['height', 'hght', 'z', 'altitude'],
         'pres': ['pres', 'pressure', 'p'],
         'temp': ['temp', 't', 'temperature'],
-        'dwpt': ['dwpt', 'td', 'dewpoint'],
-        'wdir': ['dir', 'wdir', 'drct', 'wd'],
-        'wspd': ['speed', 'wspd', 'sknt', 'ws']
+        'dwpt': ['dwpt', 'td', 'dewpoint', 'dew_point'],
+        'wdir': ['dir', 'wdir', 'drct', 'wd', 'wind_direction'],
+        'wspd': ['speed', 'wspd', 'sknt', 'ws', 'wind_speed']
     }
     
     found_cols = {}
