@@ -3,7 +3,7 @@ import { processCSVContent } from '@/lib/soundingUtils';
 
 export async function POST(req: NextRequest) {
   try {
-    const { csvUrl, isAverage, csvUrls } = await req.json();
+    const { csvUrl, isAverage, csvUrls, generateImage, imageTitle } = await req.json();
 
     const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'https://sounding-engine-303740989273.us-central1.run.app';
 
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       const response = await fetch(`${pythonServiceUrl}/api/process-sounding`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvUrl })
+        body: JSON.stringify({ csvUrl, generateImage, imageTitle })
       });
       
       if (!response.ok) {

@@ -2,15 +2,21 @@ import pandas as pd
 import numpy as np
 import io
 import datetime
+import tempfile
+import subprocess
+import base64
+import os
+from PIL import Image
 import sharppy.sharptab.profile as profile
 import sharppy.sharptab.params as params
 import sharppy.sharptab.winds as winds
 import sharppy.sharptab.thermo as thermo
 
-def process_csv_content(csv_text: str):
+def process_csv_content(csv_text: str, generate_image: bool = False, image_title: str = "Tornado Track Sounding"):
     """
     Parses a CSV string, creates a SHARPpy profile, and extracts Southern Hemisphere indices.
-    Returns a dict with `profile` (for SkewT) and `indices` (for stats/boxplots).
+    If generate_image is True, calls Rscript thundeR to output a professional Skew-T.
+    Returns a dict with `profile`, `parcel`, `indices`, and `base64_img`.
     """
     lines = csv_text.strip().split('\n')
     
@@ -186,10 +192,44 @@ def process_csv_content(csv_text: str):
         "STP_0_500m": float(stp0_500m)
     }
 
+    base64_img = None
+    if generate_image:
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                csv_path = os.path.join(tmpdir, "sounding.csv")
+                png_path = os.path.join(tmpdir, "plot.png")
+                # Write standard CSV for R
+                df_out = pd.DataFrame({
+                    "pres": p,
+                    "hght": z,
+                    "tmpc": t,
+                    "dwpc": td,
+                    "wdir": wd,
+                    "wspd": ws
+                })
+                df_out.to_csv(csv_path, index=False)
+                
+                # Run R script
+                cmd = ["Rscript", "plot_skewt.R", csv_path, png_path, image_title]
+                subprocess.run(cmd, check=True, capture_output=True)
+                
+                if os.path.exists(png_path):
+                    with Image.open(png_path) as img:
+                        # Crop the bottom 45 pixels to remove generic watermarks and keep it white-label
+                        w, h = img.size
+                        cropped = img.crop((0, 0, w, h - 45))
+                        
+                        buffered = io.BytesIO()
+                        cropped.save(buffered, format="PNG", optimize=True)
+                        base64_img = "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
+        except Exception as e:
+            print(f"Failed to generate R Skew-T image: {e}")
+
     return {
         "profile": profile_data,
         "parcel": parcel_data,
-        "indices": indices
+        "indices": indices,
+        "base64_img": base64_img
     }
 
 def interp_p(prof, hght_agl):

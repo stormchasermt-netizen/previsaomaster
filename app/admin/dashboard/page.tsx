@@ -76,7 +76,11 @@ export default function AdminDashboardPage() {
       const res = await fetch('/api/admin/process-sounding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvUrl: fileUrl })
+        body: JSON.stringify({ 
+          csvUrl: fileUrl,
+          generateImage: true,
+          imageTitle: `Previsão Master - ${track.date} ${track.locality || track.state}`
+        })
       });
       
       const result = await res.json();

@@ -14,6 +14,7 @@ export interface PythonSoundingData {
     STP_0_1km: number;
     STP_0_500m: number;
   };
+  base64_img?: string;
 }
 
 export function SkewTChart({ data, meanData }: { data?: PythonSoundingData, meanData?: any }) {
@@ -60,6 +61,14 @@ export function SkewTChart({ data, meanData }: { data?: PythonSoundingData, mean
 
   if (!renderData || !renderData.profile || renderData.profile.length === 0) {
     return <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm italic">Dados insuficientes para Skew-T</div>;
+  }
+
+  if (renderData.base64_img) {
+    return (
+      <div className="w-full bg-slate-50 rounded-xl relative overflow-hidden flex items-center justify-center p-2 min-h-[400px]">
+        <img src={renderData.base64_img} alt="Professional Skew-T by Previsao Master Engine" className="w-full h-auto object-contain xl:scale-110 xl:origin-center drop-shadow-lg" />
+      </div>
+    );
   }
 
   // Draw background isobars and isotherms

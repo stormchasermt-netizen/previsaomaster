@@ -4,8 +4,9 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN apt-get update && apt-get install -y gcc && \
+RUN apt-get update && apt-get install -y gcc r-base libcairo2-dev libpango1.0-dev xdg-utils && \
     pip install --no-cache-dir -r requirements.txt && \
+    Rscript -e "install.packages('thundeR', repos='http://cran.rstudio.com/')" && \
     apt-get purge -y build-essential && apt-get autoremove -y
 
 COPY . .

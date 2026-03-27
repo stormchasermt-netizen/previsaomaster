@@ -21,6 +21,8 @@ app.add_middleware(
 
 class ProcessRequest(BaseModel):
     csvUrl: str
+    generateImage: bool = False
+    imageTitle: str = "Previsao Master - Skew-T Profissional"
 
 class AverageProcessRequest(BaseModel):
     csvUrls: List[str]
@@ -36,7 +38,7 @@ async def process_sounding(req: ProcessRequest):
         res.raise_for_status()
         csv_text = res.text
         
-        result = process_csv_content(csv_text)
+        result = process_csv_content(csv_text, generate_image=req.generateImage, image_title=req.imageTitle)
         return {"success": True, "data": result}
     except Exception as e:
         return {"success": False, "error": str(e)}
