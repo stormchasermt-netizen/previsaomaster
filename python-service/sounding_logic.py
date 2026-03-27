@@ -194,55 +194,45 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
         })
     parcel_data = [{"pressure": float(p_), "temp": float(t_)} for p_, t_ in zip(mu_pcl.ptrace, mu_pcl.ttrace)]
 
-    base64_img = None
-    if generate_image:
-        try:
-            import matplotlib
-            matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
-            from metpy.plots import SkewT, Hodograph
-            from metpy.units import units
-
-            # Theme Setup (Black / SHARPpy style)
-            plt.rcParams['figure.facecolor'] = 'black'
-            plt.rcParams['axes.facecolor'] = 'black'
-            plt.rcParams['text.color'] = 'white'
-            plt.rcParams['axes.labelcolor'] = 'white'
-            plt.rcParams['xtick.color'] = 'white'
-            plt.rcParams['ytick.color'] = 'white'
-
-            fig = plt.figure(figsize=(15, 11))
+            # --- SPC PROFESSIONAL LAYOUT ---
+            import matplotlib.gridspec as gridspec
             
-            # Grid spec
-            gs = fig.add_gridspec(4, 4)
-            skew = SkewT(fig, rotation=45, subplot=gs[:3, :3])
+            # Theme Setup (Light / SPC Style)
+            plt.rcParams['figure.facecolor'] = 'white'
+            plt.rcParams['axes.facecolor'] = 'white'
+            plt.rcParams['text.color'] = 'black'
+            plt.rcParams['axes.labelcolor'] = 'black'
+            plt.rcParams['xtick.color'] = 'black'
+            plt.rcParams['ytick.color'] = 'black'
+            plt.rcParams['font.size'] = 10
+
+            fig = plt.figure(figsize=(22, 15))
+            gs = gridspec.GridSpec(15, 12, figure=fig, hspace=0.6, wspace=0.4)
+            
+            # --- 1. SKEW-T (Large Main Panel) ---
+            ax_skew_main = fig.add_subplot(gs[0:10, 0:8])
+            skew = SkewT(fig, rotation=45, subplot=ax_skew_main)
             
             p_units = p * units.hPa
             t_units = t * units.degC
             td_units = td * units.degC
-            
             u_arr = np.array([u_ if u_ != prof.missing else np.nan for u_ in prof.u]) * units.knots
             v_arr = np.array([v_ if v_ != prof.missing else np.nan for v_ in prof.v]) * units.knots
             
-            # 1. Plot Temperature (Red) and Dewpoint (Green)
-            skew.plot(p_units, t_units, 'red', linewidth=3)
-            skew.plot(p_units, td_units, '#32CD32', linewidth=3) # Lime green
+            skew.plot(p_units, t_units, 'red', linewidth=3, label='Temp')
+            skew.plot(p_units, td_units, 'green', linewidth=3, label='Dewpt')
             
-            # 2. Wind Barbs (SH Convention: Flip barbs)
-            idx = np.arange(0, len(p_units), max(1, len(p_units)//25))
-            try:
-                # Use Direct Axes call for robust flip_barbs support
-                skew.ax.barbs(np.zeros_like(p_units[idx]) + 42, p_units[idx], u_arr[idx], v_arr[idx], 
-                             flip_barbs=True, color='white', linewidth=0.8, length=6,
-                             transform=skew.ax.get_yaxis_transform())
-            except:
-                skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], color='white', linewidth=0.8)
+            # Wind Barbs (SH Convention: Flip barbs)
+            idx = np.arange(0, len(p_units), max(1, len(p_units)//30))
+            # Use MetPy's native plot_barbs with flip_barbs for the Southern Hemisphere
+            skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
+                            flip_barbs=True, color='black', linewidth=0.8, length=6)
             
-            # 3. Plot Parcel (White Dashed on Black Theme)
-            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'white', linestyle='--', linewidth=1.2, alpha=0.8)
+            # Parcel Profile (Black Dashed)
+            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'black', linestyle='--', linewidth=1.5)
             
-            # 4. Grid Lines (Subtle Grey)
-            skew.plot_dry_adiabats(color='grey', alpha=0.3, linewidth=0.5)
+            # Background Lines
+            skew.plot_dry_adiabats(color='tan', alpha=0.3, linewidth=0.5)
             skew.plot_moist_adiabats(color='grey', alpha=0.3, linewidth=0.5)
             skew.plot_mixing_lines(color='grey', alpha=0.3, linewidth=0.5)
             
@@ -250,72 +240,98 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             skew.ax.set_xlim(-50, 45)
             skew.ax.set_ylabel('Pressao (hPa)')
             skew.ax.set_xlabel('Temperatura (C)')
-            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=16, fontweight='bold', color='yellow')
-            
-            # 5. Hodograph (Top Right)
-            ax_hodo = fig.add_subplot(gs[:2, 3])
-            ax_hodo.set_facecolor('black')
+            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=18, fontweight='bold', color='darkblue')
+
+            # --- 2. HODOGRAPH (Top Right) ---
+            ax_hodo = fig.add_subplot(gs[0:5, 8:12])
+            ax_hodo.set_facecolor('#fdfdfd')
             h = Hodograph(ax_hodo, component_range=80.)
-            h.add_grid(increment=20, color='white', alpha=0.3)
+            h.add_grid(increment=20, color='grey', alpha=0.3)
             
-            z_mask = ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
+            # Mask data to 12km for the hodograph
+            z_mask = ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude) & (z <= 12000)
             if np.any(z_mask):
-                # Color the line by height (Official SHARPpy-like colors)
                 h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask], cmap='rainbow')
             
-            # Plot Storm Motion (Left Mover Circle)
-            ax_hodo.plot(lm_u, lm_v, 'wo', markersize=10, markerfacecolor='none', markeredgewidth=2)
-            ax_hodo.text(lm_u, lm_v+2, 'LM', color='white', fontsize=10, ha='center', fontweight='bold')
-            ax_hodo.set_title("Hodografo (nos)", color='white')
+            # Plot Storm Motion (Left Mover)
+            ax_hodo.plot(lm_u, lm_v, 'ko', markersize=10, markerfacecolor='white', markeredgewidth=2)
+            ax_hodo.text(lm_u, lm_v+2, 'LM', color='red', fontsize=12, ha='center', fontweight='bold')
+            ax_hodo.set_title("Hodografo (nos) - ate 12km AGL", color='black', fontsize=14, fontweight='bold')
             
-            # Altitude Labels on Hodograph (0, 1, 3, 6, 9, 12 km)
-            for h_km in [0, 1, 3, 6, 9, 12]:
+            # Altitude Labels (0, 1, 3, 6, 9 km)
+            for h_km in [0, 1, 3, 6, 9]:
                 idx_h = np.argmin(np.abs(z - h_km*1000))
-                if not np.isnan(u_arr[idx_h]):
+                if idx_h < len(u_arr) and not np.isnan(u_arr[idx_h]):
                     ax_hodo.text(u_arr[idx_h].magnitude, v_arr[idx_h].magnitude, f" {h_km}", 
-                                color='white', fontsize=11, fontweight='bold')
+                                color='black', fontsize=12, fontweight='bold', clip_on=True)
+
+            # --- 3. PARCEL DATA TABLE (Bottom Left) ---
+            ax_table_parcel = fig.add_subplot(gs[10:14, 0:4])
+            ax_table_parcel.axis('off')
+            parcel_rows = [
+                ["PARCEL", "CAPE", "CINH", "LCL", "LFC", "EL"],
+                ["SB (Surface)", f"{int(sfc_pcl.bplus)}", f"{int(sfc_pcl.bminus)}", f"{int(sfc_pcl.lclhght)}", f"{int(sfc_pcl.lfchght)}", f"{int(sfc_pcl.elhght)}"],
+                ["ML (100mb)", f"{int(ml_pcl.bplus)}", f"{int(ml_pcl.bminus)}", f"{int(ml_pcl.lclhght)}", f"{int(ml_pcl.lfchght)}", f"{int(ml_pcl.elhght)}"],
+                ["MU (Highest)", f"{int(mu_pcl.bplus)}", f"{int(mu_pcl.bminus)}", f"{int(mu_pcl.lclhght)}", f"{int(mu_pcl.lfchght)}", f"{int(mu_pcl.elhght)}"]
+            ]
+            tbl_p = ax_table_parcel.table(cellText=parcel_rows, cellLoc='center', loc='center')
+            tbl_p.auto_set_font_size(False); tbl_p.set_fontsize(11)
+            tbl_p.scale(1.2, 1.8)
+            for i in range(len(parcel_rows)):
+                for j in range(len(parcel_rows[0])):
+                    cell = tbl_p[i, j]
+                    if i == 0: cell.set_facecolor('#2c3e50'); cell.set_text_props(color='white', fontweight='bold')
+                    else: cell.set_facecolor('#ecf0f1')
+
+            # --- 4. KINEMATICS TABLE (Bottom Middle) ---
+            ax_table_kin = fig.add_subplot(gs[10:14, 4:8])
+            ax_table_kin.axis('off')
+            # Extract some more winds for the table
+            s6km = winds.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=interp_p(prof, 6000))
+            s6km_mag = np.sqrt(s6km[0]**2 + s6km[1]**2) if s6km[0] != prof.missing else 0
+            
+            kin_rows = [
+                ["KINEMATIC INDEX", "VALUE", "UNITS"],
+                ["Bulk Shear 0-6km", f"{s6km_mag:.1f}", "kt"],
+                ["Effective Shear", f"{eff_shear_mag:.1f}", "kt"],
+                ["SRH 0-1km (LM)", f"{srh1km_val:.0f}", "m2/s2"],
+                ["SRH 0-3km (LM)", f"{srh3km_val:.0f}", "m2/s2"],
+                ["STP (0-1km HS)", f"{stp0_1km:.2f}", "index"],
+                ["STP (0-500m HS)", f"{stp0_500m:.2f}", "index"]
+            ]
+            tbl_k = ax_table_kin.table(cellText=kin_rows, cellLoc='center', loc='center')
+            tbl_k.auto_set_font_size(False); tbl_k.set_fontsize(11)
+            tbl_k.scale(1.2, 1.8)
+            for i in range(len(kin_rows)):
+                for j in range(len(kin_rows[0])):
+                    cell = tbl_k[i, j]
+                    if i == 0: cell.set_facecolor('#2c3e50'); cell.set_text_props(color='white', fontweight='bold')
+                    else: cell.set_facecolor('#ecf0f1')
+
+            # --- 5. THERMO SUMMARY (Right Side) ---
+            ax_thermo = fig.add_subplot(gs[6:10, 8:12])
+            ax_thermo.axis('off')
+            thermo_text = (
+                f"--- CONVECTIVE INDICES ---\n"
+                f"SBCAPE: {int(sfc_pcl.bplus)} J/kg\n"
+                f"MLCAPE: {int(ml_pcl.bplus)} J/kg\n"
+                f"MUCAPE: {int(mu_pcl.bplus)} J/kg\n"
+                f"ML CINH: {int(ml_pcl.bminus)} J/kg\n"
+                f"ML LCL: {int(ml_pcl.lclhght)} m AGL\n"
+                f"ML LFC: {int(ml_pcl.lfchght)} m AGL\n"
+                f"ML EL: {int(ml_pcl.elhght)} m AGL\n"
+                f"3km MLCAPE: {int(ml_pcl.b3km)} J/kg\n\n"
+                f"CALIBRADO PARA HEMISFERIO SUL\n"
+                f"Storm Motion: Bunkers LEFT MOVER"
+            )
+            ax_thermo.text(0, 1, thermo_text, color='darkblue', fontsize=12, va='top', family='monospace', fontweight='bold')
 
             # 5.1 Watermark (Top Right)
-            fig.text(0.98, 0.98, '@previsaomaster.com', color='white', fontsize=12, ha='right', va='top', alpha=0.6, fontweight='bold')
+            fig.text(0.96, 0.98, '@previsaomaster.com', color='grey', fontsize=14, ha='right', va='top', alpha=0.5, fontweight='bold')
             
-            # 6. Parameter Table (Bottom Section like SHARPpy)
-            ax_table = fig.add_subplot(gs[3, :])
-            ax_table.axis('off')
-            
-            table_data = [
-                ["Parcela", "CAPE", "CINH", "LCL (m)", "LFC (m)", "EL (m)"],
-                ["SFC Based", f"{sfc_pcl.bplus:.0f}", f"{sfc_pcl.bminus:.0f}", f"{sfc_pcl.lclhght:.0f}", f"{sfc_pcl.lfchght:.0f}", f"{sfc_pcl.elhght:.0f}"],
-                ["Mixed L.", f"{ml_pcl.bplus:.0f}", f"{ml_pcl.bminus:.0f}", f"{ml_pcl.lclhght:.0f}", f"{ml_pcl.lfchght:.0f}", f"{ml_pcl.elhght:.0f}"],
-                ["Most Unst.", f"{mu_pcl.bplus:.0f}", f"{mu_pcl.bminus:.0f}", f"{mu_pcl.lclhght:.0f}", f"{mu_pcl.lfchght:.0f}", f"{mu_pcl.elhght:.0f}"],
-            ]
-            
-            the_table = ax_table.table(cellText=table_data, colWidths=[0.15]*6, cellLoc='center', loc='center')
-            the_table.auto_set_font_size(False)
-            the_table.set_fontsize(12)
-            for key, cell in the_table.get_celld().items():
-                cell.set_facecolor('black')
-                cell.set_text_props(color='white')
-                cell.set_edgecolor('grey')
-            
-            # 7. Side Parameters (Indices)
-            ax_params = fig.add_subplot(gs[2, 3:])
-            ax_params.axis('off')
-            
-            info_text = (
-                f"Shear Efetivo: {eff_shear_mag:.1f} kt\n"
-                f"SRH 0-1km (LM HS): {srh1km_val:.0f}\n"
-                f"SRH 0-3km (LM HS): {srh3km_val:.0f}\n"
-                f"STP 0-1km (HS): {stp0_1km:.2f}\n"
-                f"STP 0-500m (HS): {stp0_500m:.2f}\n\n"
-                f"CONFIGURADO PARA HEMISFERIO SUL\n"
-                f"Storm Motion: LEFT MOVER"
-            )
-            ax_params.text(0, 0.8, info_text, color='yellow', fontsize=12, va='top', family='monospace', fontweight='bold')
-
-            plt.tight_layout()
-            
+            # Save consolidated image
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='black')
+            plt.savefig(buf, format='png', dpi=140, bbox_inches='tight', facecolor='white')
             plt.close(fig)
             
             base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
