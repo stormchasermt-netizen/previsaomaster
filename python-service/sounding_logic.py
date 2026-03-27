@@ -127,8 +127,8 @@ def process_csv_content(csv_text: str):
         lm_u, lm_v = 0, 0
         
     # Storm Relative Helicity using Left Mover
-    srh1km = params.helicity(prof, 0, 1000, stu=lm_u, stv=lm_v)
-    srh3km = params.helicity(prof, 0, 3000, stu=lm_u, stv=lm_v)
+    srh1km = winds.helicity(prof, 0, 1000, stu=lm_u, stv=lm_v)
+    srh3km = winds.helicity(prof, 0, 3000, stu=lm_u, stv=lm_v)
     srh1km_val = srh1km[0] if srh1km[0] != prof.missing else 0
     srh3km_val = srh3km[0] if srh3km[0] != prof.missing else 0
     
@@ -149,7 +149,7 @@ def process_csv_content(csv_text: str):
         return c_term * l_term * s_term * sh_term
 
     # Approximate 0-500m STP using 500m shear and pseudo srh
-    srh500m = params.helicity(prof, 0, 500, stu=lm_u, stv=lm_v)
+    srh500m = winds.helicity(prof, 0, 500, stu=lm_u, stv=lm_v)
     srh500m_val = srh500m[0] if srh500m[0] != prof.missing else 0
     
     stp0_1km = calc_stp(mlcape, mllcl, srh1km_val, eff_shear_mag)
