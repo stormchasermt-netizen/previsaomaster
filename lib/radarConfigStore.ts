@@ -8,8 +8,6 @@ import {
   doc,
   setDoc,
   getDocs,
-  onSnapshot,
-  query,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -99,18 +97,6 @@ export async function fetchRadarConfigs(): Promise<RadarConfig[]> {
   const col = collection(db, COLLECTION);
   const snap = await getDocs(col);
   return snap.docs.map((d) => parseConfig(d.id, d.data()));
-}
-
-export function subscribeToRadarConfigs(callback: (configs: RadarConfig[]) => void): () => void {
-  if (!db) return () => {};
-  const col = collection(db, COLLECTION);
-  const q = query(col);
-  return onSnapshot(q, (snap) => {
-    const configs = snap.docs.map((d) => parseConfig(d.id, d.data()));
-    callback(configs);
-  }, (err) => {
-    console.error('Erro ao assinar radar_configs:', err);
-  });
 }
 
 export async function saveRadarConfig(config: Omit<RadarConfig, 'id'> & { id?: string }): Promise<string> {

@@ -32,14 +32,14 @@ export function processCSVContent(csvContent: string) {
 
   if (heightIdx === -1) return { error: 'Coluna de altura não encontrada' };
 
-  const dataPoints: SoundingPoint[] = [];
+  const rawDataPoints: { rawHeight: number; u: number; v: number }[] = [];
 
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(delimiter).map(v => v.trim());
     if (values.length < headers.length) continue;
 
-    const h = parseFloat(values[heightIdx]);
-    if (isNaN(h)) continue;
+    const rawH = parseFloat(values[heightIdx]);
+    if (isNaN(rawH)) continue;
 
     let u = 0, v = 0;
 
@@ -57,11 +57,21 @@ export function processCSVContent(csvContent: string) {
       return { error: 'Colunas de vento não encontradas' };
     }
 
-    dataPoints.push({ height: h, u, v });
+    rawDataPoints.push({ rawHeight: rawH, u, v });
   }
 
-  // Ordena por altura
-  dataPoints.sort((a, b) => a.height - b.height);
+  if (rawDataPoints.length === 0) return { error: 'Nenhum dado válido encontrado' };
+
+  // Ordena por altura absoluta
+  rawDataPoints.sort((a, b) => a.rawHeight - b.rawHeight);
+
+  // Calcula a altura relativa: o primeiro ponto (mais baixo) passa a ser 0.
+  const baseHeight = rawDataPoints[0].rawHeight;
+  const dataPoints: SoundingPoint[] = rawDataPoints.map(p => ({
+    height: p.rawHeight - baseHeight,
+    u: p.u,
+    v: p.v
+  }));
 
   return { success: true, data: dataPoints };
 }

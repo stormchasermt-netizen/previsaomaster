@@ -60,7 +60,7 @@ import {
   getArgentinaRadarTimestamp,
   type ArgentinaRadarStation,
 } from '../../lib/argentinaRadarStations';
-import { fetchRadarConfigs, subscribeToRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
+import { fetchRadarConfigs, buildRadarPngUrl, type RadarConfig } from '../../lib/radarConfigStore';
 import { hasRedemetFallback, getRedemetArea } from '../../lib/redemetRadar';
 import { filterDopplerSuperRes, filterRadarImageFromUrl } from '../../lib/radarImageFilter';
 import { cacheRadarImage, getRadarBackupUrl } from '../../lib/radarCacheClient';
@@ -155,76 +155,6 @@ function blurIntensityBuffer(
     }
   }
   return out;
-}
-
-/** Cria um OverlayView customizado para imagens com suporte a rotação, croma e crop. */
-function createImageOverlayView(
-  url: string,
-  bounds: google.maps.LatLngBounds | { north: number; south: number; east: number; west: number },
-  map: any,
-  opacity: number,
-  rotation: number = 0,
-  chromaKey: number = 0,
-  crop?: { top: number; bottom: number; left: number; right: number },
-  onLoad?: () => void
-) {
-  const latLngBounds = bounds instanceof google.maps.LatLngBounds 
-    ? bounds 
-    : new google.maps.LatLngBounds(
-        { lat: bounds.south, lng: bounds.west },
-        { lat: bounds.north, lng: bounds.east }
-      );
-
-  const ov = new google.maps.OverlayView();
-  let divEl: HTMLDivElement | null = null;
-
-  ov.onAdd = function() {
-    divEl = document.createElement('div');
-    divEl.style.cssText = 'position:absolute;pointer-events:none;overflow:hidden;display:none;';
-    const img = document.createElement('img');
-    img.className = 'pixelated-layer';
-    img.style.cssText = `width:100%;height:100%;opacity:${opacity};object-fit:fill;transform-origin:center center;`;
-    if (rotation !== 0) img.style.transform = `rotate(${rotation})deg`;
-
-    img.onload = async () => {
-      // Se tiver filtros, aplica e recarrega. Senão, mostra.
-      if (chromaKey > 0 || (crop && (crop.top > 0 || crop.bottom > 0 || crop.left > 0 || crop.right > 0))) {
-         const { filterRadarImageFromUrl } = await import('../../lib/radarImageFilter');
-         const filtered = await filterRadarImageFromUrl(img.src, chromaKey, crop || { top: 0, bottom: 0, left: 0, right: 0 });
-         if (filtered && (img.src.startsWith('http') || img.src.startsWith('/api') || img.src.startsWith('data:'))) {
-            img.onload = () => { if (divEl) divEl.style.display = ''; };
-            img.src = filtered;
-            return;
-         }
-      }
-      if (divEl) divEl.style.display = '';
-      if (onLoad) onLoad();
-    };
-    img.src = url;
-    divEl.appendChild(img);
-    this.getPanes()?.overlayLayer?.appendChild(divEl);
-  };
-
-  ov.draw = function() {
-    if (!divEl) return;
-    const proj = this.getProjection();
-    if (!proj) return;
-    const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
-    const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
-    if (!sw || !ne) return;
-    divEl.style.left = Math.min(sw.x, ne.x) + 'px';
-    divEl.style.top = Math.min(sw.y, ne.y) + 'px';
-    divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
-    divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
-  };
-
-  ov.onRemove = function() {
-    if (divEl?.parentNode) divEl.parentNode.removeChild(divEl);
-    divEl = null;
-  };
-
-  ov.setMap(map);
-  return ov;
 }
 
 /** Heatmap com gradiente suave (amarelo → laranja → vermelho), sem círculos discretos */
@@ -521,8 +451,6 @@ export default function RastrosTornadosPage() {
   const [preloadTotal, setPreloadTotal] = useState(0);
   const [verifiedRadarImages, setVerifiedRadarImages] = useState<Map<string, {url: string, ts: string, source: 'cptec' | 'redemet' | 'backup'}>>(new Map());
   const radarTimelineEffectIdRef = useRef(0);
-  const latestRequestTokenRef = useRef(0);
-  const individualRadarOverlaysRef = useRef<any[]>([]); // Para double buffering no individual
 
   // Estados para o novo Painel de Informações do Tornado
   const [infoPanelGalleryIdx, setInfoPanelGalleryIdx] = useState(0);
@@ -536,7 +464,7 @@ export default function RastrosTornadosPage() {
   /** Menu de filtros no mobile (drawer) */
   const [showMobileFiltersMenu, setShowMobileFiltersMenu] = useState(false);
   /** Painel Eventos visível no mobile (overlay) */
-  const [showMobileEventsPanel, setShowMobileEventsMenu] = useState(false);
+  const [showMobileEventsPanel, setShowMobileEventsPanel] = useState(false);
 
   // GOES-16 IR player
   const [goesTimestamps, setGoesTimestamps] = useState<string[]>([]);
@@ -1013,7 +941,7 @@ export default function RastrosTornadosPage() {
     } finally {
       if (!silent) setTracksLoading(false);
     }
-  }, [addToast]);
+  }, []);
 
   useEffect(() => {
     refreshTracks(false);
@@ -1552,7 +1480,7 @@ export default function RastrosTornadosPage() {
         if (lat < minLat) minLat = lat;
         if (lat > maxLat) maxLat = lat;
         if (lng < minLng) minLng = lng;
-        if (lng > maxLng) maxLng = lat;
+        if (lng > maxLng) maxLng = lng;
       });
     });
     if (!isFinite(minLat)) return null;
@@ -2107,8 +2035,7 @@ export default function RastrosTornadosPage() {
   }, [isMounted]);
 
   useEffect(() => {
-    const unsub = subscribeToRadarConfigs(setRadarConfigs);
-    return unsub;
+    fetchRadarConfigs().then(setRadarConfigs).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -2332,8 +2259,6 @@ export default function RastrosTornadosPage() {
       (radarOverlayRef.current as any).setMap?.(null);
       radarOverlayRef.current = null;
     }
-    individualRadarOverlaysRef.current.forEach(ov => (ov as any)?.setMap?.(null));
-    individualRadarOverlaysRef.current = [];
     if (goesPlayIntervalRef.current) {
       clearInterval(goesPlayIntervalRef.current);
       goesPlayIntervalRef.current = null;
@@ -2509,13 +2434,12 @@ export default function RastrosTornadosPage() {
         const opacity = numericalModelOpacities[img.id] ?? img.opacity ?? 0.75;
         const rotation = img.rotation ?? 0;
         const chroma = img.chromaKey ?? 0;
-        const crop = img.cropTop || img.cropBottom || img.cropLeft || img.cropRight ? {
+        const overlay = createImageOverlayView(img.url, bounds, map, opacity, rotation, chroma, {
           top: img.cropTop ?? 0,
           bottom: img.cropBottom ?? 0,
           left: img.cropLeft ?? 0,
           right: img.cropRight ?? 0
-        } : undefined;
-        const overlay = createImageOverlayView(img.url, bounds, map, opacity, rotation, chroma, crop);
+        });
         numericalOverlaysRef.current[img.id] = overlay;
       }
     });
@@ -2731,131 +2655,380 @@ export default function RastrosTornadosPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goesVisible, goesTimestamps, goesFrameIdx, goesOpacity]);
 
-  // Overlay de radar individual (mosaico ou único)
+  // Radar CPTEC: WMS | PNG Nowcasting (com bounds do Admin) | SIGMA WMS
   useEffect(() => {
-    const myToken = ++latestRequestTokenRef.current;
-
-    if (!radarVisible || (!radarStation && !selectedTrack?.radarWmsUrl)) {
-      individualRadarOverlaysRef.current.forEach(ov => (ov as any)?.setMap?.(null));
-      individualRadarOverlaysRef.current = [];
+    if (radarOverlayRef.current) {
+      (radarOverlayRef.current as any).setMap?.(null);
       radarOverlayRef.current = null;
+    }
+    if (!radarVisible || !mapInstanceRef.current || !selectedTrack || !radarTimestamps.length) return;
+
+    const useWms = !!selectedTrack.radarWmsUrl?.trim();
+    const isArgentinaRadar = radarStation && !('slug' in radarStation);
+    let radarCfgSlug = radarStation
+      ? (isArgentinaRadar ? `argentina:${radarStation.id}` : (radarStation as CptecRadarStation).slug)
+      : null;
+    if ((radarCfgSlug === 'santiago' || radarCfgSlug === 'morroigreja') && radarSourceMode === 'hd') {
+      radarCfgSlug = `${radarCfgSlug}-redemet`;
+    }
+    const radarCfg = radarCfgSlug
+      ? radarConfigs.find((c) => c.id === radarCfgSlug || c.stationSlug === radarCfgSlug)
+      : null;
+    /** Para radares PPI CPTEC (Chapecó, Santiago): sempre usar buildNowcastingPngUrl. */
+    const useNowcastingPng = radarStation && !isArgentinaRadar && (radarStation as CptecRadarStation).product === 'ppi';
+    const usePng = radarStation && !isArgentinaRadar && radarCfg?.urlTemplate && !useWms && (radarStation as CptecRadarStation).product !== 'ppi';
+    const useSigma = radarStation && !isArgentinaRadar && !usePng && !useNowcastingPng && !useWms;
+    const useArgentinaPng = isArgentinaRadar && radarStation;
+    if (!useWms && !usePng && !useNowcastingPng && !useSigma && !useArgentinaPng) return;
+
+    const map = mapInstanceRef.current;
+    let bounds: { north: number; south: number; east: number; west: number };
+    let url: string;
+
+    const ts = radarTimestamps[radarFrameIdx];
+    if (!ts) return;
+
+    /** Bounds centrados no radar (lat/lng + rangeKm), não no rastro. */
+    const getRadarBounds = () => {
+      // Prioridade 1: Modo de Edição (Realtime)
+      if (isRadarEditMode) {
+        if (useEditCustomBounds && editRadarCustomBounds) {
+          return editRadarCustomBounds;
+        }
+        const b = calculateRadarBounds(editRadarLat, editRadarLng, editRadarRangeKm);
+        return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+      }
+
+      // Prioridade 2: Overrides salvos no rastro
+      const rBounds = currentOverrides.customBounds ?? selectedTrack.radarCustomBounds;
+      if (rBounds) {
+        return rBounds;
+      }
+      const rLat = currentOverrides.lat ?? selectedTrack.radarLat;
+      const rLng = currentOverrides.lng ?? selectedTrack.radarLng;
+      const rRange = currentOverrides.rangeKm ?? selectedTrack.radarRangeKm ?? radarStation?.rangeKm ?? 250;
+      if (rLat !== undefined && rLng !== undefined) {
+        const b = calculateRadarBounds(rLat, rLng, rRange);
+        return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+      }
+
+      if (radarStation && radarCfg) {
+        if (radarCfg.customBounds) {
+          return { north: radarCfg.customBounds.north, south: radarCfg.customBounds.south, east: radarCfg.customBounds.east, west: radarCfg.customBounds.west };
+        }
+        if (radarCfg.lat !== 0 || radarCfg.lng !== 0) {
+          const range = radarCfg.rangeKm ?? radarStation.rangeKm ?? 250;
+          const b = calculateRadarBounds(radarCfg.lat, radarCfg.lng, range);
+          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+        }
+      }
+      if (radarStation && !isArgentinaRadar) {
+        const b = getRadarImageBounds(radarStation as CptecRadarStation);
+        return { north: b.north, south: b.south, east: b.east, west: b.west };
+      }
+      if (radarStation && isArgentinaRadar) {
+        const b = getArgentinaRadarBounds(radarStation as ArgentinaRadarStation);
+        return { north: b.north, south: b.south, east: b.east, west: b.west };
+      }
+      return null;
+    };
+
+    type UrlWithSource = { url: string; source: 'cptec' | 'redemet' };
+    let urlsToTry: UrlWithSource[] = [];
+    let redemetFindPromise: Promise<string | null> | null = null;
+    let hasRedemetFb = false;
+
+    if (useArgentinaPng && radarStation) {
+      const argStation = radarStation as ArgentinaRadarStation;
+      const tsArg = ts;
+      url = buildArgentinaRadarPngUrl(argStation, tsArg, radarProductType);
+      bounds = getArgentinaRadarBounds(argStation);
+      urlsToTry = [{ url: getProxiedRadarUrl(url), source: 'cptec' }];
+    } else if (useNowcastingPng && radarStation) {
+      const cptecStation = radarStation as CptecRadarStation;
+      const ts12 = ts.slice(0, 12);
+      const radarStationSlug = cptecStation.slug;
+
+      // Always try the proxied CPTEC URL first
+      const rawUrl = buildNowcastingPngUrl(cptecStation, ts12, radarProductType);
+      const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
+
+      if (radarStationSlug === 'chapeco') {
+        // Chapecó: 1º URL direta do servidor CPTEC (via proxy), 2º URL direta sem proxy, 3º API de metadados
+        const directCptecUrl = buildNowcastingPngUrl(cptecStation, ts12, radarProductType, true);
+        const [directProxy] = getRadarUrlsWithFallback(directCptecUrl);
+        urlsToTry.push({ url: directProxy, source: 'cptec' });
+        urlsToTry.push({ url: directCptecUrl, source: 'cptec' });
+        
+        // APENAS adiciona a API se não for histórico > 48h!
+        const y = ts12.slice(0, 4);
+        const m = ts12.slice(4, 6);
+        const d = ts12.slice(6, 8);
+        const h = ts12.slice(8, 10);
+        const mn = ts12.slice(10, 12);
+        const targetTimeEpoch = new Date(`${y}-${m}-${d}T${h}:${mn}:00Z`).getTime();
+        const diffHours = (Date.now() - targetTimeEpoch) / (1000 * 60 * 60);
+
+        if (diffHours <= 48 && diffHours >= -5) {
+          urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+        }
+      } else {
+        urlsToTry.push({ url: proxyUrl, source: 'cptec' });
+        if (directUrl && directUrl !== proxyUrl) {
+          urlsToTry.push({ url: directUrl, source: 'cptec' });
+        }
+      }
+
+      hasRedemetFb = hasRedemetFallback(radarStationSlug);
+      bounds = getRadarBounds() ?? getRadarImageBounds(cptecStation);
+      if (hasRedemetFb) {
+        const area = getRedemetArea(radarStationSlug)!;
+        redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            const u = d?.url ?? null;
+            if (u) setRedemetAvailable(true);
+            return u;
+          })
+          .catch(() => null);
+      }
+    } else if (usePng && radarCfg) {
+      const ts12 = ts.slice(0, 12);
+      url = buildRadarPngUrl(radarCfg.urlTemplate, ts12);
+      const cptecSt = radarStation && !isArgentinaRadar ? radarStation as CptecRadarStation : null;
+      hasRedemetFb = !!cptecSt && hasRedemetFallback(cptecSt.slug);
+      const isHdRadar = (cptecSt?.slug === 'santiago' || cptecSt?.slug === 'morroigreja');
+      const hdSourceActive = radarSourceMode === 'hd' && isHdRadar;
+      bounds = {
+        north: radarCfg.bounds.ne.lat,
+        south: radarCfg.bounds.sw.lat,
+        east: radarCfg.bounds.ne.lng,
+        west: radarCfg.bounds.sw.lng,
+      };
+      urlsToTry = radarSourceMode === 'hd' ? [] : [{ url: getProxiedRadarUrl(url), source: 'cptec' }];
+      if (hasRedemetFb && cptecSt) {
+        const area = getRedemetArea(cptecSt.slug)!;
+        redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            const u = d?.url ?? null;
+            if (u) setRedemetAvailable(true);
+            return u;
+          })
+          .catch(() => null);
+      }
+    } else if (useWms && selectedTrack.radarWmsUrl) {
+      bounds = getRadarBounds() ?? getGoesBounds(selectedTrack)!;
+      if (!bounds) {
+        setRadarError('Defina "Radar preferido" no Editor para centralizar a imagem no radar.');
+        return;
+      }
+      url = getRadarFrameUrl(selectedTrack.radarWmsUrl, ts, bounds);
+      if (!url) {
+        setRadarError('URL WMS inválida.');
+        return;
+      }
+      urlsToTry = [{ url, source: 'cptec' }];
+    } else if (useSigma && radarStation) {
+      bounds = getRadarBounds()!;
+      if (!bounds) {
+        setRadarError('Não foi possível calcular bounds do radar.');
+        return;
+      }
+      url = buildSigmaWmsUrl(radarStation, ts, bounds);
+      urlsToTry = [{ url, source: 'cptec' }];
+    } else {
       return;
     }
 
-    const map = mapInstanceRef.current;
-    if (!map) return;
+    setRadarError(null);
+    setRadarImageSource(null);
+    const latLngBounds = new google.maps.LatLngBounds(
+      { lat: bounds.south, lng: bounds.west },
+      { lat: bounds.north, lng: bounds.east }
+    );
 
-    const loadIndividualRadar = async () => {
-      const currentRadarId = radarStation ? ('slug' in radarStation ? radarStation.slug : `argentina:${radarStation.id}`) : selectedTrack?.radarWmsUrl;
-      const currentOverrides = (currentRadarId && selectedTrack?.radarOverrides) ? selectedTrack.radarOverrides[currentRadarId] : {};
+    const ov = new google.maps.OverlayView();
+    let divEl: HTMLDivElement | null = null;
+    ov.onAdd = () => {
+      divEl = document.createElement('div');
+      divEl.style.cssText = 'position:absolute;pointer-events:none;display:none;';
+      const img = document.createElement('img');
+      const currentOpacity = isRadarEditMode ? editRadarOpacity : (currentOverrides.opacity ?? selectedTrack.radarOpacity ?? radarOpacity);
+      const currentRotation = isRadarEditMode ? editRadarRotation : (currentOverrides.rotation ?? selectedTrack.radarRotation ?? 0);
       
-      const lat = isRadarEditMode ? editRadarLat : (currentOverrides.lat ?? selectedTrack?.radarLat ?? radarStation?.lat ?? 0);
-      const lng = isRadarEditMode ? editRadarLng : (currentOverrides.lng ?? selectedTrack?.radarLng ?? radarStation?.lng ?? 0);
-      const range = isRadarEditMode ? editRadarRangeKm : (currentOverrides.rangeKm ?? selectedTrack?.radarRangeKm ?? radarStation?.rangeKm ?? 250);
-      const rotation = isRadarEditMode ? editRadarRotation : (currentOverrides.rotation ?? selectedTrack?.radarRotation ?? 0);
-      const opacity = isRadarEditMode ? editRadarOpacity : (currentOverrides.opacity ?? selectedTrack?.radarOpacity ?? radarOpacity);
-      const chromaKey = isRadarEditMode ? editRadarChromaKey : (currentOverrides.chromaKey ?? selectedTrack?.radarChromaKey ?? 0);
-      const crop = isRadarEditMode ? {
-        top: editRadarCropTop, bottom: editRadarCropBottom, left: editRadarCropLeft, right: editRadarCropRight
-      } : {
-        top: currentOverrides.cropTop ?? selectedTrack?.radarCropTop ?? 0,
-        bottom: currentOverrides.cropBottom ?? selectedTrack?.radarCropBottom ?? 0,
-        left: currentOverrides.cropLeft ?? selectedTrack?.radarCropLeft ?? 0,
-        right: currentOverrides.cropRight ?? selectedTrack?.radarCropRight ?? 0
+      img.className = 'pixelated-layer';
+      img.style.cssText = `width:100%;height:100%;opacity:${currentOpacity};object-fit:fill;`;
+      if (currentRotation !== 0) {
+        img.style.transform = `rotate(${currentRotation}deg)`;
+      }
+      let tryIndex = 0;
+      let redemetAttempted = false;
+      let backupAttempted = false;
+      const showError = () => {
+        img.style.display = 'none';
+        if (divEl) divEl.style.display = 'none';
+        let errMsg = 'Falha ao carregar imagem.';
+        if (useWms) errMsg = 'Falha ao carregar radar (WMS).';
+        else if (useSigma) errMsg = 'Falha ao carregar radar (SIGMA).';
+        else if (useNowcastingPng || usePng) {
+          if (radarStation && 'slug' in radarStation && ((radarStation as any).slug === 'santiago' || (radarStation as any).slug === 'morroigreja')) {
+            const stName = (radarStation as any).slug === 'santiago' ? 'Santiago' : 'Morro da Igreja';
+            errMsg = `Falha ao carregar radar de ${stName} (${radarSourceMode === 'hd' ? 'HD/Redemet' : 'Super Res/CPTEC'}).`;
+            if (cptecAvailable && redemetAvailable) {
+              errMsg = `Falha ao carregar radar de ${stName} (ambas as fontes CPTEC/Redemet falharam).`;
+            }
+          } else {
+            errMsg = 'Falha ao carregar imagem PNG (CPTEC/REDEMET).';
+          }
+        }
+        setRadarError(errMsg);
+        setRadarImageSource(null);
       };
-
-      let latLngBounds: google.maps.LatLngBounds;
-      if (useEditCustomBounds && editRadarCustomBounds) {
-          latLngBounds = new google.maps.LatLngBounds(
-            { lat: editRadarCustomBounds.south, lng: editRadarCustomBounds.west },
-            { lat: editRadarCustomBounds.north, lng: editRadarCustomBounds.east }
-          );
-      } else if (currentOverrides.customBounds) {
-          latLngBounds = new google.maps.LatLngBounds(
-            { lat: currentOverrides.customBounds.south, lng: currentOverrides.customBounds.west },
-            { lat: currentOverrides.customBounds.north, lng: currentOverrides.customBounds.east }
-          );
-      } else {
-          const b = calculateRadarBounds(lat, lng, range);
-          latLngBounds = new google.maps.LatLngBounds(b.sw, b.ne);
-      }
-
-      const ts = radarTimestamps[radarFrameIdx];
-      if (!ts) return;
-
-      let urlsToTry: { url: string; source: 'cptec' | 'redemet' }[] = [];
-      let redemetFindPromise: Promise<string | null> | null = null;
-      let hasRedemetFb = false;
-
-      let isArgentinaRadar = radarStation && !('slug' in radarStation);
-      let useWms = !!selectedTrack?.radarWmsUrl?.trim();
-      let useNowcastingPng = radarStation && !isArgentinaRadar && (radarStation as CptecRadarStation).product === 'ppi';
-      let usePng = radarStation && !isArgentinaRadar && radarConfigs.find(c => c.stationSlug === (radarStation as CptecRadarStation).slug)?.urlTemplate && !useWms && (radarStation as CptecRadarStation).product !== 'ppi';
-
-      if (isArgentinaRadar && radarStation) {
-        const argStation = radarStation as ArgentinaRadarStation;
-        const argUrl = buildArgentinaRadarPngUrl(argStation, ts, radarProductType as any);
-        urlsToTry = [{ url: getProxiedRadarUrl(argUrl), source: 'cptec' }];
-      } else if (useNowcastingPng && radarStation) {
-        const cptecStation = radarStation as CptecRadarStation;
-        const ts12 = ts.slice(0, 12);
-        const rawUrl = buildNowcastingPngUrl(cptecStation, ts12, radarProductType);
-        const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
-        urlsToTry = [{ url: proxyUrl, source: 'cptec' }, { url: directUrl, source: 'cptec' }];
-        hasRedemetFb = hasRedemetFallback(cptecStation.slug);
-        if (hasRedemetFb) {
-          const area = getRedemetArea(cptecStation.slug)!;
-          redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12}&historical=true`).then(r => r.ok ? r.json() : null).then(d => d?.url ?? null).catch(() => null);
+      const showImage = () => {
+        if (divEl) divEl.style.display = '';
+      };
+      const tryNext = () => {
+        if (tryIndex < urlsToTry.length) {
+          img.src = urlsToTry[tryIndex].url;
+          tryIndex += 1;
+          return;
         }
-      } else if (usePng && radarStation) {
-        const cptecStation = radarStation as CptecRadarStation;
-        const ts12 = ts.slice(0, 12);
-        const cfg = radarConfigs.find(c => c.stationSlug === cptecStation.slug);
-        if (cfg) {
-          const pngUrl = buildRadarPngUrl(cfg.urlTemplate!, ts12);
-          urlsToTry = [{ url: getProxiedRadarUrl(pngUrl), source: 'cptec' }];
+        if (!redemetAttempted && redemetFindPromise) {
+          redemetAttempted = true;
+          redemetFindPromise.then(redemetUrl => {
+            if (!redemetUrl) { tryNext(); return; }
+            img.onerror = () => tryNext();
+            img.onload = () => {
+              setRadarError(null);
+              setRadarImageSource('redemet');
+              setRedemetAvailable(true);
+              showImage();
+            };
+            img.src = getProxiedRadarUrl(redemetUrl);
+          });
+          return;
         }
-        hasRedemetFb = hasRedemetFallback(cptecStation.slug);
-      } else if (useWms && selectedTrack?.radarWmsUrl) {
-         urlsToTry = [{ url: getRadarFrameUrl(selectedTrack.radarWmsUrl, ts, latLngBounds.toJSON()), source: 'cptec' }];
-      }
-
-      let finalSrc = '';
-      let finalSource: 'cptec' | 'redemet' | 'backup' | null = null;
-
-      for (const entry of urlsToTry) {
-        if (await probeRadarImageExists(entry.url)) {
-          finalSrc = entry.url; finalSource = entry.source; break;
+        if (!backupAttempted) {
+          backupAttempted = true;
+          if (radarCfgSlug) {
+            const backupApiUrl = getRadarBackupUrl(radarCfgSlug, ts.slice(0, 12), radarProductType);
+            fetch(backupApiUrl)
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data?.url) {
+                  img.onerror = () => showError();
+                  img.onload = () => {
+                    setRadarError(null);
+                    setRadarImageSource('backup');
+                    showImage();
+                  };
+                  img.src = data.url;
+                } else {
+                  showError();
+                }
+              })
+              .catch(() => showError());
+            return;
+          }
         }
-      }
-      if (!finalSrc && redemetFindPromise) {
-        const rUrl = await redemetFindPromise;
-        if (rUrl && await probeRadarImageExists(getProxiedRadarUrl(rUrl))) {
-          finalSrc = getProxiedRadarUrl(rUrl); finalSource = 'redemet';
-        }
-      }
-      if (!finalSrc && radarStation) {
-        const slug = isArgentinaRadar ? `argentina:${(radarStation as ArgentinaRadarStation).id}` : (radarStation as CptecRadarStation).slug;
-        const bUrl = getRadarBackupUrl(slug, ts.slice(0, 12), radarProductType);
-        const bData = await fetch(bUrl).then(r => r.ok ? r.json() : null).catch(() => null);
-        if (bData?.url && await probeRadarImageExists(bData.url)) {
-          finalSrc = bData.url; finalSource = 'backup';
-        }
-      }
+        showError();
+      };
+      img.onerror = tryNext;
+      img.onload = () => {
+        setRadarError(null);
+        const src = urlsToTry[tryIndex - 1]?.source ?? 'cptec';
+        setRadarImageSource(src);
+        if (src === 'cptec') setCptecAvailable(true);
 
-      if (myToken !== latestRequestTokenRef.current || !finalSrc) return;
+        const currentChromaKey = isRadarEditMode ? editRadarChromaKey : (currentOverrides.chromaKey ?? selectedTrack.radarChromaKey ?? 0);
+        const currentCrop = isRadarEditMode ? {
+          top: editRadarCropTop,
+          bottom: editRadarCropBottom,
+          left: editRadarCropLeft,
+          right: editRadarCropRight
+        } : {
+          top: currentOverrides.cropTop ?? selectedTrack.radarCropTop ?? 0,
+          bottom: currentOverrides.cropBottom ?? selectedTrack.radarCropBottom ?? 0,
+          left: currentOverrides.cropLeft ?? selectedTrack.radarCropLeft ?? 0,
+          right: currentOverrides.cropRight ?? selectedTrack.radarCropRight ?? 0
+        };
 
-      const newOverlay = createImageOverlayView(finalSrc, latLngBounds, map, opacity, rotation, chromaKey, crop);
-      
-      // Double Buffering
-      individualRadarOverlaysRef.current.forEach(ov => (ov as any)?.setMap?.(null));
-      individualRadarOverlaysRef.current = [newOverlay];
-      radarOverlayRef.current = newOverlay;
-      setRadarImageSource(finalSource);
-      setRadarError(null);
+        const applyFilters = async () => {
+          if (currentChromaKey > 0 || currentCrop.top > 0 || currentCrop.bottom > 0 || currentCrop.left > 0 || currentCrop.right > 0) {
+            try {
+              const filtered = await filterRadarImageFromUrl(img.src, currentChromaKey, currentCrop);
+              if (filtered) {
+                img.onload = () => showImage();
+                img.src = filtered;
+                return true;
+              }
+            } catch (e) {
+              console.error('Filter error', e);
+            }
+          }
+          return false;
+        };
+
+        const currentTs = radarTimestamps[radarFrameIdx];
+        if (currentTs) {
+          let radarSlug = radarStation && !isArgentinaRadar
+            ? (radarStation as CptecRadarStation).slug
+            : radarStation ? `argentina_${(radarStation as ArgentinaRadarStation).id}` : null;
+          if (radarSlug && src === 'redemet') radarSlug = `${radarSlug}-redemet`;
+          if (radarSlug) cacheRadarImage(img.src, radarSlug, currentTs.slice(0, 12), radarProductType);
+        }
+
+        if (radarProductType === 'velocidade' && superResEnabled && radarStation && !isArgentinaRadar) {
+          const cptecSt = radarStation as CptecRadarStation;
+          if (currentTs) {
+            const refTs12 = currentTs.slice(0, 12);
+            const refUrl = buildNowcastingPngUrl(cptecSt, refTs12, 'reflectividade');
+            const refProxy = getProxiedRadarUrl(refUrl);
+            filterDopplerSuperRes(img.src, refProxy).then((filteredSrc) => {
+              if (filteredSrc) {
+                img.onload = () => showImage();
+                img.onerror = () => showImage();
+                img.src = filteredSrc;
+              } else {
+                applyFilters().then(applied => { if (!applied) showImage(); });
+              }
+            }).catch(() => {
+              applyFilters().then(applied => { if (!applied) showImage(); });
+            });
+            return;
+          }
+        }
+        
+        applyFilters().then(applied => {
+          if (!applied) showImage();
+        });
+      };
+      divEl.appendChild(img);
+      ov.getPanes()?.overlayLayer?.appendChild(divEl);
+      tryNext();
     };
+    ov.draw = () => {
+      if (!divEl) return;
+      const proj = ov.getProjection();
+      if (!proj) return;
+      const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
+      const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
+      if (!sw || !ne) return;
+      divEl.style.left = Math.min(sw.x, ne.x) + 'px';
+      divEl.style.top = Math.min(sw.y, ne.y) + 'px';
+      divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
+      divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
+    };
+    ov.onRemove = () => { divEl?.parentNode?.removeChild(divEl); divEl = null; };
+    ov.setMap(map);
+    radarOverlayRef.current = ov;
 
-    loadIndividualRadar();
+    return () => {
+      (ov as any).setMap?.(null);
+      radarOverlayRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radarVisible, radarTimestamps, radarFrameIdx, radarOpacity, radarStation, radarSourceMode, radarProductType, superResEnabled, isRadarEditMode, editRadarLat, editRadarLng, editRadarRangeKm, editRadarRotation, editRadarOpacity, editRadarChromaKey, editRadarCropTop, editRadarCropBottom, editRadarCropLeft, editRadarCropRight, editRadarCustomBounds, useEditCustomBounds, selectedTrack, radarConfigs]);
 
   // Overlay de radar na timeline (quando período ≤ 3 dias)
@@ -2863,17 +3036,12 @@ export default function RastrosTornadosPage() {
     // Sincronização: incrementa ID para cancelar asyncs anteriores
     const effectId = ++radarTimelineEffectIdRef.current;
 
-    if (!showRadarTimelineSlider || !mapInstanceRef.current) {
-      radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
-      radarTimelineOverlaysRef.current = [];
-      return;
-    }
+    radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
+    radarTimelineOverlaysRef.current = [];
+
+    if (!showRadarTimelineSlider || !mapInstanceRef.current) return;
     const nominalTs = radarTimelineTimestamps[radarTimelineIndex];
-    if (!nominalTs) {
-      radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
-      radarTimelineOverlaysRef.current = [];
-      return;
-    }
+    if (!nominalTs) return;
 
     const map = mapInstanceRef.current;
     const allStations = radarTimelineMode === 'mosaico' ? intervalRadars : (timelineActiveStation ? [timelineActiveStation] : []);
@@ -2977,26 +3145,22 @@ export default function RastrosTornadosPage() {
 
       // 4. Cria novos overlays mas ainda não remove os antigos para um crossfade suave
       const newOverlays: any[] = [];
-      // Usamos Promise.all para esperar que todos os novos overlays disparem o display=''
-      await Promise.all(validOverlays.map(d => new Promise<void>((resolve) => {
-          const ov = createImageOverlayView(d.finalUrl, d.latLngBounds, map, radarOpacity, 0, 0, undefined, () => resolve());
-          newOverlays.push(ov);
-          
-          setTimelineFoundTimes((prev) => ({ ...prev, [d.stationSlug]: d.finalTs }));
-          
-          if (d.usedSource !== 'backup') {
-            let cacheSlug = d.stationSlug;
-            if (d.usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
-            cacheRadarImage(d.finalUrl, cacheSlug, d.ts12, timelineProductType);
-          }
-      })));
+      validOverlays.forEach((d) => {
+        const ov = new google.maps.GroundOverlay(d.finalUrl, d.latLngBounds);
+        ov.setOpacity(radarOpacity);
+        ov.setMap(map);
+        newOverlays.push(ov);
+        
+        setTimelineFoundTimes((prev) => ({ ...prev, [d.stationSlug]: d.finalTs }));
+        
+        if (d.usedSource !== 'backup') {
+          let cacheSlug = d.stationSlug;
+          if (d.usedSource === 'redemet') cacheSlug = `${cacheSlug}-redemet`;
+          cacheRadarImage(d.finalUrl, cacheSlug, d.ts12, timelineProductType);
+        }
+      });
 
-      if (effectId !== radarTimelineEffectIdRef.current) {
-        newOverlays.forEach(ov => (ov as any)?.setMap?.(null));
-        return;
-      }
-
-      // 5. Troca suave: remove antigos, oficializa novos
+      // 5. Remove overlays antigos agora que os novos estão no mapa (Double Buffering)
       radarTimelineOverlaysRef.current.forEach((ov) => { (ov as any)?.setMap?.(null); });
       radarTimelineOverlaysRef.current = newOverlays;
     };

@@ -38,7 +38,7 @@ import {
   getArgentinaRadarBounds,
   type ArgentinaRadarStation,
 } from '@/lib/argentinaRadarStations';
-import { fetchRadarConfigs, saveRadarConfig, subscribeToRadarConfigs, type RadarConfig } from '@/lib/radarConfigStore';
+import { fetchRadarConfigs, saveRadarConfig, type RadarConfig } from '@/lib/radarConfigStore';
 import { groupRadarsByLocation } from '@/lib/radarGrouping';
 import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
@@ -683,8 +683,6 @@ export default function AoVivoPage() {
   const stormReportInfoWindowRef = useRef<any>(null);
   const radarMarkersRef = useRef<any[]>([]);
   const radarKeyToMarkerRef = useRef<Map<string, { marker: any; isDisplayed: boolean }>>(new Map());
-  const radarTimelineEffectIdRef = useRef(0);
-  const latestRequestTokenRef = useRef(0);
   const [showReportsOnMap, setShowReportsOnMap] = useState(true);
 
   /** Report popup flow */
@@ -1058,6 +1056,7 @@ export default function AoVivoPage() {
       addToast('Configuração salva.', 'success');
       setEditCenterLat(lat);
       setEditCenterLng(lng);
+      await fetchRadarConfigs().then(setRadarConfigs);
     } catch (e: any) {
       addToast(`Erro ao salvar: ${e.message}`, 'error');
     } finally {
@@ -1207,8 +1206,7 @@ export default function AoVivoPage() {
   }, [user]);
 
   useEffect(() => {
-    const unsub = subscribeToRadarConfigs(setRadarConfigs);
-    return unsub;
+    fetchRadarConfigs().then(setRadarConfigs).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -2013,16 +2011,7 @@ export default function AoVivoPage() {
     timestamp: string,
     useFallback: boolean,
     opacity: number,
-    requestToken: number,
-  ): Promise<void> => {
-    return new Promise((resolveAll) => {
-      let pendingCount = radars.length;
-      if (pendingCount === 0) { resolveAll(); return; }
-      
-      const checkDone = () => {
-        pendingCount--;
-        if (pendingCount <= 0) resolveAll();
-      };
+  ) => {
     /** Em LIVE: usa timestamp o mais fresco possível (1 min) para cada radar buscar sua própria última imagem. */
     const nominalTs = useFallback ? getNowMinusMinutesTimestamp12UTC(1) : timestamp;
     const nominalDate = new Date(Date.UTC(
@@ -2281,11 +2270,7 @@ export default function AoVivoPage() {
         const markProcessed = () => {
           if (isFullyProcessed) return;
           isFullyProcessed = true;
-          // Só mostra se for a requisição mais recente
-          if (requestToken === latestRequestTokenRef.current) {
-            if (divEl) divEl.style.display = '';
-          }
-          checkDone();
+          if (divEl) divEl.style.display = '';
         };
 
         const applyNoiseFilter = () => {
@@ -2342,7 +2327,6 @@ export default function AoVivoPage() {
             return next;
           });
           if (divEl) divEl.style.display = 'none';
-          checkDone();
         };
         const showOverlay = () => { if (divEl) divEl.style.display = ''; };
         const onRedemetLoad = (ts12Val: string) => {
@@ -2563,14 +2547,18 @@ export default function AoVivoPage() {
       ov.setMap(map);
       overlaysArr.push(ov);
     });
-    });
   }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode, superResEnabled, reflectivityFilterEnabled]);
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
   /** Overlays de radar no mapa principal. */
   useEffect(() => {
-    const myToken = ++latestRequestTokenRef.current;
+    setFailedRadars(new Set());
+    setRadarEffectiveTimestamps({});
+    setRadarEffectiveSource({});
+    radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    radarOverlaysRef.current = [];
+    if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) return;
     
     // Na janela 1, usamos sempre Reflectividade se estiver em split, ou o produto selecionado se único
     const product = (splitCount >= 2) ? 'reflectividade' : radarProductType;
@@ -2578,140 +2566,83 @@ export default function AoVivoPage() {
     const radarsToShow = editingRadar
       ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
       : displayRadars;
-    
-    if (radarsToShow.length === 0 && !editingRadar) {
-      radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlaysRef.current = [];
-      setFailedRadars(new Set());
-      setRadarEffectiveTimestamps({});
-      setRadarEffectiveSource({});
-      return;
-    }
-
-    const nextOverlays: any[] = [];
+    if (radarsToShow.length === 0 && !editingRadar) return;
     addRadarOverlays(
       mapInstanceRef.current,
-      nextOverlays,
+      radarOverlaysRef.current,
       product,
       radarsToShow.length > 0 ? radarsToShow : [],
       effectiveRadarTimestamp,
       useFallbackForOverlays,
       radarOpacity,
-      myToken
-    ).then(() => {
-      if (myToken !== latestRequestTokenRef.current) {
-        // Requisição obsoleta, limpa o que foi criado mas não troca o ref principal
-        nextOverlays.forEach(ov => (ov as any)?.setMap?.(null));
-        return;
-      }
-      // Troca suave: remove antigos, assume novos
-      radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlaysRef.current = nextOverlays;
-      // Note: setFailedRadars e afins agora dependem do token também? 
-      // Idealmente sim, mas para simplificar vamos manter como está por enquanto 
-      // já que a transição visual é o foco.
-    });
-
+    );
     return () => {
-      // No cleanup do useEffect (quando as dependências mudam), não limpamos o radarOverlaysRef.current imediatamente
-      // O novo ciclo de useEffect cuidará da troca via Double Buffering.
+      radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      radarOverlaysRef.current = [];
     };
   }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, addRadarOverlays, editingRadar, radarConfigs]);
 
   /** Overlays Mapa 2 (Doppler) */
   useEffect(() => {
-    const myToken = ++latestRequestTokenRef.current;
+    radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    radarOverlays2Ref.current = [];
+    if (!map2Ready || !map2InstanceRef.current || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) return;
     
-    if (!map2Ready || !map2InstanceRef.current || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) {
-      radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays2Ref.current = [];
-      return;
-    }
-    
-    const nextOverlays: any[] = [];
     addRadarOverlays(
       map2InstanceRef.current,
-      nextOverlays,
+      radarOverlays2Ref.current,
       'velocidade',
       displayRadars,
       effectiveRadarTimestamp,
       useFallbackForOverlays,
       radarOpacity,
-      myToken
-    ).then(() => {
-      if (myToken !== latestRequestTokenRef.current) {
-        nextOverlays.forEach(ov => (ov as any)?.setMap?.(null));
-        return;
-      }
+    );
+    return () => {
       radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays2Ref.current = nextOverlays;
-    });
-
-    return () => {};
+      radarOverlays2Ref.current = [];
+    };
   }, [map2Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
 
   /** Overlays Mapa 3 (VIL) */
   useEffect(() => {
-    const myToken = ++latestRequestTokenRef.current;
-
-    if (!map3Ready || !map3InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) {
-      radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays3Ref.current = [];
-      return;
-    }
+    radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    radarOverlays3Ref.current = [];
+    if (!map3Ready || !map3InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
     
-    const nextOverlays: any[] = [];
     addRadarOverlays(
       map3InstanceRef.current,
-      nextOverlays,
+      radarOverlays3Ref.current,
       'vil',
       displayRadars,
       effectiveRadarTimestamp,
       useFallbackForOverlays,
       radarOpacity,
-      myToken
-    ).then(() => {
-      if (myToken !== latestRequestTokenRef.current) {
-        nextOverlays.forEach(ov => (ov as any)?.setMap?.(null));
-        return;
-      }
+    );
+    return () => {
       radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays3Ref.current = nextOverlays;
-    });
-
-    return () => {};
+      radarOverlays3Ref.current = [];
+    };
   }, [map3Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
 
   /** Overlays Mapa 4 (Waldvogel) */
   useEffect(() => {
-    const myToken = ++latestRequestTokenRef.current;
-
-    if (!map4Ready || !map4InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) {
-      radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays4Ref.current = [];
-      return;
-    }
+    radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    radarOverlays4Ref.current = [];
+    if (!map4Ready || !map4InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
     
-    const nextOverlays: any[] = [];
     addRadarOverlays(
       map4InstanceRef.current,
-      nextOverlays,
+      radarOverlays4Ref.current,
       'waldvogel',
       displayRadars,
       effectiveRadarTimestamp,
       useFallbackForOverlays,
       radarOpacity,
-      myToken
-    ).then(() => {
-      if (myToken !== latestRequestTokenRef.current) {
-        nextOverlays.forEach(ov => (ov as any)?.setMap?.(null));
-        return;
-      }
+    );
+    return () => {
       radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays4Ref.current = nextOverlays;
-    });
-
-    return () => {};
+      radarOverlays4Ref.current = [];
+    };
   }, [map4Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
 
   /** Overlay editável (arrastável) para posicionar o radar — apenas quando editingRadar está setado */
