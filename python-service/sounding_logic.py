@@ -163,16 +163,22 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
     sfc_pcl = params.parcelx(prof, flag=1) # Surface Based
     mu_pcl = params.parcelx(prof, flag=3)  # Most Unstable
     
-    # Pack indices for the complete table
+    # Pack indices for the complete table (FLATTENED to prevent toFixed crash)
     indices = {
-        "SFC": {"CAPE": sfc_pcl.bplus, "CIN": sfc_pcl.bminus, "LCL": sfc_pcl.lclhght, "LFC": sfc_pcl.lfchght, "EL": sfc_pcl.elhght},
-        "ML": {"CAPE": ml_pcl.bplus, "CIN": ml_pcl.bminus, "LCL": ml_pcl.lclhght, "LFC": ml_pcl.lfchght, "EL": ml_pcl.elhght},
-        "MU": {"CAPE": mu_pcl.bplus, "CIN": mu_pcl.bminus, "LCL": mu_pcl.lclhght, "LFC": mu_pcl.lfchght, "EL": mu_pcl.elhght},
-        "EFFshear": float(eff_shear_mag),
-        "srh_0_1km_LM_HS": float(srh1km_val),
-        "srh_0_3km_LM_HS": float(srh3km_val),
-        "STP_0_1km_HS": float(stp0_1km),
-        "STP_0_500m_HS": float(stp0_500m)
+        "MU_CAPE": float(mu_pcl.bplus),
+        "MU_CIN": float(mu_pcl.bminus),
+        "MU_LCL": float(mu_pcl.lclhght),
+        "MU_LFC": float(mu_pcl.lfchght),
+        "MU_EL": float(mu_pcl.elhght),
+        "ML_CAPE": float(ml_pcl.bplus),
+        "ML_CIN": float(ml_pcl.bminus),
+        "SFC_CAPE": float(sfc_pcl.bplus),
+        "SFC_CIN": float(sfc_pcl.bminus),
+        "EFF_Shear": float(eff_shear_mag),
+        "SRH_1km_LM": float(srh1km_val),
+        "SRH_3km_LM": float(srh3km_val),
+        "STP_1km": float(stp0_1km),
+        "STP_500m": float(stp0_500m)
     }
 
     # Data for frontend profile plot (compatibility)
