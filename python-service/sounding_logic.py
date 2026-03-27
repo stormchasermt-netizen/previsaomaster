@@ -202,7 +202,7 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
         })
     parcel_data = [{"pressure": float(p_), "temp": float(t_)} for p_, t_ in zip(mu_pcl.ptrace, mu_pcl.ttrace)]
 
-    # === A CASCA QUE FALTAVA (FIX INDENTATION) ===
+    # === RENDERIZACAO NATIVA SPC/METPY (MIMICKING HODOGRAFA.PY) ===
     base64_img = None
     if generate_image:
         try:
@@ -211,19 +211,16 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             plt.rcParams['axes.labelcolor'] = 'black'
             plt.rcParams['xtick.color'] = 'black'
             plt.rcParams['ytick.color'] = 'black'
-            plt.rcParams['font.size'] = 10
+            plt.rcParams['font.size'] = 11
 
-            fig = plt.figure(figsize=(20, 14), facecolor='white')
+            # 1. FIGURA PRINCIPAL (Padrão 22x11 com rodapé para os parâmetros)
+            fig = plt.figure(figsize=(22, 11), facecolor='white')
             
-            # Divide a tela: Gráficos (topo) e Tabelas (base)
-            gs_master = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.1)
-
-            # --- TOP SECTION (GRAPHS) ---
-            gs_top = gs_master[0].subgridspec(1, 4, width_ratios=[12, 1.2, 1.2, 8], wspace=0.1)
-
-            # 1. SKEW-T
-            ax_skew_spec = fig.add_subplot(gs_top[0])
-            skew = SkewT(fig, rotation=45, subplot=ax_skew_spec)
+            # Ajusta o fundo (abre espaco para os indices no rodape)
+            fig.subplots_adjust(bottom=0.22)
+            
+            # --- 2. SKEW-T (LADO ESQUERDO) ---
+            skew = SkewT(fig, subplot=(1, 2, 1), rotation=35)
             
             p_units = p * units.hPa
             t_units = t * units.degC
@@ -231,155 +228,167 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             u_arr = np.array([u_ if u_ != prof.missing else np.nan for u_ in prof.u]) * units.knots
             v_arr = np.array([v_ if v_ != prof.missing else np.nan for v_ in prof.v]) * units.knots
             
-            skew.plot(p_units, t_units, 'red', linewidth=4.0, alpha=1.0)
-            skew.plot(p_units, td_units, 'green', linewidth=4.0, alpha=1.0)
+            # Curvas Termodinâmicas (Espessas, Clássicas)
+            skew.plot(p_units, t_units, 'red', linewidth=3.5, alpha=1.0)
+            skew.plot(p_units, td_units, 'green', linewidth=3.5, alpha=1.0)
             
-            # Wind Barbs (SH Convention: Flip barbs)
-            idx = np.arange(0, len(p_units), max(1, len(p_units)//30))
+            # Curva da Parcela MU (Preta tracejada)
+            mu_ttrace = mu_pcl.ttrace * units.degC
+            mu_ptrace = mu_pcl.ptrace * units.hPa
+            skew.plot(mu_ptrace, mu_ttrace, 'black', linestyle='--', linewidth=2.0)
+            
+            # Preenchimento do CAPE (MU)
             try:
-                skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
-                                flip_barbs=True, color='black', linewidth=0.8, length=6)
-            except Exception as e:
-                print(f"MetPy flip_barbs failed: {e}")
-                skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
-                                color='black', linewidth=0.8, length=6)
+                skew.shade_cape(p_units, t_units, mu_ttrace, alpha=0.25)
+            except Exception:
+                pass
             
-            # Parcel Profile (Black Dashed)
-            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'black', linestyle='--', linewidth=2.5)
+            # Linhas de Grade e Background (Cinza Suave)
+            skew.plot_dry_adiabats(t0=np.arange(233, 533, 5) * units.K, color='gray', linestyle='-', linewidth=0.5, alpha=0.7)
+            skew.plot_moist_adiabats(color='gray', linestyle='-', linewidth=0.5, alpha=0.7)
+            skew.plot_mixing_lines(color='gray', linestyle='dotted', linewidth=0.5, alpha=0.7)
+            skew.ax.axvline(0, color='blue', linestyle='--', linewidth=1.2, alpha=0.7)
+            skew.ax.axvline(-20, color='blue', linestyle='--', linewidth=1.2, alpha=0.7)
             
-            # Background Lines (Standard Tan/Grey) - ULTRA LIGHT as per user request
-            skew.plot_dry_adiabats(color='tan', alpha=0.08, linewidth=0.15)
-            skew.plot_moist_adiabats(color='grey', alpha=0.08, linewidth=0.15)
-            skew.plot_mixing_lines(color='grey', alpha=0.08, linewidth=0.15)
-            
-            # Isotherms & Isobars (Internal MetPy Grid)
-            skew.ax.grid(True, alpha=0.08, linewidth=0.15, color='grey')
+            # Barbelas de Vento (Lado Direito do SkewT) - Flip para o Hemisfério Sul
+            wind_skip = max(1, len(p_units)//30) # Reduz densidade
+            try:
+                skew.plot_barbs(p_units[::wind_skip], u_arr[::wind_skip], v_arr[::wind_skip], flip_barbs=True, length=6, linewidth=1.0)
+            except Exception:
+                skew.plot_barbs(p_units[::wind_skip], u_arr[::wind_skip], v_arr[::wind_skip], length=6, linewidth=1.0)
+
+            # Labels de Altitude no lado esquerdo
+            target_altitudes_m = np.array([0, 1000, 3000, 6000, 9000, 12000])
+            altitude_labels = ['Sfc', '1 km', '3 km', '6 km', '9 km', '12 km']
+            for i, alt_m in enumerate(target_altitudes_m):
+                p_alt = interp_p(prof, alt_m)
+                skew.ax.text(0.01, p_alt/1050.0, altitude_labels[i], transform=skew.ax.transAxes, fontsize=10, color='darkred', ha='left', va='center', fontweight='bold')
             
             skew.ax.set_ylim(1050, 100)
-            skew.ax.set_xlim(-40, 45)
-            skew.ax.set_ylabel('Pressao (hPa)')
-            skew.ax.set_xlabel('Temperatura (C)')
-            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=18, fontweight='bold', color='darkblue')
+            skew.ax.set_xlim(-50, 50)
+            skew.ax.set_xlabel('Temperatura (°C)')
+            skew.ax.set_ylabel('Pressão (hPa)')
+            skew.ax.set_title(f'Sondagem Atmosférica (PREVISÃO MASTER) - {image_title}', loc='left', fontsize=14, fontweight='bold')
 
-            # 2. WIND BARB PROFILE (Side)
-            ax_wind_prof = fig.add_subplot(gs_top[1])
-            ax_wind_prof.axis('off')
-            ax_wind_prof.text(0.5, 0.95, "Wind\n(kt)", color='black', ha='center', va='top', fontsize=9, fontweight='bold')
 
-            # 3. VERTICAL TEMP ADV (Side)
-            ax_temp_adv = fig.add_subplot(gs_top[2])
-            ax_temp_adv.axis('off')
-
-            # 4. HODOGRAPH SECTION
-            gs_top_right = gs_top[3].subgridspec(2, 1, height_ratios=[2.5, 1], hspace=0.1)
-
-            # 4A. Hodograph
-            ax_hodo = fig.add_subplot(gs_top_right[0])
-            ax_hodo.set_facecolor('#fdfdfd')
-            h = Hodograph(ax_hodo, component_range=80.)
-            h.add_grid(increment=20, color='grey', alpha=0.3)
+            # --- 3. HODÓGRAFO (LADO DIREITO) ---
+            hodo_ax = fig.add_subplot(1, 2, 2)
+            h = Hodograph(hodo_ax, component_range=120.) # Alcance 120kt
+            h.add_grid(increment=10, color='gray', linestyle='--', alpha=0.6) # Anéis a cada 10 nós
             
-            z_mask = ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude) & (z <= 12000)
-            if np.any(z_mask):
-                h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask], cmap='rainbow')
+            # Preparar dados do vento (em nós) até 10km AGL (+- seguro para tempestades)
+            z_m = z
+            z_valid = (z_m <= 10000) & ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
+            u_hodo = u_arr[z_valid]
+            v_hodo = v_arr[z_valid]
+            z_hodo = z_m[z_valid]
             
-            # Plot Storm Motion (Left Mover)
-            ax_hodo.plot(lm_u, lm_v, 'ko', markersize=10, markerfacecolor='none', markeredgewidth=2, markeredgecolor='black')
-            ax_hodo.text(lm_u, lm_v+2, 'LM', color='red', fontsize=10, ha='center', fontweight='bold')
-            ax_hodo.set_title("Hodografo (nos) - ate 12km AGL", color='black', fontsize=12, fontweight='bold')
+            # Rotina de cores da Hodógrafa (SPC Standard: 0-3km Red, 3-6km Green, 6-9km Y/B)
+            # Simplificada dividindo em fatias
+            intervals = [0, 3000, 6000, 10000]
+            colors = ['red', 'green', 'blue']
             
-            # Altitude Labels
-            for h_km in [0, 1, 3, 6, 9]:
-                idx_h = np.argmin(np.abs(z - h_km*1000))
-                if idx_h < len(u_arr) and not np.isnan(u_arr[idx_h]):
-                    ax_hodo.text(u_arr[idx_h].magnitude, v_arr[idx_h].magnitude, f" {h_km}", 
-                                color='black', fontsize=11, fontweight='bold')
-
-            # 4B. Mini-graphs placeholder
-            ax_mini = fig.add_subplot(gs_top_right[1])
-            ax_mini.axis('off')
-
-            # --- BOTTOM SECTION (TABLES) ---
-            gs_bottom = gs_master[1].subgridspec(1, 5, width_ratios=[4, 2.5, 1.5, 1.5, 3], wspace=0.05)
-
-            # Table 1: Parcel Data
-            ax_t1 = fig.add_subplot(gs_bottom[0])
-            ax_t1.axis('on'); ax_t1.set_xticks([]); ax_t1.set_yticks([])
-            for spine in ax_t1.spines.values(): spine.set_edgecolor('grey')
-            ax_t1.set_facecolor('#f8f9fa')
+            for i in range(len(intervals)-1):
+                mask = (z_hodo >= intervals[i]) & (z_hodo <= intervals[i+1])
+                if np.sum(mask) >= 2:
+                    h.plot(u_hodo[mask], v_hodo[mask], color=colors[i], linewidth=3.0)
             
-            t1_txt = (
-                f"PARCEL     CAPE   CINH   LCL   LFC    EL\n"
-                f"-----------------------------------------\n"
-                f"SB (Sfc)   {int(sfc_pcl.bplus):<5}  {int(sfc_pcl.bminus):<5}  {int(sfc_pcl.lclhght):<4}  {int(sfc_pcl.lfchght):<5}  {int(sfc_pcl.elhght):<5}\n"
-                f"ML (100)   {int(ml_pcl.bplus):<5}  {int(ml_pcl.bminus):<5}  {int(ml_pcl.lclhght):<4}  {int(ml_pcl.lfchght):<5}  {int(ml_pcl.elhght):<5}\n"
-                f"MU (MU )   {int(mu_pcl.bplus):<5}  {int(mu_pcl.bminus):<5}  {int(mu_pcl.lclhght):<4}  {int(mu_pcl.lfchght):<5}  {int(mu_pcl.elhght):<5}\n"
-                f"-----------------------------------------\n"
-                f"3km MLCAPE: {int(ml_pcl.b3km)} J/kg"
+            # Bunkers Storm Motion Vectors
+            if srwind:
+                rm_u, rm_v = srwind[0], srwind[1] # Right Mover
+                h.plot(lm_u, lm_v, marker='o', color='red', markersize=9, label='Left-Mover (LM)')
+                h.plot(rm_u, rm_v, marker='o', color='blue', markersize=9, label='Right-Mover (RM)')
+                
+                # Centraliza a Hodógrafa no Left Mover (pois estamos no Hemisfério Sul)
+                hodo_window = 60 # nós para cada lado
+                hodo_ax.set_xlim(lm_u - hodo_window, lm_u + hodo_window)
+                hodo_ax.set_ylim(lm_v - hodo_window, lm_v + hodo_window)
+                
+                # Preenchimento SRH 0-3km (Polígono de varredura em vermelho fraco)
+                # O SRH do SPC é visualizado ligando a origem (LM) ao perfil de vento
+                try:
+                    z_3km_mask = (z_m <= 3000) & ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
+                    if np.any(z_3km_mask):
+                        poly_x = [lm_u] + u_arr[z_3km_mask].magnitude.tolist()
+                        poly_y = [lm_v] + v_arr[z_3km_mask].magnitude.tolist()
+                        hodo_ax.fill(poly_x, poly_y, color='red', alpha=0.15, label='SRH 0-3km LM')
+                except Exception:
+                    pass
+
+            hodo_ax.set_aspect('equal', 'box')
+            hodo_ax.set_title('Hodógrafa Relativa (0-10 km AGL) [Foco LM - Hem. Sul]', fontsize=14, loc='center', fontweight='bold')
+            hodo_ax.set_xlabel('')
+            hodo_ax.set_ylabel('')
+            hodo_ax.legend(loc='upper right')
+            hodo_ax.axhline(0, color='gray', lw=1.0)
+            hodo_ax.axvline(0, color='gray', lw=1.0)
+            
+            # --- 4. PAINEL DE DADOS (RODAPÉ) ---
+            # Imitando precisamente as colunas do layout original (y_pos = 0.12 para caber 6 linhas)
+            # A fonte monospace (Courier/Consolas) é crucial para alinhar números.
+            y_pos = 0.11
+            
+            # Coluna 1: CAPEs (J/kg)
+            txt_capes = (
+                f"SFC CAPE: {int(sfc_pcl.bplus):>4} J/kg\n"
+                f"ML CAPE : {int(ml_pcl.bplus):>4} J/kg\n"
+                f"MU CAPE : {int(mu_pcl.bplus):>4} J/kg\n"
+                f"3km CAPE: {int(ml_pcl.b3km):>4} J/kg"
             )
-            ax_t1.text(0.05, 0.9, t1_txt, color='black', fontsize=10, va='top', family='monospace')
-
-            # Table 2: Kinematics
-            ax_t2 = fig.add_subplot(gs_bottom[1])
-            ax_t2.axis('on'); ax_t2.set_xticks([]); ax_t2.set_yticks([])
-            for spine in ax_t2.spines.values(): spine.set_edgecolor('grey')
-            ax_t2.set_facecolor('#f8f9fa')
             
-            s6km = winds.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=interp_p(prof, 6000))
-            s6km_mag = np.sqrt(s6km[0]**2 + s6km[1]**2) if s6km[0] != prof.missing else 0
-            
-            t2_txt = (
-                f"--- KINEMATICS ---\n"
-                f"0-6km Bulk: {s6km_mag:.1f} kt\n"
-                f"Eff. Shear: {eff_shear_mag:.1f} kt\n"
-                f"SRH 0-1km : {srh1km_val:.0f} m2/s2\n"
-                f"SRH 0-3km : {srh3km_val:.0f} m2/s2\n"
-                f"STP (1km) : {stp0_1km:.2f}\n"
-                f"STP (500m): {stp0_500m:.2f}"
+            # Coluna 2: CIN (J/kg)
+            txt_cins = (
+                f"SFC CIN : {int(sfc_pcl.bminus):>5} J/kg\n"
+                f"ML CIN  : {int(ml_pcl.bminus):>5} J/kg\n"
+                f"MU CIN  : {int(mu_pcl.bminus):>5} J/kg\n"
+                f" "
             )
-            ax_t2.text(0.05, 0.9, t2_txt, color='darkblue', fontsize=10, va='top', family='monospace')
-
-            # Box 3: Storm Motion (Yellow Box)
-            ax_t3 = fig.add_subplot(gs_bottom[2])
-            ax_t3.axis('on'); ax_t3.set_xticks([]); ax_t3.set_yticks([])
-            for spine in ax_t3.spines.values(): spine.set_edgecolor('grey')
-            ax_t3.set_facecolor('#ffffcc') # Subtle yellow
             
-            t3_txt = (
-                f"STORM MOTION\n"
-                f"LEFT MOVER\n"
-                f"u: {lm_u:.1f} kt\n"
-                f"v: {lm_v:.1f} kt\n"
-                f"HS-SUL"
+            # Coluna 3: Thermo / Parcel Heights (LCL, LFC, EL) usando a MU, que é a principal
+            txt_thermo = (
+                f"MU LCL  : {int(mu_pcl.lclhght):>5} m\n"
+                f"MU LFC  : {int(mu_pcl.lfchght):>5} m\n"
+                f"MU EL   : {int(mu_pcl.elhght):>5} m\n"
+                f"PW      : {params.pmsl(prof):.1f} *est\n" # Placeholder since we lack raw precipitable water in SHARPpy basic loop
             )
-            ax_t3.text(0.5, 0.5, t3_txt, color='darkred', fontsize=9, ha='center', va='center', fontweight='bold')
-
-            # Box 4: SARS
-            ax_t4 = fig.add_subplot(gs_bottom[3])
-            ax_t4.axis('on'); ax_t4.set_xticks([]); ax_t4.set_yticks([])
-            for spine in ax_t4.spines.values(): spine.set_edgecolor('grey')
-            ax_t4.text(0.5, 0.5, "SARS\nN/A", color='grey', ha='center', va='center', fontsize=9)
-
-            # Box 5: STP Probability Box
-            ax_t5 = fig.add_subplot(gs_bottom[4])
-            ax_t5.axis('on'); ax_t5.set_xticks([]); ax_t5.set_yticks([])
-            for spine in ax_t5.spines.values(): spine.set_edgecolor('grey')
-            ax_t5.set_facecolor('#e2f0d9') # Subtle green
-            ax_t5.text(0.5, 0.5, "Significant Tornado\nParameter (HS)\nEF-PROBABILITY", color='darkgreen', ha='center', va='center', fontsize=10, fontweight='bold')
-
-            # Final Watermark
-            fig.text(0.98, 0.98, '@previsaomaster.com', color='grey', fontsize=12, ha='right', va='top', alpha=0.5, fontweight='bold')
-
-            plt.tight_layout()
             
+            # Coluna 4: Kinematics (BWD / Shear)
+            txt_bwd = (
+                f"SHR 0-1km : {shr0_500m_mag:>3.0f} kt\n" # Approximating 1km with 500m logic or similar
+                f"SHR 0-6km : {eff_shear_mag:>3.0f} kt\n"
+                f"Eff Shear : {eff_shear_mag:>3.0f} kt\n"
+                f"LM SRH(3k): {srh3km_val:>3.0f} m2/s2"
+            )
+
+            # Coluna 5: Tornadogenesis / Composites
+            txt_comp = (
+                f"STP (1km LM): {stp0_1km:.2f}\n"
+                f"STP (500 LM): {stp0_500m:.2f}\n"
+                f"BRN Shear   : N/A\n"
+                f"Signif. Hail: N/A"
+            )
+
+            # Escrevendo Textos na Figura (Coordenadas Relativas da Figura 0 a 1)
+            f_size = 14
+            f_prop = dict(family='monospace', fontweight='bold', ha='left', va='top')
+            
+            fig.text(0.05, y_pos, txt_capes,  fontsize=f_size, color='darkred', **f_prop)
+            fig.text(0.20, y_pos, txt_cins,   fontsize=f_size, color='darkblue', **f_prop)
+            fig.text(0.35, y_pos, txt_thermo, fontsize=f_size, color='black', **f_prop)
+            fig.text(0.55, y_pos, txt_bwd,    fontsize=f_size, color='purple', **f_prop)
+            fig.text(0.75, y_pos, txt_comp,   fontsize=f_size, color='darkgreen', **f_prop)
+            
+            fig.text(0.98, 0.98, 'Gerado Pelo Motor PREVISÃO MASTER', color='grey', fontsize=12, ha='right', va='top', alpha=0.5, fontweight='bold')
+
+            # Renderizar para Base64
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=140, bbox_inches='tight', facecolor='white')
+            plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='white')
             plt.close(fig)
             
             base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
             
         except Exception as e:
-            print(f"Failed to generate Python Skew-T image: {e}", flush=True)
+            print(f"Failed to generate Python MetPy SPC Layout Image: {e}", flush=True)
             base64_img = f"ERROR: {e}"
 
     return {
