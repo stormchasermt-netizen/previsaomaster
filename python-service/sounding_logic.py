@@ -6,11 +6,19 @@ import tempfile
 import subprocess
 import base64
 import os
-from PIL import Image
+import matplotlib
+matplotlib.use('Agg') # Force non-interactive backend for headless Cloud Run
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from metpy.plots import SkewT, Hodograph
+from metpy.units import units
+
 import sharppy.sharptab.profile as profile
 import sharppy.sharptab.params as params
 import sharppy.sharptab.winds as winds
 import sharppy.sharptab.thermo as thermo
+
+print("SHARPpy Sounding Logic Module Loaded", flush=True)
 
 def process_csv_content(csv_text: str, generate_image: bool = False, image_title: str = "Tornado Track Sounding"):
     """
@@ -194,11 +202,10 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
         })
     parcel_data = [{"pressure": float(p_), "temp": float(t_)} for p_, t_ in zip(mu_pcl.ptrace, mu_pcl.ttrace)]
 
-            # --- ULTIMATE SPC PROFESSIONAL LAYOUT (LIGHT THEME) ---
-            import matplotlib.gridspec as gridspec
-            
-            # Theme Setup (Light / Professional)
-            plt.rcParams['figure.facecolor'] = 'white'
+    # === A CASCA QUE FALTAVA (FIX INDENTATION) ===
+    base64_img = None
+    if generate_image:
+        try:
             plt.rcParams['axes.facecolor'] = 'white'
             plt.rcParams['text.color'] = 'black'
             plt.rcParams['axes.labelcolor'] = 'black'
@@ -229,8 +236,13 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             
             # Wind Barbs (SH Convention: Flip barbs)
             idx = np.arange(0, len(p_units), max(1, len(p_units)//30))
-            skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
-                            flip_barbs=True, color='black', linewidth=0.8, length=6)
+            try:
+                skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
+                                flip_barbs=True, color='black', linewidth=0.8, length=6)
+            except Exception as e:
+                print(f"MetPy flip_barbs failed, using standard barbs: {e}")
+                skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
+                                color='black', linewidth=0.8, length=6)
             
             # Parcel Profile (Black Dashed)
             skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'black', linestyle='--', linewidth=1.5)
