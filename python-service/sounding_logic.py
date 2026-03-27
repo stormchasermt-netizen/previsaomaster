@@ -6,6 +6,9 @@ import tempfile
 import subprocess
 import base64
 import os
+import shutil
+import sys
+from typing import Optional
 import matplotlib
 matplotlib.use('Agg') # Force non-interactive backend for headless Cloud Run
 import matplotlib.pyplot as plt
@@ -20,7 +23,98 @@ import sharppy.sharptab.thermo as thermo
 
 print("SHARPpy Sounding Logic Module Loaded", flush=True)
 
-def process_csv_content(csv_text: str, generate_image: bool = False, image_title: str = "Tornado Track Sounding"):
+# Latitude padrão: Hemisfério Sul (ex.: interior SP). SHARPpy usa latitude<0 para lógica de hemisfério.
+_DEFAULT_SITE_LATITUDE = -23.5
+
+
+def _site_latitude_from_df(df: pd.DataFrame, raw_lines: list, latitude_override: Optional[float]) -> float:
+    if latitude_override is not None:
+        return float(latitude_override)
+    for col in ("latitude", "lat", "site_lat"):
+        if col in df.columns:
+            s = pd.to_numeric(df[col], errors="coerce").dropna()
+            if len(s) > 0:
+                v = float(s.iloc[0])
+                if -90.0 <= v <= 90.0:
+                    return v
+    for line in raw_lines[:30]:
+        low = line.strip().lower()
+        if "latitude" in low or low.startswith("lat") or "site_lat" in low:
+            for part in line.replace("=", ",").replace(";", ",").split(","):
+                part = part.strip()
+                try:
+                    v = float(part)
+                    if -90.0 <= v <= 90.0:
+                        return v
+                except ValueError:
+                    continue
+    return _DEFAULT_SITE_LATITUDE
+
+
+def _env_wants_native_spc() -> bool:
+    return os.environ.get("NATIVE_SPC_RENDER", "").strip().lower() in ("1", "true", "yes")
+
+
+def _native_spc_render_available() -> bool:
+    if shutil.which("xvfb-run") is None:
+        return False
+    try:
+        import PyQt5  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _try_render_sharppy_spc_native(
+    p, z, t, td, wd, ws, latitude: float
+) -> Optional[str]:
+    """Layout SPC nativo (SHARPpy SPCWindo + Qt) via xvfb. Retorna data URL ou None."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sharppy_renderer.py")
+    if not os.path.isfile(script):
+        return None
+    fd_in, in_path = tempfile.mkstemp(suffix=".csv")
+    fd_out, out_path = tempfile.mkstemp(suffix=".png")
+    try:
+        os.close(fd_in)
+        os.close(fd_out)
+        pd.DataFrame(
+            {"pres": p, "hght": z, "temp": t, "dwpt": td, "wdir": wd, "wspd": ws}
+        ).to_csv(in_path, index=False)
+        env = os.environ.copy()
+        env["SOUNDING_LATITUDE"] = str(latitude)
+        cmd = [
+            "xvfb-run", "-a", "-s", "-screen 0 1400x900x24",
+            sys.executable, script, in_path, out_path,
+        ]
+        r = subprocess.run(
+            cmd, env=env, timeout=120, capture_output=True, text=True
+        )
+        if r.returncode != 0:
+            print(f"native SPC render failed: {r.stderr or r.stdout}", flush=True)
+            return None
+        with open(out_path, "rb") as f:
+            raw = f.read()
+        if not raw:
+            return None
+        return "data:image/png;base64," + base64.b64encode(raw).decode("utf-8")
+    except Exception as e:
+        print(f"native SPC render exception: {e}", flush=True)
+        return None
+    finally:
+        for path in (in_path, out_path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
+def process_csv_content(
+    csv_text: str,
+    generate_image: bool = False,
+    image_title: str = "Tornado Track Sounding",
+    latitude_override: Optional[float] = None,
+    native_spc: bool = False,
+):
     """
     Parses a CSV string, creates a SHARPpy profile, and extracts Southern Hemisphere indices.
     If generate_image is True, calls Rscript thundeR to output a professional Skew-T.
@@ -66,7 +160,9 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             if cand in df.columns:
                 found_cols[key] = cand
                 break
-                
+
+    site_latitude = _site_latitude_from_df(df, lines, latitude_override)
+
     # If missing crucial thermo data, we cannot do SHARPpy easily, but we'll try
     if 'pres' not in found_cols or 'temp' not in found_cols or 'dwpt' not in found_cols:
         raise ValueError("CSV is missing PRES, TEMP, or DWPT required for thermodynamic calculations.")
@@ -102,8 +198,15 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
     if p[0] < p[-1]:
         p = p[::-1]; z = z[::-1]; t = t[::-1]; td = td[::-1]; wd = wd[::-1]; ws = ws[::-1]
     
-    # Fix: Provide a dummy date to avoid 'NoneType' strftime errors in SHARPpy
-    prof = profile.create_profile(profile='convective', pres=p, hght=z, tmpc=t, dwpc=td, wdir=wd, wspd=ws, missing=-9999, date=datetime.datetime.now())
+    # Fix: Provide a dummy date to avoid 'NoneType' strftime errors in SHARPpy.
+    # latitude < 0 ativa lógica de hemisfério sul no SHARPpy (parcelas, hodógrafo, etc.).
+    prof = profile.create_profile(
+        profile='convective',
+        pres=p, hght=z, tmpc=t, dwpc=td, wdir=wd, wspd=ws,
+        missing=-9999,
+        date=datetime.datetime.now(),
+        latitude=site_latitude,
+    )
     
     # Calculate Indices
     ml_pcl = params.parcelx(prof, flag=4) # Mixed Layer
@@ -202,200 +305,155 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
         })
     parcel_data = [{"pressure": float(p_), "temp": float(t_)} for p_, t_ in zip(mu_pcl.ptrace, mu_pcl.ttrace)]
 
-    # === RENDERIZACAO NATIVA SPC/METPY (MIMICKING HODOGRAFA.PY) ===
+    # === Imagem: layout SPC (SHARPpy SPCWindo + Qt + xvfb) ou MetPy (fallback) ===
     base64_img = None
     if generate_image:
-        try:
-            plt.rcParams['axes.facecolor'] = 'white'
-            plt.rcParams['text.color'] = 'black'
-            plt.rcParams['axes.labelcolor'] = 'black'
-            plt.rcParams['xtick.color'] = 'black'
-            plt.rcParams['ytick.color'] = 'black'
-            plt.rcParams['font.size'] = 11
-
-            # 1. FIGURA PRINCIPAL (Padrão 22x11 com rodapé para os parâmetros)
-            fig = plt.figure(figsize=(22, 11), facecolor='white')
-            
-            # Ajusta o fundo (abre espaco para os indices no rodape)
-            fig.subplots_adjust(bottom=0.22)
-            
-            # --- 2. SKEW-T (LADO ESQUERDO) ---
-            skew = SkewT(fig, subplot=(1, 2, 1), rotation=35)
-            
-            p_units = p * units.hPa
-            t_units = t * units.degC
-            td_units = td * units.degC
-            u_arr = np.array([u_ if u_ != prof.missing else np.nan for u_ in prof.u]) * units.knots
-            v_arr = np.array([v_ if v_ != prof.missing else np.nan for v_ in prof.v]) * units.knots
-            
-            # Curvas Termodinâmicas (Espessas, Clássicas)
-            skew.plot(p_units, t_units, 'red', linewidth=3.5, alpha=1.0)
-            skew.plot(p_units, td_units, 'green', linewidth=3.5, alpha=1.0)
-            
-            # Curva da Parcela MU (Preta tracejada)
-            mu_ttrace = mu_pcl.ttrace * units.degC
-            mu_ptrace = mu_pcl.ptrace * units.hPa
-            skew.plot(mu_ptrace, mu_ttrace, 'black', linestyle='--', linewidth=2.0)
-            
-            # Preenchimento do CAPE (MU)
+        if (native_spc or _env_wants_native_spc()) and _native_spc_render_available():
+            b64 = _try_render_sharppy_spc_native(p, z, t, td, wd, ws, site_latitude)
+            if b64:
+                base64_img = b64
+        if base64_img is None:
             try:
-                skew.shade_cape(p_units, t_units, mu_ttrace, alpha=0.25)
-            except Exception:
-                pass
-            
-            # Linhas de Grade e Background (Cinza Suave)
-            skew.plot_dry_adiabats(t0=np.arange(233, 533, 5) * units.K, color='gray', linestyle='-', linewidth=0.5, alpha=0.7)
-            skew.plot_moist_adiabats(color='gray', linestyle='-', linewidth=0.5, alpha=0.7)
-            skew.plot_mixing_lines(color='gray', linestyle='dotted', linewidth=0.5, alpha=0.7)
-            skew.ax.axvline(0, color='blue', linestyle='--', linewidth=1.2, alpha=0.7)
-            skew.ax.axvline(-20, color='blue', linestyle='--', linewidth=1.2, alpha=0.7)
-            
-            # Barbelas de Vento (Lado Direito do SkewT) - Flip para o Hemisfério Sul
-            wind_skip = max(1, len(p_units)//30) # Reduz densidade
-            try:
-                skew.plot_barbs(p_units[::wind_skip], u_arr[::wind_skip], v_arr[::wind_skip], flip_barbs=True, length=6, linewidth=1.0)
-            except Exception:
-                skew.plot_barbs(p_units[::wind_skip], u_arr[::wind_skip], v_arr[::wind_skip], length=6, linewidth=1.0)
-
-            # Labels de Altitude no lado esquerdo
-            target_altitudes_m = np.array([0, 1000, 3000, 6000, 9000, 12000])
-            altitude_labels = ['Sfc', '1 km', '3 km', '6 km', '9 km', '12 km']
-            for i, alt_m in enumerate(target_altitudes_m):
-                p_alt = interp_p(prof, alt_m)
-                skew.ax.text(0.01, p_alt/1050.0, altitude_labels[i], transform=skew.ax.transAxes, fontsize=10, color='darkred', ha='left', va='center', fontweight='bold')
-            
-            skew.ax.set_ylim(1050, 100)
-            skew.ax.set_xlim(-50, 50)
-            skew.ax.set_xlabel('Temperatura (°C)')
-            skew.ax.set_ylabel('Pressão (hPa)')
-            skew.ax.set_title(f'Sondagem Atmosférica (PREVISÃO MASTER) - {image_title}', loc='left', fontsize=14, fontweight='bold')
-
-
-            # --- 3. HODÓGRAFO (LADO DIREITO) ---
-            hodo_ax = fig.add_subplot(1, 2, 2)
-            h = Hodograph(hodo_ax, component_range=120.) # Alcance 120kt
-            h.add_grid(increment=10, color='gray', linestyle='--', alpha=0.6) # Anéis a cada 10 nós
-            
-            # Preparar dados do vento (em nós) até 10km AGL (+- seguro para tempestades)
-            z_m = z
-            z_valid = (z_m <= 10000) & ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
-            u_hodo = u_arr[z_valid]
-            v_hodo = v_arr[z_valid]
-            z_hodo = z_m[z_valid]
-            
-            # Rotina de cores da Hodógrafa (SPC Standard: 0-3km Red, 3-6km Green, 6-9km Y/B)
-            # Simplificada dividindo em fatias
-            intervals = [0, 3000, 6000, 10000]
-            colors = ['red', 'green', 'blue']
-            
-            for i in range(len(intervals)-1):
-                mask = (z_hodo >= intervals[i]) & (z_hodo <= intervals[i+1])
-                if np.sum(mask) >= 2:
-                    h.plot(u_hodo[mask], v_hodo[mask], color=colors[i], linewidth=3.0)
-            
-            # Bunkers Storm Motion Vectors
-            if srwind:
-                rm_u, rm_v = srwind[0], srwind[1] # Right Mover
-                h.plot(lm_u, lm_v, marker='o', color='red', markersize=9, label='Left-Mover (LM)')
-                h.plot(rm_u, rm_v, marker='o', color='blue', markersize=9, label='Right-Mover (RM)')
+                # === CONFIGURAÇÃO ESTÉTICA (SPC PROFESSIONAL) ===
+                plt.rcParams['font.family'] = 'monospace'
+                plt.rcParams['font.size'] = 10
                 
-                # Centraliza a Hodógrafa no Left Mover (pois estamos no Hemisfério Sul)
-                hodo_window = 60 # nós para cada lado
-                hodo_ax.set_xlim(lm_u - hodo_window, lm_u + hodo_window)
-                hodo_ax.set_ylim(lm_v - hodo_window, lm_v + hodo_window)
+                # 1. FIGURA ÚNICA INTEGRADA (Proporção Retrato/Quadrada para o Site)
+                fig = plt.figure(figsize=(12, 14), facecolor='white')
                 
-                # Preenchimento SRH 0-3km (Polígono de varredura em vermelho fraco)
-                # O SRH do SPC é visualizado ligando a origem (LM) ao perfil de vento
+                # Definimos um GridSpec para organizar a área da Skew-T e o Painel de Texto Lateral/Inferior
+                # 3 linhas: Título (0.05), Gráfico Principal (0.75), Parâmetros (0.20)
+                gs = fig.add_gridspec(3, 1, height_ratios=[0.5, 9, 2.5], hspace=0.1)
+                
+                # -- TÍTULO --
+                ax_title = fig.add_subplot(gs[0])
+                ax_title.axis('off')
+                ax_title.text(0.02, 0.5, f"Previsão Master - {image_title}", fontsize=16, fontweight='bold', ha='left', va='center')
+                ax_title.text(0.98, 0.5, f"Lat: {site_latitude:.2f} | SHARPpy Engine", fontsize=10, color='gray', ha='right', va='center')
+
+                # -- ÁREA DO GRÁFICO (SKEW-T) --
+                skew = SkewT(fig, rotation=35, subplot=gs[1])
+                
+                p_units = p * units.hPa
+                t_units = t * units.degC
+                td_units = td * units.degC
+                u_arr = np.array([u_ if u_ != prof.missing else np.nan for u_ in prof.u]) * units.knots
+                v_arr = np.array([v_ if v_ != prof.missing else np.nan for v_ in prof.v]) * units.knots
+                
+                # Curvas Bold (NWS Style)
+                skew.plot(p_units, t_units, 'red', linewidth=3.0, alpha=0.9, label='Temp')
+                skew.plot(p_units, td_units, 'green', linewidth=3.0, alpha=0.9, label='Dewp')
+                
+                # Curva da Parcela MU (Tracejada preta)
+                mu_ptrace = mu_pcl.ptrace * units.hPa
+                mu_ttrace = mu_pcl.ttrace * units.degC
+                skew.plot(mu_ptrace, mu_ttrace, 'black', linestyle='--', linewidth=1.5, alpha=0.8)
+                
+                # Sombreamento CAPE/CIN
                 try:
-                    z_3km_mask = (z_m <= 3000) & ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
-                    if np.any(z_3km_mask):
-                        poly_x = [lm_u] + u_arr[z_3km_mask].magnitude.tolist()
-                        poly_y = [lm_v] + v_arr[z_3km_mask].magnitude.tolist()
-                        hodo_ax.fill(poly_x, poly_y, color='red', alpha=0.15, label='SRH 0-3km LM')
-                except Exception:
+                    skew.shade_cape(p_units, t_units, mu_ttrace, alpha=0.15, facecolor='red')
+                    skew.shade_cin(p_units, t_units, mu_ttrace, alpha=0.15, facecolor='blue')
+                except:
                     pass
+                
+                # Grades Termodinâmicas (Sutis)
+                skew.plot_dry_adiabats(t0=np.arange(233, 533, 10) * units.K, color='tan', alpha=0.3, linewidth=0.5)
+                skew.plot_moist_adiabats(color='blue', alpha=0.2, linewidth=0.5)
+                skew.plot_mixing_lines(color='green', alpha=0.2, linestyle='dotted', linewidth=0.5)
+                skew.ax.axvline(0, color='blue', linestyle='--', alpha=0.4)
+                
+                # Barbelas de Vento (Lado Direito)
+                wind_skip = max(1, len(p_units)//30)
+                _flip = site_latitude < 0
+                try:
+                    skew.plot_barbs(p_units[::wind_skip], u_arr[::wind_skip], v_arr[::wind_skip], flip_barb=_flip, length=6)
+                except:
+                    skew.plot_barbs(p_units[::wind_skip], u_arr[::wind_skip], v_arr[::wind_skip], length=6)
+                
+                skew.ax.set_ylim(1050, 100)
+                skew.ax.set_xlim(-40, 50)
+                skew.ax.set_ylabel('Pressão (hPa)', fontsize=10)
+                skew.ax.set_xlabel('Temperatura (°C)', fontsize=10)
 
-            hodo_ax.set_aspect('equal', 'box')
-            hodo_ax.set_title('Hodógrafa Relativa (0-10 km AGL) [Foco LM - Hem. Sul]', fontsize=14, loc='center', fontweight='bold')
-            hodo_ax.set_xlabel('')
-            hodo_ax.set_ylabel('')
-            hodo_ax.legend(loc='upper right')
-            hodo_ax.axhline(0, color='gray', lw=1.0)
-            hodo_ax.axvline(0, color='gray', lw=1.0)
-            
-            # --- 4. PAINEL DE DADOS (RODAPÉ) ---
-            # Imitando precisamente as colunas do layout original (y_pos = 0.12 para caber 6 linhas)
-            # A fonte monospace (Courier/Consolas) é crucial para alinhar números.
-            y_pos = 0.11
-            
-            # Coluna 1: CAPEs (J/kg)
-            txt_capes = (
-                f"SFC CAPE: {int(sfc_pcl.bplus):>4} J/kg\n"
-                f"ML CAPE : {int(ml_pcl.bplus):>4} J/kg\n"
-                f"MU CAPE : {int(mu_pcl.bplus):>4} J/kg\n"
-                f"3km CAPE: {int(ml_pcl.b3km):>4} J/kg"
-            )
-            
-            # Coluna 2: CIN (J/kg)
-            txt_cins = (
-                f"SFC CIN : {int(sfc_pcl.bminus):>5} J/kg\n"
-                f"ML CIN  : {int(ml_pcl.bminus):>5} J/kg\n"
-                f"MU CIN  : {int(mu_pcl.bminus):>5} J/kg\n"
-                f" "
-            )
-            
-            # Coluna 3: Thermo / Parcel Heights (LCL, LFC, EL) usando a MU, que é a principal
-            txt_thermo = (
-                f"MU LCL  : {int(mu_pcl.lclhght):>5} m\n"
-                f"MU LFC  : {int(mu_pcl.lfchght):>5} m\n"
-                f"MU EL   : {int(mu_pcl.elhght):>5} m\n"
-                f"PW      : {params.pmsl(prof):.1f} *est\n" # Placeholder since we lack raw precipitable water in SHARPpy basic loop
-            )
-            
-            # Coluna 4: Kinematics (BWD / Shear)
-            txt_bwd = (
-                f"SHR 0-1km : {shr0_500m_mag:>3.0f} kt\n" # Approximating 1km with 500m logic or similar
-                f"SHR 0-6km : {eff_shear_mag:>3.0f} kt\n"
-                f"Eff Shear : {eff_shear_mag:>3.0f} kt\n"
-                f"LM SRH(3k): {srh3km_val:>3.0f} m2/s2"
-            )
+                # -- HODÓGRAFO EM INSET (Topo Direito da Skew-T) --
+                from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+                ax_hodo = inset_axes(skew.ax, width="40%", height="40%", loc='upper right', borderpad=1)
+                h = Hodograph(ax_hodo, component_range=80.)
+                h.add_grid(increment=20, color='gray', alpha=0.3, linestyle='--')
+                
+                # Dados até 12km para Hodógrafa
+                z_mask = (z <= 12000) & ~np.isnan(u_arr.magnitude)
+                h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask], cmap='jet', linewidth=2.5)
+                
+                # Bunkers Storm Motion
+                if srwind:
+                    h.plot(lm_u, lm_v, marker='o', color='red', markersize=8, label='LM')
+                    h.plot(srwind[0], srwind[1], marker='o', color='blue', markersize=8, label='RM')
+                
+                ax_hodo.set_title("Hodógrafo (nós)", fontsize=9, fontweight='bold')
+                ax_hodo.tick_params(labelsize=7)
 
-            # Coluna 5: Tornadogenesis / Composites
-            txt_comp = (
-                f"STP (1km LM): {stp0_1km:.2f}\n"
-                f"STP (500 LM): {stp0_500m:.2f}\n"
-                f"BRN Shear   : N/A\n"
-                f"Signif. Hail: N/A"
-            )
+                # -- PAINEL DE PARÂMETROS (RODAPÉ) --
+                ax_params = fig.add_subplot(gs[2])
+                ax_params.axis('off')
+                
+                # Cálculos finais para o texto
+                pw_val = params.precip_water(prof)
+                
+                col1 = (
+                    f"--- TERMODINÂMICA ---\n"
+                    f"SFC CAPE: {int(sfc_pcl.bplus):>4} J/kg\n"
+                    f"ML CAPE : {int(ml_pcl.bplus):>4} J/kg\n"
+                    f"MU CAPE : {int(mu_pcl.bplus):>4} J/kg\n"
+                    f"ML CIN  : {int(ml_pcl.bminus):>4} J/kg"
+                )
+                
+                col2 = (
+                    f"--- ALTURAS (m) ---\n"
+                    f"MU LCL  : {int(mu_pcl.lclhght):>5}\n"
+                    f"MU LFC  : {int(mu_pcl.lfchght):>5}\n"
+                    f"MU EL   : {int(mu_pcl.elhght):>5}\n"
+                    f"PW      : {pw_val:>5.1f} mm"
+                )
+                
+                col3 = (
+                    f"--- CINEMÁTICA (kt) ---\n"
+                    f"Eff. Shear : {eff_shear_mag:>5.1f}\n"
+                    f"SHR 0-6km  : {shr0_6km_mag:>5.1f}\n"
+                    f"LM SRH 1km : {srh1km_val:>5.0f} m2/s2\n"
+                    f"LM SRH 3km : {srh3km_val:>5.0f} m2/s2"
+                )
+                
+                col4 = (
+                    f"--- ÍNDICES COMP. ---\n"
+                    f"STP (1km) : {stp0_1km:>5.2f}\n"
+                    f"STP (500) : {stp0_500m:>5.2f}\n"
+                    f"Site Lat  : {site_latitude:>5.2f}\n"
+                    f"Hemi      : {'SUL' if site_latitude < 0 else 'NORTE'}"
+                )
 
-            # Escrevendo Textos na Figura (Coordenadas Relativas da Figura 0 a 1)
-            f_size = 14
-            f_prop = dict(family='monospace', fontweight='bold', ha='left', va='top')
-            
-            fig.text(0.05, y_pos, txt_capes,  fontsize=f_size, color='darkred', **f_prop)
-            fig.text(0.20, y_pos, txt_cins,   fontsize=f_size, color='darkblue', **f_prop)
-            fig.text(0.35, y_pos, txt_thermo, fontsize=f_size, color='black', **f_prop)
-            fig.text(0.55, y_pos, txt_bwd,    fontsize=f_size, color='purple', **f_prop)
-            fig.text(0.75, y_pos, txt_comp,   fontsize=f_size, color='darkgreen', **f_prop)
-            
-            fig.text(0.98, 0.98, 'Gerado Pelo Motor PREVISÃO MASTER', color='grey', fontsize=12, ha='right', va='top', alpha=0.5, fontweight='bold')
+                ax_params.text(0.02, 0.9, col1, family='monospace', fontsize=11, va='top', ha='left')
+                ax_params.text(0.28, 0.9, col2, family='monospace', fontsize=11, va='top', ha='left')
+                ax_params.text(0.53, 0.9, col3, family='monospace', fontsize=11, va='top', ha='left')
+                ax_params.text(0.80, 0.9, col4, family='monospace', fontsize=11, va='top', ha='left')
 
-            # Renderizar para Base64
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='white')
-            plt.close(fig)
-            
-            base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
-            
-        except Exception as e:
-            print(f"Failed to generate Python MetPy SPC Layout Image: {e}", flush=True)
-            base64_img = f"ERROR: {e}"
+                # Exportar
+                buf = io.BytesIO()
+                plt.savefig(buf, format='png', dpi=110, bbox_inches='tight', facecolor='white')
+                plt.close(fig)
+                base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
+                
+            except Exception as e:
+                import traceback
+                print(f"FAILED NATIVE RENDER: {e}\n{traceback.format_exc()}", flush=True)
+                base64_img = f"ERROR: {str(e)}"
 
     return {
         "profile": profile_data,
         "parcel": parcel_data,
         "indices": indices,
-        "base64_img": base64_img
+        "base64_img": base64_img,
+        "site_latitude": site_latitude,
     }
 
 def interp_p(prof, hght_agl):
