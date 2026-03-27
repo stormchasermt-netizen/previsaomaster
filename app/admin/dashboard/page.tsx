@@ -8,12 +8,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { fetchTornadoTracks } from '@/lib/tornadoTracksStore';
 import { TornadoTrack } from '@/lib/tornadoTracksData';
 import { ChevronLeft, LayoutDashboard, FileText, Play, Loader2, List, Wind, TrendingUp } from 'lucide-react';
-
-interface SoundingDataPoint {
-  height: number;
-  u: number;
-  v: number;
-}
+import { SoundingPoint, processCSVContent, interpolateSounding } from '@/lib/soundingUtils';
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
@@ -23,8 +18,13 @@ export default function AdminDashboardPage() {
   const [tracks, setTracks] = useState<TornadoTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
-  const [activeData, setActiveData] = useState<SoundingDataPoint[] | null>(null);
+  const [activeData, setActiveData] = useState<SoundingPoint[] | null>(null);
   const [activeTrackName, setActiveTrackName] = useState<string>('');
+  
+  // States for Average Hodograph
+  const [allSoundingsData, setAllSoundingsData] = useState<SoundingPoint[][]>([]);
+  const [averageData, setAverageData] = useState<SoundingPoint[] | null>(null);
+  const [isAveraging, setIsAveraging] = useState(false);
 
   useEffect(() => {
     if (!user || (user.type !== 'admin' && user.type !== 'superadmin')) {
@@ -38,7 +38,6 @@ export default function AdminDashboardPage() {
     setLoading(true);
     try {
       const allTracks = await fetchTornadoTracks();
-      // Filter for tracks that have soundingFiles
       const withSoundings = allTracks.filter(t => t.soundingFiles && t.soundingFiles.length > 0);
       setTracks(withSoundings);
     } catch (err: any) {
@@ -52,6 +51,7 @@ export default function AdminDashboardPage() {
     const procId = `${track.id}_${fileName}`;
     setProcessingId(procId);
     setActiveTrackName(`${track.date} - ${track.locality || track.state} (${fileName})`);
+    setAverageData(null); // Clear average view when selecting specific
     
     try {
       const res = await fetch('/api/admin/process-sounding', {
@@ -72,6 +72,63 @@ export default function AdminDashboardPage() {
       addToast('Erro na requisição: ' + err.message, 'error');
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const generateAverageSounding = async () => {
+    setIsAveraging(true);
+    setActiveData(null);
+    setActiveTrackName('Média de Todos os Eventos');
+    
+    try {
+      const processed: SoundingPoint[][] = [];
+      const filesToProcess = tracks.flatMap(t => t.soundingFiles?.map(f => ({ url: f.url, name: f.name })) || []);
+      
+      if (filesToProcess.length === 0) {
+        addToast('Nenhum dado disponível para média.', 'warning');
+        return;
+      }
+
+      for (const file of filesToProcess) {
+        const res = await fetch(file.url);
+        const csv = await res.text();
+        const result = processCSVContent(csv);
+        if (result.success && result.data) {
+          processed.push(result.data);
+        }
+      }
+
+      setAllSoundingsData(processed);
+
+      // Simple averaging logic
+      const standardLevels = Array.from({ length: 121 }, (_, i) => i * 100); // 0 to 12000m every 100m
+      const meanSounding: SoundingPoint[] = [];
+
+      for (const h of standardLevels) {
+        let sumU = 0;
+        let sumV = 0;
+        let count = 0;
+
+        for (const points of processed) {
+          const val = interpolateSounding(points, h);
+          if (val) {
+            sumU += val.u;
+            sumV += val.v;
+            count++;
+          }
+        }
+
+        if (count > 0) {
+          meanSounding.push({ height: h, u: sumU / count, v: sumV / count });
+        }
+      }
+
+      setAverageData(meanSounding);
+      addToast(`Média gerada com base em ${processed.length} sondagens!`, 'success');
+    } catch (err: any) {
+        addToast('Erro ao gerar média: ' + err.message, 'error');
+    } finally {
+        setIsAveraging(false);
     }
   };
 
@@ -101,6 +158,14 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div className="flex gap-3">
+              <button 
+                onClick={generateAverageSounding}
+                disabled={isAveraging || tracks.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-bold transition-colors disabled:opacity-50"
+              >
+                {isAveraging ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
+                Gerar Sondagem Média
+              </button>
              <Link href="/admin/rastros-tornados" className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm font-medium transition-colors">
                <List className="w-4 h-4" /> Gerenciar Rastros
              </Link>
@@ -134,9 +199,9 @@ export default function AdminDashboardPage() {
                           <span className="text-xs text-slate-400 truncate flex-1" title={file.name}>{file.name}</span>
                           <button 
                             onClick={() => processSounding(track, file.url, file.name)}
-                            disabled={processingId !== null}
+                            disabled={processingId !== null || isAveraging}
                             className="p-1.5 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-black disabled:opacity-50 transition-all"
-                            title="Processar Odógrafa"
+                            title="Processar Hodógrafa"
                           >
                             {processingId === `${track.id}_${file.name}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                           </button>
@@ -156,41 +221,53 @@ export default function AdminDashboardPage() {
                 <Wind className="w-32 h-32" />
               </div>
 
-              {!activeData ? (
+              {!activeData && !averageData ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
                   <div className="p-4 rounded-full bg-slate-800/50 border border-slate-700">
                     <TrendingUp className="w-12 h-12 text-slate-600" />
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-slate-400">Nenhuma sondagem selecionada</h3>
-                    <p className="text-slate-600 text-sm max-w-xs mx-auto">Selecione um arquivo CSV à esquerda para gerar a odógrafa analítica.</p>
+                    <p className="text-slate-600 text-sm max-w-xs mx-auto">Selecione um arquivo CSV à esquerda ou clique em "Gerar Sondagem Média" para análise agregada.</p>
                   </div>
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col space-y-6 animate-in fade-in duration-500">
-                  <div className="border-b border-slate-800 pb-4">
-                    <h3 className="text-lg font-bold text-amber-500">Hodógrafa Analítica (0-12km)</h3>
-                    <p className="text-sm text-slate-400">{activeTrackName}</p>
+                  <div className="border-b border-slate-800 pb-4 flex justify-between items-end">
+                    <div>
+                      <h3 className="text-lg font-bold text-amber-500">
+                        {averageData ? 'Hodógrafa Média (Composta)' : 'Hodógrafa Analítica (0-12km)'}
+                      </h3>
+                      <p className="text-sm text-slate-400">{activeTrackName}</p>
+                    </div>
+                    {averageData && (
+                      <span className="text-xs bg-slate-800 border border-slate-700 px-2 py-1 rounded text-slate-400 font-bold">
+                        {allSoundingsData.length} Casos
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                     {/* Hodograph Chart (SVG) */}
                     <div className="aspect-square bg-white rounded-xl border border-slate-200 flex items-center justify-center p-4 relative shadow-md">
-                      <HodographChart data={activeData.filter(d => d.height <= 12050)} />
+                      <HodographChart 
+                        data={(averageData || activeData || []).filter(d => d.height <= 12100)} 
+                        backgroundData={averageData ? allSoundingsData : undefined}
+                      />
                     </div>
 
                     {/* Data Summary / Stats */}
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700">
-                          <p className="text-[10px] text-slate-500 uppercase font-bold">Máx Vento</p>
+                          <p className="text-[10px] text-slate-500 uppercase font-bold">Máx Vento (Vetor)</p>
                           <p className="text-xl font-bold text-white">
-                            {Math.max(...activeData.map(d => Math.sqrt(d.u**2 + d.v**2))).toFixed(1)} <span className="text-xs font-normal text-slate-500">kt/s</span>
+                            {Math.max(...(averageData || activeData || []).map(d => Math.sqrt(d.u**2 + d.v**2))).toFixed(1)} <span className="text-xs font-normal text-slate-500">kt/s</span>
                           </p>
                         </div>
                         <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700">
                           <p className="text-[10px] text-slate-500 uppercase font-bold">Níveis</p>
-                          <p className="text-xl font-bold text-white">{activeData.length}</p>
+                          <p className="text-xl font-bold text-white">{(averageData || activeData || []).length}</p>
                         </div>
                       </div>
 
@@ -207,7 +284,7 @@ export default function AdminDashboardPage() {
                               </tr>
                             </thead>
                             <tbody className="text-slate-300">
-                              {activeData.map((d, i) => (
+                              {(averageData || activeData || []).map((d, i) => (
                                 <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                                   <td className="py-1.5">{Math.round(d.height)}</td>
                                   <td>{d.u.toFixed(1)}</td>
@@ -231,13 +308,14 @@ export default function AdminDashboardPage() {
   );
 }
 
-function HodographChart({ data }: { data: SoundingDataPoint[] }) {
+function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backgroundData?: SoundingPoint[][] }) {
   const size = 400;
   const padding = 25;
   const center = size / 2;
   
-  // Find max amplitude for scaling (u or v within the 0-12km range)
-  const maxAmp = Math.max(...data.map(d => Math.abs(d.u)), ...data.map(d => Math.abs(d.v)), 40);
+  // Find max amplitude across all data (main + background)
+  const allPoints = backgroundData ? [...data, ...backgroundData.flat()] : data;
+  const maxAmp = Math.max(...allPoints.map(d => Math.abs(d.u)), ...allPoints.map(d => Math.abs(d.v)), 40);
   const scale = (size / 2 - padding) / maxAmp;
   
   // Segment color logic
@@ -250,11 +328,11 @@ function HodographChart({ data }: { data: SoundingDataPoint[] }) {
     return '#cbd5e1';
   };
 
-  // Guide circles (e.g. 10, 20, 30, 40, 50, 60, 80 units)
+  // Guide circles
   const guides = [10, 20, 30, 40, 50, 60, 75, 100].filter(g => g <= maxAmp * 1.5);
   if (guides.length === 0) guides.push(20);
 
-  // Labels to show at specific heights
+  // Labels for height
   const heightLabels = [1000, 3000, 6000, 9000, 12000];
 
   return (
@@ -284,7 +362,19 @@ function HodographChart({ data }: { data: SoundingDataPoint[] }) {
         <text x={size-padding-15} y={center-5} className="fill-slate-400 text-[10px] italic">u</text>
         <text x={center+5} y={padding+10} className="fill-slate-400 text-[10px] italic">v</text>
 
-        {/* Hodograph Line Segments */}
+        {/* Background "Shadow" Soundings */}
+        {backgroundData?.map((points, pIdx) => (
+          <polyline
+            key={pIdx}
+            points={points.filter(p => p.height <= 12050).map(p => `${center + p.u * scale},${center - p.v * scale}`).join(' ')}
+            fill="none"
+            stroke="#cbd5e1"
+            strokeWidth="1.2"
+            strokeOpacity="0.4"
+          />
+        ))}
+
+        {/* Main Hodograph Line Segments */}
         {data.slice(0, -1).map((d, i) => {
           const next = data[i+1];
           const x1 = center + d.u * scale;
@@ -296,18 +386,17 @@ function HodographChart({ data }: { data: SoundingDataPoint[] }) {
             <line 
               key={i} 
               x1={x1} y1={y1} x2={x2} y2={y2} 
-              stroke={getSegmentColor(next.height)} 
-              strokeWidth="4" 
+              stroke={backgroundData ? "#ef4444" : getSegmentColor(next.height)} 
+              strokeWidth={backgroundData ? "5" : "4"} 
               strokeLinecap="round" 
+              className={backgroundData ? "drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" : ""}
             />
           );
         })}
 
         {/* Height Labels and Points */}
         {data.map((d, i) => {
-          // Show label for specific heights or the first/last point
           const isLabelHeight = heightLabels.some(lh => Math.abs(d.height - lh) < 100) || i === 0;
-          // Ensure we don't show too many if data is dense (only one per 500m area)
           const x = center + d.u * scale;
           const y = center - d.v * scale;
           
@@ -315,10 +404,10 @@ function HodographChart({ data }: { data: SoundingDataPoint[] }) {
 
           return (
             <g key={i}>
-              <circle cx={x} cy={y} r="2.5" fill="black" />
+              <circle cx={x} cy={y} r={backgroundData ? "3" : "2.5"} fill={backgroundData ? "#ef4444" : "black"} />
               <text 
                 x={x+5} y={y-5} 
-                className="fill-black text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px]"
+                className={`text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px] ${backgroundData ? "fill-red-600" : "fill-black"}`}
               >
                 {Math.round(d.height/1000)}
               </text>
