@@ -4,6 +4,7 @@ import io
 import datetime
 import sharppy.sharptab.profile as profile
 import sharppy.sharptab.params as params
+import sharppy.sharptab.winds as winds
 import sharppy.sharptab.thermo as thermo
 
 def process_csv_content(csv_text: str):
@@ -105,7 +106,7 @@ def process_csv_content(csv_text: str):
             el_agl = np.interp(el_p, prof.pres[::-1], prof.hght[::-1]) - prof.hght[prof.sfc]
             etop_hght = el_agl * 0.5 + prof.hght[prof.sfc]
             etop = np.interp(etop_hght, prof.hght, prof.pres)
-            eff_shear = params.wind_shear(prof, pbot=ebot, ptop=etop)
+            eff_shear = winds.wind_shear(prof, pbot=ebot, ptop=etop)
             if eff_shear and eff_shear[0] != prof.missing:
                 eff_shear_mag = np.sqrt(eff_shear[0]**2 + eff_shear[1]**2)
         except Exception:
@@ -114,7 +115,7 @@ def process_csv_content(csv_text: str):
     if eff_shear_mag == 0:
         # Fallback to 0-6km shear
         p6km = np.interp(prof.hght[prof.sfc] + 6000, prof.hght, prof.pres)
-        s6km = params.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=p6km)
+        s6km = winds.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=p6km)
         if s6km and s6km[0] != prof.missing:
             eff_shear_mag = np.sqrt(s6km[0]**2 + s6km[1]**2)
     
@@ -132,7 +133,7 @@ def process_csv_content(csv_text: str):
     srh3km_val = srh3km[0] if srh3km[0] != prof.missing else 0
     
     # Low level shear
-    shr0_500m = params.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=interp_p(prof, 500))
+    shr0_500m = winds.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=interp_p(prof, 500))
     shr0_500m_mag = np.sqrt(shr0_500m[0]**2 + shr0_500m[1]**2) if shr0_500m[0] != prof.missing else 0
     
     # Significant Tornado Parameter (STP) [LEFT MOVER]
