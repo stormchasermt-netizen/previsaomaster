@@ -194,32 +194,29 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
         })
     parcel_data = [{"pressure": float(p_), "temp": float(t_)} for p_, t_ in zip(mu_pcl.ptrace, mu_pcl.ttrace)]
 
-            # --- ULTIMATE SPC PROFESSIONAL LAYOUT ---
+            # --- ULTIMATE SPC PROFESSIONAL LAYOUT (LIGHT THEME) ---
             import matplotlib.gridspec as gridspec
             
-            # Theme Setup (Black / SPC Style)
-            plt.rcParams['figure.facecolor'] = 'black'
-            plt.rcParams['axes.facecolor'] = 'black'
-            plt.rcParams['text.color'] = 'white'
-            plt.rcParams['axes.labelcolor'] = 'white'
-            plt.rcParams['xtick.color'] = 'white'
-            plt.rcParams['ytick.color'] = 'white'
+            # Theme Setup (Light / Professional)
+            plt.rcParams['figure.facecolor'] = 'white'
+            plt.rcParams['axes.facecolor'] = 'white'
+            plt.rcParams['text.color'] = 'black'
+            plt.rcParams['axes.labelcolor'] = 'black'
+            plt.rcParams['xtick.color'] = 'black'
+            plt.rcParams['ytick.color'] = 'black'
             plt.rcParams['font.size'] = 10
 
-            fig = plt.figure(figsize=(20, 14), facecolor='black')
+            fig = plt.figure(figsize=(20, 14), facecolor='white')
             
-            # 1. Grade Mestre: Divide a tela horizontalmente (Gráficos vs Tabelas)
-            gs_master = fig.add_gridspec(2, 1, height_ratios=[3, 1.1], hspace=0.1)
+            # Divide a tela: Gráficos (topo) e Tabelas (base)
+            gs_master = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.1)
 
-            # ==========================================
-            # PARTE SUPERIOR (GRÁFICOS)
-            # ==========================================
-            # Divide a parte superior em 4 colunas
-            gs_top = gs_master[0].subgridspec(1, 4, width_ratios=[12, 1.2, 1.2, 7.5], wspace=0.1)
+            # --- TOP SECTION (GRAPHS) ---
+            gs_top = gs_master[0].subgridspec(1, 4, width_ratios=[12, 1.2, 1.2, 8], wspace=0.1)
 
-            # --- A. SKEW-T (Gigante na esquerda) ---
-            ax_skewt_master = fig.add_subplot(gs_top[0])
-            skew = SkewT(fig, rotation=45, subplot=ax_skewt_master)
+            # 1. SKEW-T
+            ax_skew_spec = fig.add_subplot(gs_top[0])
+            skew = SkewT(fig, rotation=45, subplot=ax_skew_spec)
             
             p_units = p * units.hPa
             t_units = t * units.degC
@@ -233,12 +230,13 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             # Wind Barbs (SH Convention: Flip barbs)
             idx = np.arange(0, len(p_units), max(1, len(p_units)//30))
             skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
-                            flip_barbs=True, color='white', linewidth=0.8, length=6)
+                            flip_barbs=True, color='black', linewidth=0.8, length=6)
             
-            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'white', linestyle='--', linewidth=1.5)
+            # Parcel Profile (Black Dashed)
+            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'black', linestyle='--', linewidth=1.5)
             
-            # Background Lines
-            skew.plot_dry_adiabats(color='grey', alpha=0.3, linewidth=0.5)
+            # Background Lines (Standard Tan/Grey)
+            skew.plot_dry_adiabats(color='tan', alpha=0.3, linewidth=0.5)
             skew.plot_moist_adiabats(color='grey', alpha=0.3, linewidth=0.5)
             skew.plot_mixing_lines(color='grey', alpha=0.3, linewidth=0.5)
             
@@ -246,62 +244,56 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             skew.ax.set_xlim(-40, 45)
             skew.ax.set_ylabel('Pressao (hPa)')
             skew.ax.set_xlabel('Temperatura (C)')
-            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=18, fontweight='bold', color='yellow')
+            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=18, fontweight='bold', color='darkblue')
 
-            # --- B. PERFIL DE VENTOS (Visual Placeholder) ---
+            # 2. WIND BARB PROFILE (Side)
             ax_wind_prof = fig.add_subplot(gs_top[1])
             ax_wind_prof.axis('off')
-            # Text placeholder like GUI
-            ax_wind_prof.text(0.5, 0.9, "Wind\nSpeed\n(kt)", color='cyan', ha='center', va='top', fontsize=9)
+            ax_wind_prof.text(0.5, 0.95, "Wind\n(kt)", color='black', ha='center', va='top', fontsize=9, fontweight='bold')
 
-            # --- C. ADVECÇÃO DE TEMP (Visual Placeholder) ---
+            # 3. VERTICAL TEMP ADV (Side)
             ax_temp_adv = fig.add_subplot(gs_top[2])
             ax_temp_adv.axis('off')
-            ax_temp_adv.text(0.5, 0.9, "Inferred\nTemp\nAdv", color='white', ha='center', va='top', fontsize=9)
 
-            # --- D. LADO DIREITO (Hodógrafo + Sub-gráficos) ---
+            # 4. HODOGRAPH SECTION
             gs_top_right = gs_top[3].subgridspec(2, 1, height_ratios=[2.5, 1], hspace=0.1)
 
-            # 3A: Hodógrafo (No topo à direita)
+            # 4A. Hodograph
             ax_hodo = fig.add_subplot(gs_top_right[0])
-            ax_hodo.set_facecolor('black')
+            ax_hodo.set_facecolor('#fdfdfd')
             h = Hodograph(ax_hodo, component_range=80.)
-            h.add_grid(increment=20, color='white', alpha=0.3)
+            h.add_grid(increment=20, color='grey', alpha=0.3)
             
             z_mask = ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude) & (z <= 12000)
             if np.any(z_mask):
                 h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask], cmap='rainbow')
             
-            # Plot Storm Motion (Left Mover Circle)
-            ax_hodo.plot(lm_u, lm_v, 'ko', markersize=10, markerfacecolor='none', markeredgewidth=2, markeredgecolor='white')
+            # Plot Storm Motion (Left Mover)
+            ax_hodo.plot(lm_u, lm_v, 'ko', markersize=10, markerfacecolor='none', markeredgewidth=2, markeredgecolor='black')
             ax_hodo.text(lm_u, lm_v+2, 'LM', color='red', fontsize=10, ha='center', fontweight='bold')
-            ax_hodo.set_title("Hodografo (nos) - ate 12km AGL", color='white', fontsize=12, fontweight='bold')
+            ax_hodo.set_title("Hodografo (nos) - ate 12km AGL", color='black', fontsize=12, fontweight='bold')
             
             # Altitude Labels
             for h_km in [0, 1, 3, 6, 9]:
                 idx_h = np.argmin(np.abs(z - h_km*1000))
                 if idx_h < len(u_arr) and not np.isnan(u_arr[idx_h]):
                     ax_hodo.text(u_arr[idx_h].magnitude, v_arr[idx_h].magnitude, f" {h_km}", 
-                                color='white', fontsize=11, fontweight='bold')
+                                color='black', fontsize=11, fontweight='bold')
 
-            # 3B: Gráficos menores 
-            ax_minigraphs = fig.add_subplot(gs_top_right[1])
-            ax_minigraphs.axis('off')
-            ax_minigraphs.text(0.5, 0.5, "Theta-E / SR Winds\n@previsaomaster.com", color='grey', ha='center', va='center', alpha=0.5)
+            # 4B. Mini-graphs placeholder
+            ax_mini = fig.add_subplot(gs_top_right[1])
+            ax_mini.axis('off')
 
-            # ==========================================
-            # PARTE INFERIOR (TABELAS DE PARÂMETROS)
-            # ==========================================
-            gs_bottom = gs_master[1].subgridspec(1, 5, width_ratios=[3.5, 2.5, 1.5, 1.5, 3], wspace=0.05)
+            # --- BOTTOM SECTION (TABLES) ---
+            gs_bottom = gs_master[1].subgridspec(1, 5, width_ratios=[4, 2.5, 1.5, 1.5, 3], wspace=0.05)
 
-            # FORMATO AX.TEXT MONOESPAÇADO (O "MACETE")
+            # Table 1: Parcel Data
+            ax_t1 = fig.add_subplot(gs_bottom[0])
+            ax_t1.axis('on'); ax_t1.set_xticks([]); ax_t1.set_yticks([])
+            for spine in ax_t1.spines.values(): spine.set_edgecolor('grey')
+            ax_t1.set_facecolor('#f8f9fa')
             
-            # --- Caixa 1: Termodinâmica (Parcelas) ---
-            ax_thermo = fig.add_subplot(gs_bottom[0])
-            ax_thermo.axis('on'); ax_thermo.set_xticks([]); ax_thermo.set_yticks([])
-            for spine in ax_thermo.spines.values(): spine.set_edgecolor('grey')
-            
-            thermo_txt = (
+            t1_txt = (
                 f"PARCEL     CAPE   CINH   LCL   LFC    EL\n"
                 f"-----------------------------------------\n"
                 f"SB (Sfc)   {int(sfc_pcl.bplus):<5}  {int(sfc_pcl.bminus):<5}  {int(sfc_pcl.lclhght):<4}  {int(sfc_pcl.lfchght):<5}  {int(sfc_pcl.elhght):<5}\n"
@@ -310,17 +302,18 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
                 f"-----------------------------------------\n"
                 f"3km MLCAPE: {int(ml_pcl.b3km)} J/kg"
             )
-            ax_thermo.text(0.05, 0.9, thermo_txt, color='white', fontsize=10, va='top', family='monospace')
+            ax_t1.text(0.05, 0.9, t1_txt, color='black', fontsize=10, va='top', family='monospace')
 
-            # --- Caixa 2: Cinemática ---
-            ax_kinematics = fig.add_subplot(gs_bottom[1])
-            ax_kinematics.axis('on'); ax_kinematics.set_xticks([]); ax_kinematics.set_yticks([])
-            for spine in ax_kinematics.spines.values(): spine.set_edgecolor('grey')
+            # Table 2: Kinematics
+            ax_t2 = fig.add_subplot(gs_bottom[1])
+            ax_t2.axis('on'); ax_t2.set_xticks([]); ax_t2.set_yticks([])
+            for spine in ax_t2.spines.values(): spine.set_edgecolor('grey')
+            ax_t2.set_facecolor('#f8f9fa')
             
             s6km = winds.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=interp_p(prof, 6000))
             s6km_mag = np.sqrt(s6km[0]**2 + s6km[1]**2) if s6km[0] != prof.missing else 0
             
-            kin_txt = (
+            t2_txt = (
                 f"--- KINEMATICS ---\n"
                 f"0-6km Bulk: {s6km_mag:.1f} kt\n"
                 f"Eff. Shear: {eff_shear_mag:.1f} kt\n"
@@ -329,41 +322,43 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
                 f"STP (1km) : {stp0_1km:.2f}\n"
                 f"STP (500m): {stp0_500m:.2f}"
             )
-            ax_kinematics.text(0.05, 0.9, kin_txt, color='cyan', fontsize=10, va='top', family='monospace')
+            ax_t2.text(0.05, 0.9, t2_txt, color='darkblue', fontsize=10, va='top', family='monospace')
 
-            # --- Caixa 3: Best Guess / Storm Motion ---
-            ax_precip = fig.add_subplot(gs_bottom[2])
-            ax_precip.axis('on'); ax_precip.set_xticks([]); ax_precip.set_yticks([])
-            for spine in ax_precip.spines.values(): spine.set_edgecolor('grey')
+            # Box 3: Storm Motion (Yellow Box)
+            ax_t3 = fig.add_subplot(gs_bottom[2])
+            ax_t3.axis('on'); ax_t3.set_xticks([]); ax_t3.set_yticks([])
+            for spine in ax_t3.spines.values(): spine.set_edgecolor('grey')
+            ax_t3.set_facecolor('#ffffcc') # Subtle yellow
             
-            storm_txt = (
+            t3_txt = (
                 f"STORM MOTION\n"
                 f"LEFT MOVER\n"
                 f"u: {lm_u:.1f} kt\n"
                 f"v: {lm_v:.1f} kt\n"
-                f"HS-ONLY"
+                f"HS-SUL"
             )
-            ax_precip.text(0.5, 0.5, storm_txt, color='yellow', fontsize=9, ha='center', va='center', fontweight='bold')
+            ax_t3.text(0.5, 0.5, t3_txt, color='darkred', fontsize=9, ha='center', va='center', fontweight='bold')
 
-            # --- Caixa 4: SARS ---
-            ax_sars = fig.add_subplot(gs_bottom[3])
-            ax_sars.axis('on'); ax_sars.set_xticks([]); ax_sars.set_yticks([])
-            for spine in ax_sars.spines.values(): spine.set_edgecolor('grey')
-            ax_sars.text(0.5, 0.5, "SARS\nMatches\nN/A", color='grey', ha='center', va='center', fontsize=9)
+            # Box 4: SARS
+            ax_t4 = fig.add_subplot(gs_bottom[3])
+            ax_t4.axis('on'); ax_t4.set_xticks([]); ax_t4.set_yticks([])
+            for spine in ax_t4.spines.values(): spine.set_edgecolor('grey')
+            ax_t4.text(0.5, 0.5, "SARS\nN/A", color='grey', ha='center', va='center', fontsize=9)
 
-            # --- Caixa 5: STP Probability (Visual Placeholder) ---
-            ax_stp = fig.add_subplot(gs_bottom[4])
-            ax_stp.axis('on'); ax_stp.set_xticks([]); ax_stp.set_yticks([])
-            for spine in ax_stp.spines.values(): spine.set_edgecolor('grey')
-            ax_stp.text(0.5, 0.5, "Significant Tornado\nParameter (HS)\nPROBABILITY BOX", color='lime', ha='center', va='center', fontsize=10, fontweight='bold')
+            # Box 5: STP Probability Box
+            ax_t5 = fig.add_subplot(gs_bottom[4])
+            ax_t5.axis('on'); ax_t5.set_xticks([]); ax_t5.set_yticks([])
+            for spine in ax_t5.spines.values(): spine.set_edgecolor('grey')
+            ax_t5.set_facecolor('#e2f0d9') # Subtle green
+            ax_t5.text(0.5, 0.5, "Significant Tornado\nParameter (HS)\nEF-PROBABILITY", color='darkgreen', ha='center', va='center', fontsize=10, fontweight='bold')
 
-            # 5.1 Final Watermark
-            fig.text(0.98, 0.98, '@previsaomaster.com', color='white', fontsize=12, ha='right', va='top', alpha=0.4, fontweight='bold')
+            # Final Watermark
+            fig.text(0.98, 0.98, '@previsaomaster.com', color='grey', fontsize=12, ha='right', va='top', alpha=0.5, fontweight='bold')
 
             plt.tight_layout()
             
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='black')
+            plt.savefig(buf, format='png', dpi=140, bbox_inches='tight', facecolor='white')
             plt.close(fig)
             
             base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
