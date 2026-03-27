@@ -231,8 +231,8 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             u_arr = np.array([u_ if u_ != prof.missing else np.nan for u_ in prof.u]) * units.knots
             v_arr = np.array([v_ if v_ != prof.missing else np.nan for v_ in prof.v]) * units.knots
             
-            skew.plot(p_units, t_units, 'red', linewidth=3)
-            skew.plot(p_units, td_units, 'green', linewidth=3)
+            skew.plot(p_units, t_units, 'red', linewidth=3.5)
+            skew.plot(p_units, td_units, 'green', linewidth=3.5)
             
             # Wind Barbs (SH Convention: Flip barbs)
             idx = np.arange(0, len(p_units), max(1, len(p_units)//30))
@@ -240,17 +240,20 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
                 skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
                                 flip_barbs=True, color='black', linewidth=0.8, length=6)
             except Exception as e:
-                print(f"MetPy flip_barbs failed, using standard barbs: {e}")
+                print(f"MetPy flip_barbs failed: {e}")
                 skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], 
                                 color='black', linewidth=0.8, length=6)
             
             # Parcel Profile (Black Dashed)
-            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'black', linestyle='--', linewidth=1.5)
+            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'black', linestyle='--', linewidth=2.0)
             
-            # Background Lines (Standard Tan/Grey)
-            skew.plot_dry_adiabats(color='tan', alpha=0.3, linewidth=0.5)
-            skew.plot_moist_adiabats(color='grey', alpha=0.3, linewidth=0.5)
-            skew.plot_mixing_lines(color='grey', alpha=0.3, linewidth=0.5)
+            # Background Lines (Standard Tan/Grey) - LIGHTER/THINNER as per user request
+            skew.plot_dry_adiabats(color='tan', alpha=0.1, linewidth=0.3)
+            skew.plot_moist_adiabats(color='grey', alpha=0.1, linewidth=0.3)
+            skew.plot_mixing_lines(color='grey', alpha=0.1, linewidth=0.3)
+            
+            # Isotherms & Isobars (Internal MetPy Grid)
+            skew.ax.grid(True, alpha=0.1, linewidth=0.3, color='grey')
             
             skew.ax.set_ylim(1050, 100)
             skew.ax.set_xlim(-40, 45)
