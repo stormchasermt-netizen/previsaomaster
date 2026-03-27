@@ -184,7 +184,7 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
                 "srh1km": float(srh1k), "srh3km": float(srh3k),
                 "pw": float(pw.m)
             },
-            "image": base64_img
+            "base64_img": base64_img
         }
 
     except Exception as e:

@@ -312,23 +312,24 @@ export default function AdminDashboardPage() {
                     )}
                 </div>
 
-                {/* Boxplots / Stats */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Índices de Severidade (Left Mover HS)</h4>
-                    {averageData ? (
-                       <StatsCharts dataList={allSoundingsData} />
-                    ) : (
-                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                           {/* Render individual stats */}
-                           {Object.entries(currentDisplay.indices).map(([k, v]) => (
-                               <div key={k} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
-                                   <p className="text-[10px] text-slate-400 uppercase font-bold">{k}</p>
-                                   <p className="text-lg font-bold text-white">{(v as number).toFixed(1)}</p>
-                               </div>
-                           ))}
-                       </div>
+                    {/* Boxplots / Stats (Only showing if NOT using the professional image) */}
+                    {!currentDisplay.base64_img && (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl mt-6">
+                          <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Índices de Severidade (MetPy HS)</h4>
+                          {averageData ? (
+                             <StatsCharts dataList={allSoundingsData} />
+                          ) : (
+                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                 {Object.entries(currentDisplay.indices).map(([k, v]) => (
+                                     <div key={k} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                                         <p className="text-[10px] text-slate-400 uppercase font-bold">{k}</p>
+                                         <p className="text-lg font-bold text-white">{(v as number).toFixed(1)}</p>
+                                     </div>
+                                 ))}
+                             </div>
+                          )}
+                      </div>
                     )}
-                </div>
               </div>
             )}
           </div>
