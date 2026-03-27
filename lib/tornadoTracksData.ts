@@ -122,6 +122,7 @@ export interface TornadoTrack {
   damage?: string;
   gallery?: string[]; // URLs de imagens para o slider
   externalLinks?: { label: string; url: string }[];
+  soundingFiles?: { url: string; name: string }[];
 
   /** Overrides de radar específicos, indexados pelo id (ex: 'santiago') ou WMS Url */
   radarOverrides?: Record<string, RadarOverride>;

@@ -124,6 +124,7 @@ export async function fetchTornadoTracks(): Promise<TornadoTrack[]> {
       damage: data.damage ?? undefined,
       gallery: Array.isArray(data.gallery) ? data.gallery : undefined,
       externalLinks: Array.isArray(data.externalLinks) ? data.externalLinks : undefined,
+      soundingFiles: Array.isArray(data.soundingFiles) ? data.soundingFiles : undefined,
     };
     return {
       ...baseTrack,
@@ -174,6 +175,7 @@ export async function saveTornadoTrack(track: TornadoTrackInput, adminId: string
     damage: track.damage ?? null,
     gallery: track.gallery ?? null,
     externalLinks: track.externalLinks ?? null,
+    soundingFiles: track.soundingFiles ?? null,
     adminId,
     updatedAt: serverTimestamp(),
   };

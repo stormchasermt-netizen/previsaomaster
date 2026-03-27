@@ -20,30 +20,57 @@ export function AuthProvider({ children }: { children?: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Only set up the listener if Firebase Auth was initialized correctly
-    if (auth) {
-      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-        if (firebaseUser) {
-          const isAdmin = firebaseUser.email ? ADMIN_EMAILS.includes(firebaseUser.email) : false;
-          const appUser: AppUser = {
-            uid: firebaseUser.uid,
-            displayName: firebaseUser.displayName || 'Jogador',
-            email: firebaseUser.email || '',
-            photoURL: firebaseUser.photoURL || undefined,
-            type: isAdmin ? 'admin' : 'user'
+    // DEV MOCK: Permite que o agente ou desenvolvedor simule login sem Firebase Auth real.
+    // Ative via console: localStorage.setItem('dev_mock_user', 'true') OU via URL: ?mock=true
+    const setupMock = async () => {
+      if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const isMockActive = localStorage.getItem('dev_mock_user') === 'true' || urlParams.get('mock') === 'true';
+
+        if (isMockActive) {
+          // No Mode Mock, não tentamos assinar no Firebase (evita erros de permissão se as regras forem rígidas)
+          // Em vez disso, fornecemos um usuário de teste que a UI respeita.
+          const mockAdmin: AppUser = {
+            uid: 'dev-mock-admin-uid',
+            displayName: 'AI Debugger (Admin)',
+            email: 'admin@stormchasermt.com.br',
+            photoURL: 'https://github.com/identicons/dev.png',
+            type: 'admin'
           };
-          setUser(appUser);
-        } else {
-          setUser(null);
+          setUser(mockAdmin);
+          setIsLoading(false);
+          return true;
         }
+      }
+      return false;
+    };
+
+    setupMock().then(isMocked => {
+      if (isMocked) return;
+
+      if (auth) {
+        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+          if (firebaseUser) {
+            const isAdmin = firebaseUser.email ? ADMIN_EMAILS.includes(firebaseUser.email) : false;
+            const appUser: AppUser = {
+              uid: firebaseUser.uid,
+              displayName: firebaseUser.displayName || 'Jogador',
+              email: firebaseUser.email || '',
+              photoURL: firebaseUser.photoURL || undefined,
+              type: isAdmin ? 'admin' : 'user'
+            };
+            setUser(appUser);
+          } else {
+            setUser(null);
+          }
+          setIsLoading(false);
+        });
+        return () => unsubscribe();
+      } else {
         setIsLoading(false);
-      });
-      return () => unsubscribe();
-    } else {
-      // If Firebase is not initialized, stop loading and ensure user is null.
-      setIsLoading(false);
-      setUser(null);
-    }
+        setUser(null);
+      }
+    });
   }, []);
 
   const loginWithGoogle = async () => {

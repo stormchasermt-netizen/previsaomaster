@@ -159,6 +159,7 @@ export default function AdminRastrosTornadosPage() {
   const numericalOverlaysRef = useRef<Record<string, any>>({});
   const skewtFileInputRef = useRef<HTMLInputElement>(null);
   const galleryFileInputRef = useRef<HTMLInputElement>(null);
+  const soundingFileInputRef = useRef<HTMLInputElement>(null);
   
   // States para Radar Override Local
   const [radarOverrides, setRadarOverrides] = useState<Record<string, any>>({});
@@ -169,10 +170,12 @@ export default function AdminRastrosTornadosPage() {
   const [victims, setVictims] = useState<number | string>('');
   const [damage, setDamage] = useState('');
   const [gallery, setGallery] = useState<string[]>([]);
+  const [soundingFiles, setSoundingFiles] = useState<{ url: string; name: string }[]>([]);
   const [externalLinks, setExternalLinks] = useState<{ label: string; url: string }[]>([]);
   
   const [skewtUploading, setSkewtUploading] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
+  const [soundingUploading, setSoundingUploading] = useState(false);
 
   // Auxiliar para parsing robusto de coordenadas (aceita ponto ou vírgula)
   const parseCoord = (val: string): number => {
@@ -1319,6 +1322,40 @@ export default function AdminRastrosTornadosPage() {
     );
     await handler(e);
   };
+  
+  const handleSoundingUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !user?.uid) return;
+    if (!storage) {
+      addToast('Storage não configurado.', 'error');
+      return;
+    }
+    setSoundingUploading(true);
+    try {
+      const newFiles = [...soundingFiles];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ts = Date.now();
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `sounding_csvs/${user.uid}/${ts}_${safeName}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, file, { contentType: 'text/csv' });
+        const url = await getDownloadURL(storageRef);
+        newFiles.push({ url, name: file.name });
+      }
+      setSoundingFiles(newFiles);
+      addToast(`${files.length} arquivo(s) de sondagem enviado(s).`, 'success');
+    } catch (err: any) {
+      addToast(`Erro ao enviar sondagens: ${err.message}`, 'error');
+    } finally {
+      setSoundingUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeSoundingFile = (index: number) => {
+    setSoundingFiles(prev => prev.filter((_, i) => i !== index));
+  };
 
   const removeSecondaryImage = (id: string) => {
     setSecondaryAfterImages(prev => prev.filter(img => img.id !== id));
@@ -1403,6 +1440,7 @@ export default function AdminRastrosTornadosPage() {
     setVictims(t.victims ?? '');
     setDamage(t.damage || '');
     setGallery(t.gallery || []);
+    setSoundingFiles(t.soundingFiles || []);
     setExternalLinks(t.externalLinks || []);
     setPanelOpen(true);
   };
@@ -1463,6 +1501,7 @@ export default function AdminRastrosTornadosPage() {
         victims: victims !== '' ? victims : undefined,
         damage: damage.trim() || undefined,
         gallery: gallery.length ? gallery : undefined,
+        soundingFiles: soundingFiles.length ? soundingFiles : undefined,
         externalLinks: externalLinks.length ? externalLinks : undefined,
       }, user.uid);
       addToast(editingId ? 'Rastro atualizado.' : 'Rastro criado.', 'success');
@@ -1908,6 +1947,53 @@ export default function AdminRastrosTornadosPage() {
                         </button>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Seção Sondagens CSV (Raw) */}
+                  <div className="space-y-2 border-t border-slate-700 pt-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sondagens CSV (Raw Data)</span>
+                        <span className="text-[10px] text-slate-600 italic">Arquivos para o Dashboard Admin</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input 
+                          type="file" 
+                          ref={soundingFileInputRef} 
+                          accept=".csv,text/csv" 
+                          multiple
+                          onChange={handleSoundingUpload} 
+                          className="hidden" 
+                        />
+                        <button 
+                          type="button" 
+                          onClick={() => soundingFileInputRef.current?.click()}
+                          disabled={soundingUploading}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1"
+                        >
+                          {soundingUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                          Upload CSVs
+                        </button>
+                      </div>
+                    </div>
+                    {soundingFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-slate-800/40 p-2 rounded border border-slate-700/50">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] text-slate-300 truncate" title={file.name}>{file.name}</p>
+                          <p className="text-[8px] text-slate-500 truncate">{file.url.substring(0, 40)}...</p>
+                        </div>
+                        <button 
+                          type="button" 
+                          onClick={() => removeSoundingFile(idx)}
+                          className="p-1 text-red-400 hover:bg-red-950/30 rounded"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    {soundingFiles.length === 0 && !soundingUploading && (
+                      <p className="text-[10px] text-slate-600 italic py-1">Nenhum CSV de sondagem anexado.</p>
+                    )}
                   </div>
 
                   {/* Seção Galeria de Imagens */}

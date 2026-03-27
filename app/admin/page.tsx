@@ -9,7 +9,7 @@ import { StormReportEditor } from '@/components/StormReportEditor';
 import { mockStore } from '@/lib/store';
 import { PREDEFINED_LAYERS, LAYER_CATEGORIES, LAYER_TIMES } from '@/lib/constants';
 import type { PrevisaoEvent, PrevisaoLayer, StormReport, MapBounds, RiskPolygon } from '@/lib/types';
-import { ShieldAlert, Plus, Check, X, Clock, Map as MapIcon, Edit, Upload, Image as ImageIcon, Trash2, Loader2, Wind, Radar, Layers } from 'lucide-react';
+import { ShieldAlert, Plus, Check, X, Clock, Map as MapIcon, Edit, Upload, Image as ImageIcon, Trash2, Loader2, Wind, Radar, Layers, LayoutDashboard } from 'lucide-react';
 import clsx from 'clsx';
 
 export default function Admin() {
@@ -224,6 +224,13 @@ export default function Admin() {
         >
           <Layers className="w-4 h-4" />
           Previsões Prevots
+        </Link>
+        <Link
+          href="/admin/dashboard"
+          className="px-4 py-2.5 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 flex items-center gap-2 transition-colors"
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          Dashboard Sondagem
         </Link>
       </nav>
 
