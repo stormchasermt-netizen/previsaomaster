@@ -95,9 +95,9 @@ export default function AdminDashboardPage() {
             <div>
               <h1 className="text-2xl font-bold text-white flex items-center gap-2">
                 <LayoutDashboard className="w-7 h-7 text-amber-500" />
-                Dashboard Admin: Sondagens
+                Hodograph Admin: Sondagens
               </h1>
-              <p className="text-slate-500 text-sm">Processamento de dados brutos e geração de odógrafas</p>
+              <p className="text-slate-500 text-sm">Processamento de dados brutos e geração de hodógrafas</p>
             </div>
           </div>
           <div className="flex gap-3">
@@ -169,14 +169,14 @@ export default function AdminDashboardPage() {
               ) : (
                 <div className="flex-1 flex flex-col space-y-6 animate-in fade-in duration-500">
                   <div className="border-b border-slate-800 pb-4">
-                    <h3 className="text-lg font-bold text-amber-500">Odógrafa Analítica</h3>
+                    <h3 className="text-lg font-bold text-amber-500">Hodógrafa Analítica (0-12km)</h3>
                     <p className="text-sm text-slate-400">{activeTrackName}</p>
                   </div>
 
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                     {/* Hodograph Chart (SVG) */}
-                    <div className="aspect-square bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-center p-4 relative shadow-inner">
-                      <HodographChart data={activeData} />
+                    <div className="aspect-square bg-white rounded-xl border border-slate-200 flex items-center justify-center p-4 relative shadow-md">
+                      <HodographChart data={activeData.filter(d => d.height <= 12050)} />
                     </div>
 
                     {/* Data Summary / Stats */}
@@ -233,41 +233,47 @@ export default function AdminDashboardPage() {
 
 function HodographChart({ data }: { data: SoundingDataPoint[] }) {
   const size = 400;
-  const padding = 20;
+  const padding = 25;
   const center = size / 2;
   
-  // Find max amplitude for scaling
-  const maxAmp = Math.max(...data.map(d => Math.sqrt(d.u**2 + d.v**2)), 1);
+  // Find max amplitude for scaling (u or v within the 0-12km range)
+  const maxAmp = Math.max(...data.map(d => Math.abs(d.u)), ...data.map(d => Math.abs(d.v)), 40);
   const scale = (size / 2 - padding) / maxAmp;
   
-  // SVG points
-  const points = data.map(d => {
-    const x = center + d.u * scale;
-    const y = center - d.v * scale; // Flip Y for typical cartesian
-    return `${x},${y}`;
-  }).join(' ');
+  // Segment color logic
+  const getSegmentColor = (h: number) => {
+    if (h <= 1000) return '#cf0af0'; // Magenta
+    if (h <= 3000) return '#ff0000'; // Red
+    if (h <= 6000) return '#ff9100'; // Orange
+    if (h <= 9000) return '#ffff00'; // Yellow
+    if (h <= 12000) return '#00f2ff'; // Cyan
+    return '#cbd5e1';
+  };
 
-  // Guide circles (e.g. 10, 20, 30, 40, 50, 100 units)
-  const guides = [10, 20, 30, 40, 50, 75, 100].filter(g => g <= maxAmp * 1.2);
-  if (guides.length === 0) guides.push(maxAmp);
+  // Guide circles (e.g. 10, 20, 30, 40, 50, 60, 80 units)
+  const guides = [10, 20, 30, 40, 50, 60, 75, 100].filter(g => g <= maxAmp * 1.5);
+  if (guides.length === 0) guides.push(20);
+
+  // Labels to show at specific heights
+  const heightLabels = [1000, 3000, 6000, 9000, 12000];
 
   return (
     <div className="w-full h-full">
       <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full font-sans">
         {/* Background Grid */}
-        <line x1={padding} y1={center} x2={size-padding} y2={center} stroke="#334155" strokeWidth="1" strokeDasharray="4 4" />
-        <line x1={center} y1={padding} x2={center} y2={size-padding} stroke="#334155" strokeWidth="1" strokeDasharray="4 4" />
+        <line x1={padding} y1={center} x2={size-padding} y2={center} stroke="#cbd5e1" strokeWidth="1" />
+        <line x1={center} y1={padding} x2={center} y2={size-padding} stroke="#cbd5e1" strokeWidth="1" />
         
         {/* Guide Circles */}
         {guides.map(g => (
           <g key={g}>
             <circle 
               cx={center} cy={center} r={g * scale} 
-              fill="none" stroke="#1e293b" strokeWidth="1" 
+              fill="none" stroke="#e2e8f0" strokeWidth="1" strokeDasharray={g % 20 === 0 ? "0" : "4 4"}
             />
             <text 
-              x={center + g * scale + 2} y={center - 2} 
-              className="fill-slate-600 text-[10px] font-bold"
+              x={center + 2} y={center - g * scale - 2} 
+              className="fill-slate-400 text-[9px] font-medium"
             >
               {g}
             </text>
@@ -275,30 +281,46 @@ function HodographChart({ data }: { data: SoundingDataPoint[] }) {
         ))}
 
         {/* Axis Labels */}
-        <text x={size-padding-20} y={center+15} className="fill-slate-500 text-[10px]">U</text>
-        <text x={center+5} y={padding+15} className="fill-slate-500 text-[10px]">V</text>
+        <text x={size-padding-15} y={center-5} className="fill-slate-400 text-[10px] italic">u</text>
+        <text x={center+5} y={padding+10} className="fill-slate-400 text-[10px] italic">v</text>
 
-        {/* Hodograph Line */}
-        <polyline
-          points={points}
-          fill="none"
-          stroke="#f59e0b"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"
-        />
+        {/* Hodograph Line Segments */}
+        {data.slice(0, -1).map((d, i) => {
+          const next = data[i+1];
+          const x1 = center + d.u * scale;
+          const y1 = center - d.v * scale;
+          const x2 = center + next.u * scale;
+          const y2 = center - next.v * scale;
+          
+          return (
+            <line 
+              key={i} 
+              x1={x1} y1={y1} x2={x2} y2={y2} 
+              stroke={getSegmentColor(next.height)} 
+              strokeWidth="4" 
+              strokeLinecap="round" 
+            />
+          );
+        })}
 
-        {/* Height Points (Gradients or color steps) */}
+        {/* Height Labels and Points */}
         {data.map((d, i) => {
-          if (i % Math.ceil(data.length / 10) !== 0 && i !== data.length-1) return null;
+          // Show label for specific heights or the first/last point
+          const isLabelHeight = heightLabels.some(lh => Math.abs(d.height - lh) < 100) || i === 0;
+          // Ensure we don't show too many if data is dense (only one per 500m area)
           const x = center + d.u * scale;
           const y = center - d.v * scale;
+          
+          if (!isLabelHeight) return null;
+
           return (
             <g key={i}>
-              <circle cx={x} cy={y} r="3" fill="#fbbf24" stroke="#000" strokeWidth="1" />
-              <text x={x+6} y={y-4} className="fill-amber-400 text-[8px] font-bold select-none pointer-events-none">
-                {Math.round(d.height)}m
+              <circle cx={x} cy={y} r="2.5" fill="black" />
+              <text 
+                x={x+5} y={y-5} 
+                className="fill-black text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px]"
+              >
+                {Math.round(d.height/1000)}
               </text>
             </g>
           );
