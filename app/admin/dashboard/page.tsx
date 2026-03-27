@@ -277,13 +277,25 @@ export default function AdminDashboardPage() {
                       )}
                     </div>
                     
-                    {/* Charts Grid */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                       {/* SkewT */}
-                       <div className="space-y-2">
-                           <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Wind className="w-4 h-4"/> Skew-T Log-P</h4>
-                           <SkewTChart data={currentDisplay} meanData={averageData} />
-                       </div>
+                    {currentDisplay.base64_img && !currentDisplay.base64_img.startsWith("ERROR:") ? (
+                      <div className="w-full bg-slate-50 rounded-xl overflow-hidden shadow-inner flex justify-center items-center min-h-[500px] border border-slate-300">
+                        <img src={currentDisplay.base64_img} alt="Detailed Professional Skew-T" className="w-full h-auto object-contain max-h-[85vh] drop-shadow-xl p-2" />
+                      </div>
+                    ) : (
+                      <>
+                        {currentDisplay.base64_img && currentDisplay.base64_img.startsWith("ERROR:") && (
+                          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-sm font-mono overflow-auto max-h-40">
+                            <strong>Erro Interno no Renderizador Python:</strong><br/>
+                            {currentDisplay.base64_img.replace("ERROR:", "")}
+                          </div>
+                        )}
+                        {/* Charts Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                           {/* SkewT */}
+                           <div className="space-y-2">
+                               <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Wind className="w-4 h-4"/> Skew-T Log-P</h4>
+                               <SkewTChart data={currentDisplay} meanData={averageData} />
+                           </div>
 
                        {/* Hodograph */}
                        <div className="space-y-2">
@@ -295,7 +307,9 @@ export default function AdminDashboardPage() {
                              />
                            </div>
                        </div>
-                    </div>
+                        </div>
+                      </>
+                    )}
                 </div>
 
                 {/* Boxplots / Stats */}

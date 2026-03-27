@@ -195,35 +195,90 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
     base64_img = None
     if generate_image:
         try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                csv_path = os.path.join(tmpdir, "sounding.csv")
-                png_path = os.path.join(tmpdir, "plot.png")
-                # Write standard CSV for R
-                df_out = pd.DataFrame({
-                    "pres": p,
-                    "hght": z,
-                    "tmpc": t,
-                    "dwpc": td,
-                    "wdir": wd,
-                    "wspd": ws
-                })
-                df_out.to_csv(csv_path, index=False)
-                
-                # Run R script
-                cmd = ["Rscript", "plot_skewt.R", csv_path, png_path, image_title]
-                subprocess.run(cmd, check=True, capture_output=True)
-                
-                if os.path.exists(png_path):
-                    with Image.open(png_path) as img:
-                        # Crop the bottom 45 pixels to remove generic watermarks and keep it white-label
-                        w, h = img.size
-                        cropped = img.crop((0, 0, w, h - 45))
-                        
-                        buffered = io.BytesIO()
-                        cropped.save(buffered, format="PNG", optimize=True)
-                        base64_img = "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            from metpy.plots import SkewT, Hodograph
+            from metpy.units import units
+
+            fig = plt.figure(figsize=(12, 10))
+            
+            # Grid spec to hold Skew-T and Hodograph + Text
+            gs = fig.add_gridspec(3, 3)
+            skew = SkewT(fig, rotation=45, subplot=gs[:, :2])
+            
+            p_units = p * units.hPa
+            t_units = t * units.degC
+            td_units = td * units.degC
+            
+            u_arr = np.array([u_ if u_ != prof.missing else np.nan for u_ in prof.u]) * units.knots
+            v_arr = np.array([v_ if v_ != prof.missing else np.nan for v_ in prof.v]) * units.knots
+            
+            # Plot data on Skew-T
+            skew.plot(p_units, t_units, 'r', linewidth=2)
+            skew.plot(p_units, td_units, 'g', linewidth=2)
+            
+            # Plot wind barbs (decimate for readability)
+            idx = np.arange(0, len(p_units), max(1, len(p_units)//25))
+            skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx])
+            
+            # Plot parcel profile
+            skew.plot(parcel_pres * units.hPa, parcel_temp * units.degC, 'k', linestyle='--', linewidth=1.5)
+            
+            # Additional Skew-T features
+            skew.ax.set_ylim(1000, 100)
+            skew.ax.set_xlim(-40, 40)
+            skew.plot_dry_adiabats(alpha=0.25)
+            skew.plot_moist_adiabats(alpha=0.25)
+            skew.plot_mixing_lines(alpha=0.25)
+            skew.ax.set_ylabel('Pressão (hPa)')
+            skew.ax.set_xlabel('Temperatura (°C)')
+            skew.ax.set_title(image_title, loc='left', fontsize=14, fontweight='bold')
+            
+            # Plot Hodograph
+            ax_hodo = fig.add_subplot(gs[0, 2])
+            h = Hodograph(ax_hodo, component_range=80.)
+            h.add_grid(increment=20)
+            
+            # Interpolate wind for smooth color line
+            z_mask = ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
+            if np.any(z_mask):
+                # Height needs to be in meters correctly matched
+                h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask])
+            ax_hodo.set_title("Hodógrafo (nós)")
+            
+            # Add text/indices
+            ax_text = fig.add_subplot(gs[1:, 2])
+            ax_text.axis('off')
+            
+            info = (
+                f"Parâmetros Termodinâmicos:\n"
+                f"mlCAPE: {mlcape:.0f} J/kg\n"
+                f"mlLCL: {mllcl:.0f} m\n"
+                f"CAPE 0-3km: {cape03ml:.0f} J/kg\n\n"
+                f"Parâmetros Cinemáticos:\n"
+                f"Shear Efetivo: {eff_shear_mag:.0f} kt\n"
+                f"Shear 0-500m: {shr0_500m_mag:.0f} kt\n"
+                f"SRH 0-1km (LM): {srh1km_val:.0f} m2/s2\n"
+                f"SRH 0-3km (LM): {srh3km_val:.0f} m2/s2\n\n"
+                f"Parâmetros Compostos:\n"
+                f"STP 0-1km: {stp0_1km:.2f}\n"
+                f"STP 0-500m: {stp0_500m:.2f}\n"
+            )
+            ax_text.text(0.1, 0.9, info, fontsize=12, va='top', family='monospace')
+            
+            plt.tight_layout()
+            
+            # Save to BytesIO
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+            plt.close(fig)
+            
+            base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
+            
         except Exception as e:
-            print(f"Failed to generate R Skew-T image: {e}")
+            print(f"Failed to generate Python Skew-T image: {e}", flush=True)
+            base64_img = f"ERROR: {e}"
 
     return {
         "profile": profile_data,

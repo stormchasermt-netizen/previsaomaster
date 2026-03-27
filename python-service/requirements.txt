@@ -6,3 +6,5 @@ numpy
 sharppy
 requests
 Pillow
+metpy
+matplotlib
