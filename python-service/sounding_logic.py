@@ -186,10 +186,10 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
         "CAPE03ml": float(cape03ml),
         "EFFshear": float(eff_shear_mag),
         "Shr_0_500m": float(shr0_500m_mag),
-        "srh_0_1km": float(srh1km_val),
-        "srh_0_3km": float(srh3km_val),
-        "STP_0_1km": float(stp0_1km),
-        "STP_0_500m": float(stp0_500m)
+        "srh_0_1km_LM_HS": float(srh1km_val),
+        "srh_0_3km_LM_HS": float(srh3km_val),
+        "STP_0_1km_HS": float(stp0_1km),
+        "STP_0_500m_HS": float(stp0_500m)
     }
 
     base64_img = None
@@ -259,8 +259,8 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
                 f"Parâmetros Cinemáticos:\n"
                 f"Shear Efetivo: {eff_shear_mag:.0f} kt\n"
                 f"Shear 0-500m: {shr0_500m_mag:.0f} kt\n"
-                f"SRH 0-1km (LM): {srh1km_val:.0f} m2/s2\n"
-                f"SRH 0-3km (LM): {srh3km_val:.0f} m2/s2\n\n"
+                f"SRH 0-1km (LM HS): {srh1km_val:.0f} m2/s2\n"
+                f"SRH 0-3km (LM HS): {srh3km_val:.0f} m2/s2\n\n"
                 f"Parâmetros Compostos:\n"
                 f"STP 0-1km: {stp0_1km:.2f}\n"
                 f"STP 0-500m: {stp0_500m:.2f}\n"
