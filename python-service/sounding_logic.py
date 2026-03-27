@@ -200,13 +200,13 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             from metpy.plots import SkewT, Hodograph
             from metpy.units import units
 
-            # Theme Setup (Light / Standard)
-            plt.rcParams['figure.facecolor'] = 'white'
-            plt.rcParams['axes.facecolor'] = 'white'
-            plt.rcParams['text.color'] = 'black'
-            plt.rcParams['axes.labelcolor'] = 'black'
-            plt.rcParams['xtick.color'] = 'black'
-            plt.rcParams['ytick.color'] = 'black'
+            # Theme Setup (Black / SHARPpy style)
+            plt.rcParams['figure.facecolor'] = 'black'
+            plt.rcParams['axes.facecolor'] = 'black'
+            plt.rcParams['text.color'] = 'white'
+            plt.rcParams['axes.labelcolor'] = 'white'
+            plt.rcParams['xtick.color'] = 'white'
+            plt.rcParams['ytick.color'] = 'white'
 
             fig = plt.figure(figsize=(15, 11))
             
@@ -225,16 +225,18 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             skew.plot(p_units, t_units, 'red', linewidth=3)
             skew.plot(p_units, td_units, '#32CD32', linewidth=3) # Lime green
             
-            # 2. Wind Barbs (SH Convention: Flip barbs to point left)
+            # 2. Wind Barbs (SH Convention: Decimate and plot in white)
             idx = np.arange(0, len(p_units), max(1, len(p_units)//25))
-            # In MetPy, we use flip_barbs=True for Southern Hemisphere
-            skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], flip_barbs=True, color='black')
+            # Note: flip_barbs removed to prevent 'unexpected keyword' error in some matplotlib versions
+            # But we ensure they are clean and white for the SHARPpy look
+            skew.plot_barbs(p_units[idx], u_arr[idx], v_arr[idx], color='white', linewidth=0.8)
             
-            # 3. Plot Parcel (Black Dashed)
-            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'black', linestyle='--', linewidth=1.5)
+            # 3. Plot Parcel (Black Dashed on Black Theme? No, needs to be visible. Let's use Cyan/White or Grey)
+            # User previously liked the SHARPpy scheme. Let's use a visible dashed line.
+            skew.plot(mu_pcl.ptrace * units.hPa, mu_pcl.ttrace * units.degC, 'white', linestyle='--', linewidth=1.2, alpha=0.7)
             
-            # 4. Grid Lines (Light Grey)
-            skew.plot_dry_adiabats(color='tan', alpha=0.3, linewidth=0.5)
+            # 4. Grid Lines (Subtle Grey)
+            skew.plot_dry_adiabats(color='grey', alpha=0.3, linewidth=0.5)
             skew.plot_moist_adiabats(color='grey', alpha=0.3, linewidth=0.5)
             skew.plot_mixing_lines(color='grey', alpha=0.3, linewidth=0.5)
             
@@ -242,13 +244,13 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             skew.ax.set_xlim(-50, 45)
             skew.ax.set_ylabel('Pressao (hPa)')
             skew.ax.set_xlabel('Temperatura (C)')
-            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=16, fontweight='bold', color='darkblue')
+            skew.ax.set_title(f"PREVISAO MASTER - {image_title}", loc='left', fontsize=16, fontweight='bold', color='yellow')
             
             # 5. Hodograph (Top Right)
             ax_hodo = fig.add_subplot(gs[:2, 3])
-            ax_hodo.set_facecolor('white')
+            ax_hodo.set_facecolor('black')
             h = Hodograph(ax_hodo, component_range=80.)
-            h.add_grid(increment=20, color='grey', alpha=0.3)
+            h.add_grid(increment=20, color='white', alpha=0.3)
             
             z_mask = ~np.isnan(u_arr.magnitude) & ~np.isnan(v_arr.magnitude)
             if np.any(z_mask):
@@ -256,11 +258,11 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
                 h.plot_colormapped(u_arr[z_mask], v_arr[z_mask], z[z_mask], cmap='rainbow')
             
             # Plot Storm Motion (Left Mover)
-            ax_hodo.plot(lm_u, lm_v, 'ro', markersize=6) # Red dot for storm motion in light theme
-            ax_hodo.set_title("Hodografo (nos)", color='black')
+            ax_hodo.plot(lm_u, lm_v, 'wo', markersize=6) # White dot for storm motion in black theme
+            ax_hodo.set_title("Hodografo (nos)", color='white')
             
             # 5.1 Watermark (Top Right)
-            fig.text(0.98, 0.98, '@previsaomaster.com', color='grey', fontsize=12, ha='right', va='top', alpha=0.6, fontweight='bold')
+            fig.text(0.98, 0.98, '@previsaomaster.com', color='white', fontsize=12, ha='right', va='top', alpha=0.6, fontweight='bold')
             
             # 6. Parameter Table (Bottom Section like SHARPpy)
             ax_table = fig.add_subplot(gs[3, :])
@@ -277,8 +279,8 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             the_table.auto_set_font_size(False)
             the_table.set_fontsize(12)
             for key, cell in the_table.get_celld().items():
-                cell.set_facecolor('#F8F9FA')  # Light grey/white
-                cell.set_text_props(color='black')
+                cell.set_facecolor('black')
+                cell.set_text_props(color='white')
                 cell.set_edgecolor('grey')
             
             # 7. Side Parameters (Indices)
@@ -294,12 +296,12 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
                 f"CONFIGURADO PARA HEMISFERIO SUL\n"
                 f"Storm Motion: LEFT MOVER"
             )
-            ax_params.text(0, 0.8, info_text, color='darkblue', fontsize=12, va='top', family='monospace', fontweight='bold')
+            ax_params.text(0, 0.8, info_text, color='yellow', fontsize=12, va='top', family='monospace', fontweight='bold')
 
             plt.tight_layout()
             
             buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='white')
+            plt.savefig(buf, format='png', dpi=120, bbox_inches='tight', facecolor='black')
             plt.close(fig)
             
             base64_img = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode('utf-8')
