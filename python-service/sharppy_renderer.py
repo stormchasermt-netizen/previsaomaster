@@ -7,6 +7,7 @@ O antigo `sharppy.viz.spc` / SPCWindo foi removido do upstream SHARPpy; ver exam
 """
 from __future__ import annotations
 
+import datetime
 import os
 import sys
 import warnings
@@ -91,6 +92,7 @@ def run_renderer(csv_path: str, output_path: str) -> None:
     ws = df["wspd"].values
 
     lat = _latitude()
+    # `date` é obrigatório no SHARPpy recente (senão get_PWV_loc falha com NoneType.strftime).
     prof = profile.create_profile(
         profile="convective",
         pres=p,
@@ -101,6 +103,7 @@ def run_renderer(csv_path: str, output_path: str) -> None:
         wdir=wd,
         missing=-9999,
         latitude=lat,
+        date=datetime.datetime.now(),
     )
 
     title_txt = f"SHARPpy skew (lat={lat:.2f})"
