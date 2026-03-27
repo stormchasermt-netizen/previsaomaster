@@ -103,7 +103,7 @@ export default function AdminDashboardPage() {
       const filesToProcess = tracks.flatMap(t => t.soundingFiles?.map(f => f.url) || []);
       
       if (filesToProcess.length === 0) {
-        addToast('Nenhum dado disponível para média.', 'warning');
+        addToast('Nenhum dado disponível para média.', 'error');
         return;
       }
 
