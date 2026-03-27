@@ -277,11 +277,11 @@ export default function AdminDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-6 animate-in fade-in duration-500">
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl">
                     <div className="border-b border-slate-800 pb-4 mb-6 flex justify-between items-end">
                       <div>
                         <h3 className="text-xl font-bold text-amber-500">
-                          {averageData ? 'Composição Estocástica e Perfil Médio' : 'Análise Convectiva Individual'}
+                          {averageData ? 'Composição Estocástica' : 'Análise Convectiva Individual'}
                         </h3>
                         <p className="text-sm text-slate-400">{activeTrackName}</p>
                       </div>
@@ -293,8 +293,8 @@ export default function AdminDashboardPage() {
                     </div>
                     
                     {currentDisplay.base64_img && !currentDisplay.base64_img.startsWith("ERROR:") ? (
-                      <div className="w-full bg-slate-50 rounded-xl overflow-hidden shadow-inner flex justify-center items-center min-h-[500px] border border-slate-300">
-                        <img src={currentDisplay.base64_img} alt="Professional Skew-T" className="w-full h-auto object-contain max-h-[92vh] drop-shadow-2xl p-2" />
+                      <div className="w-full bg-slate-50 rounded-xl overflow-hidden shadow-inner flex justify-center items-center min-h-[600px] border border-slate-300">
+                        <img src={currentDisplay.base64_img} alt="Professional Skew-T" className="w-full h-auto object-contain max-h-[95vh] drop-shadow-2xl" />
                       </div>
                     ) : (
                       <div className="space-y-8">
