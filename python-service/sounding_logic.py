@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import io
+import datetime
 import sharppy.sharptab.profile as profile
 import sharppy.sharptab.params as params
 import sharppy.sharptab.thermo as thermo
@@ -15,7 +16,8 @@ def process_csv_content(csv_text: str):
     # Try to find header line index
     header_idx = -1
     for i, line in enumerate(lines[:20]):
-        if 'height' in line.lower() or 'hght' in line.lower():
+        l = line.lower()
+        if 'height' in l or 'hght' in l or 'altitude' in l:
             header_idx = i
             break
             
@@ -75,11 +77,15 @@ def process_csv_content(csv_text: str):
     wd = wdir[valid_mask]
     ws = wspd[valid_mask]
     
+    if len(p) < 5:
+        raise ValueError("Insufficient valid data points in CSV (less than 5 levels).")
+
     # Needs to be flipped so highest pressure is first
     if p[0] < p[-1]:
         p = p[::-1]; z = z[::-1]; t = t[::-1]; td = td[::-1]; wd = wd[::-1]; ws = ws[::-1]
     
-    prof = profile.create_profile(profile='convective', pres=p, hght=z, tmpc=t, dwpc=td, wdir=wd, wspd=ws, missing=-9999)
+    # Fix: Provide a dummy date to avoid 'NoneType' strftime errors in SHARPpy
+    prof = profile.create_profile(profile='convective', pres=p, hght=z, tmpc=t, dwpc=td, wdir=wd, wspd=ws, missing=-9999, date=datetime.datetime.now())
     
     # Calculate Indices
     ml_pcl = params.parcelx(prof, flag=4) # Mixed Layer
