@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# SHARPpy + sharppy.plot.skew (Matplotlib) — Ubuntu 22.04+ / Debian
+# SHARPpy (sharptab) + MetPy — Ubuntu 22.04+ / Debian
 # Corre isto a partir da pasta python-service do repo (onde está sharppy_renderer.py)
 #   cd ~/caminho/do/studio/python-service
 #   chmod +x setup_vm.sh && ./setup_vm.sh

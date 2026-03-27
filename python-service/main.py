@@ -25,7 +25,7 @@ class ProcessRequest(BaseModel):
     imageTitle: str = "Previsao Master - Skew-T Profissional"
     # Latitude do site (graus). <0 = Sul — SHARPpy + MetPy flip_barb. None = inferir do CSV ou -23.5.
     latitude: Optional[float] = None
-    # Layout SPC nativo (SHARPpy SPCWindo + Qt + xvfb). Requer PyQt5 e xvfb-run no container/VM.
+    # Imagem SHARPpy+MetPy (sharppy_renderer.py: sharptab + SkewT). Sem Qt.
     nativeSpcLayout: bool = False
 
 class AverageProcessRequest(BaseModel):
