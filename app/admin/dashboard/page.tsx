@@ -389,10 +389,10 @@ function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backg
             <line 
               key={i} 
               x1={x1} y1={y1} x2={x2} y2={y2} 
-              stroke={backgroundData ? "#ef4444" : getSegmentColor(next.height)} 
-              strokeWidth={backgroundData ? "5" : "4"} 
+              stroke={getSegmentColor(next.height)} 
+              strokeWidth={backgroundData ? "5.5" : "4"} 
               strokeLinecap="round" 
-              className={backgroundData ? "drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" : ""}
+              className={backgroundData ? "drop-shadow-[0_0_4px_rgba(255,255,255,0.8)]" : ""}
             />
           );
         })}
@@ -412,10 +412,10 @@ function HodographChart({ data, backgroundData }: { data: SoundingPoint[], backg
 
             return (
               <g key={i}>
-                <circle cx={x} cy={y} r={backgroundData ? "3" : "2.5"} fill={backgroundData ? "#ef4444" : "black"} />
+                <circle cx={x} cy={y} r={backgroundData ? "3.5" : "2.5"} fill={backgroundData ? "white" : "black"} />
                 <text 
                   x={x+5} y={y-5} 
-                  className={`text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px] ${backgroundData ? "fill-red-600" : "fill-black"}`}
+                  className={`text-[12px] font-bold select-none pointer-events-none stroke-white stroke-[0.5px] fill-black`}
                 >
                   {hKm}
                 </text>
