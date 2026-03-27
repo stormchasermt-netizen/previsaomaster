@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# SHARPpy + viz.spc (layout SPC) do zero — Ubuntu 22.04+ / Debian
+# SHARPpy + sharppy.plot.skew (Matplotlib) — Ubuntu 22.04+ / Debian
 # Corre isto a partir da pasta python-service do repo (onde está sharppy_renderer.py)
 #   cd ~/caminho/do/studio/python-service
 #   chmod +x setup_vm.sh && ./setup_vm.sh
@@ -36,7 +36,7 @@ echo "===== 3/5 pip: base científica + PyQt5 ====="
 pip install --upgrade pip wheel setuptools
 pip install numpy pandas matplotlib metpy Pillow requests PyQt5
 
-echo "===== 4/5 SHARPpy oficial (inclui sharppy.viz.spc — layout SPC) ====="
+echo "===== 4/5 SHARPpy oficial (GitHub) ====="
 pip uninstall -y sharppy 2>/dev/null || true
 pip install "git+https://github.com/sharppy/sharppy.git"
 
