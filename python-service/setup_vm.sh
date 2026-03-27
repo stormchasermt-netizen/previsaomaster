@@ -40,12 +40,13 @@ echo "===== 4/5 SHARPpy oficial (GitHub) ====="
 pip uninstall -y sharppy 2>/dev/null || true
 pip install "git+https://github.com/sharppy/sharppy.git"
 
-echo "===== 5/5 Verificar sharppy.plot.skew (layout tipo SHARPpy / exemplo oficial) ====="
+echo "===== 5/5 Verificar SHARPpy sharptab + MetPy (renderizador usa estes; skew do SHARPpy é incompatível com MPL 3.10+) ====="
 python3 - <<'PY'
 import sys
 try:
-    import sharppy.plot.skew as skew  # noqa: F401
-    print("OK: sharppy.plot.skew disponível (o módulo sharppy.viz.spc antigo foi removido no upstream).")
+    import sharppy.sharptab.profile  # noqa: F401
+    import metpy.plots  # noqa: F401
+    print("OK: sharptab + MetPy disponíveis.")
 except ImportError as e:
     print("FALHA:", e, file=sys.stderr)
     sys.exit(1)
