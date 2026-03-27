@@ -138,6 +138,10 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
     srh1km_val = srh1km[0] if srh1km[0] != prof.missing else 0
     srh3km_val = srh3km[0] if srh3km[0] != prof.missing else 0
     
+    # Low level shear
+    shr0_500m = winds.wind_shear(prof, pbot=prof.pres[prof.sfc], ptop=interp_p(prof, 500))
+    shr0_500m_mag = np.sqrt(shr0_500m[0]**2 + shr0_500m[1]**2) if shr0_500m[0] != prof.missing else 0
+
     # Significant Tornado Parameter (STP) [LEFT MOVER]
     # Fixed formula for LM: using LM SRH and taking absolute values since LM SRH is often negative in SH.
     def calc_stp(cape, lcl, srh, shear):
@@ -248,6 +252,9 @@ def process_csv_content(csv_text: str, generate_image: bool = False, image_title
             # Plot Storm Motion (Left Mover)
             ax_hodo.plot(lm_u, lm_v, 'ro', markersize=6) # Red dot for storm motion in light theme
             ax_hodo.set_title("Hodografo (nos)", color='black')
+            
+            # 5.1 Watermark (Top Right)
+            fig.text(0.98, 0.98, '@previsaomaster.com', color='grey', fontsize=12, ha='right', va='top', alpha=0.6, fontweight='bold')
             
             # 6. Parameter Table (Bottom Section like SHARPpy)
             ax_table = fig.add_subplot(gs[3, :])
