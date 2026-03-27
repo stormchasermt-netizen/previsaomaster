@@ -142,23 +142,30 @@ def process_csv_content(csv_text, image_title="Sondagem", latitude_override=-23.
                 if np.sum(mask) >= 2:
                     hodo.plot(u_kt[mask], v_kt[mask], color=z_clrs[i], linewidth=4)
             
-            # Adicionar labels numéricos por nível (0, 1, 3, 6, 9, 12 km)
-            label_lvls = [0, 1000, 3000, 6000, 9000, 12000]
+            # Adicionar labels numéricos por nível (0, 0.5, 1, 3, 6, 9, 12 km)
+            label_lvls = [0, 500, 1000, 3000, 6000, 9000, 12000]
             for lvl in label_lvls:
                 try:
                     # Encontrar ponto mais próximo do nível
                     idx = np.abs(z_m - lvl).argmin()
-                    if np.abs(z_m[idx] - lvl) < 500: # Garantir proximidade razoável
-                        hodo_ax.text(u_kt[idx].m, v_kt[idx].m, f"{lvl//1000}", 
-                                     fontsize=11, fontweight='bold', ha='center', va='center',
-                                     bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', pad=1))
+                    if np.abs(z_m[idx] - lvl) < 600: # Tolerância levemente maior para 0.5km
+                        lbl = f"{lvl/1000:g}" if lvl > 0 else "0"
+                        hodo_ax.text(u_kt[idx].m, v_kt[idx].m, lbl, 
+                                     fontsize=10, fontweight='bold', ha='center', va='center',
+                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
                 except: pass
             
-            if not np.isnan(sm_u.m):
-                hodo_ax.plot(sm_u.to('knots').m, sm_v.to('knots').m, 'ro', markersize=10, label=f'Storm Motion ({sm_label})')
+            # 5. Plotagem de Storm Motion (RM e LM)
+            try:
+                # Plot Left Mover (Red) - Prioridade no Hem. Sul
+                hodo_ax.plot(lm[0].to('knots').m, lm[1].to('knots').m, 'ro', markersize=8, label='Left Mover (LM)')
+                # Plot Right Mover (Blue)
+                hodo_ax.plot(rm[0].to('knots').m, rm[1].to('knots').m, 'bo', markersize=8, label='Right Mover (RM)')
+                hodo_ax.legend(loc='upper right', fontsize=10)
+            except: pass
             
             hodo_ax.set_aspect('equal', 'box')
-            hodo_ax.legend(loc='upper right')
+            hodo_ax.set_xlabel('knots')
 
             # Tabela de Parâmetros
             fig.subplots_adjust(bottom=0.22)
