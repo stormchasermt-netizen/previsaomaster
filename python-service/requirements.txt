@@ -8,6 +8,5 @@ requests
 Pillow
 metpy
 matplotlib
-PyQt5
 qtpy
 gunicorn
