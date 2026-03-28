@@ -21,4 +21,4 @@ RUN SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") &
 
 EXPOSE 8080
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "--workers", "1", "--threads", "8", "main:app"]

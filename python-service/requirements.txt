@@ -1,11 +1,13 @@
-fastapi
-uvicorn
-pydantic>=2.0
+Flask
+flask-cors
 pandas
 numpy
-# SHARPpy oficial (sharptab; render usa MetPy SkewT)
+# SHARPpy oficial
 sharppy @ git+https://github.com/sharppy/sharppy.git
 requests
 Pillow
 metpy
 matplotlib
+PyQt5
+qtpy
+gunicorn
