@@ -870,18 +870,17 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         widget.setAttribute(Qt.WA_DontShowOnScreen)
         widget.show()
         
-        # 3. Capturar Imagem
-        # O grab() captura o widget exatamente como ele aparece na tela
+        # Converter para Base64 (usando tempfile para máxima compatibilidade)
+        import tempfile
         pixmap = widget.grab()
-        
-        # Converter para Base64
-        byte_array = io.BytesIO()
-        img = pixmap.toImage()
-        buffer = QBuffer()
-        buffer.open(QIODevice.ReadWrite)
-        img.save(buffer, "PNG")
-        
-        b64 = base64.b64encode(buffer.data()).decode('utf-8')
+        tmp_path = os.path.join(tempfile.gettempdir(), "sounding_render.png")
+        pixmap.save(tmp_path, "PNG")
+        with open(tmp_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode('utf-8')
+        try:
+            os.remove(tmp_path)
+        except:
+            pass
         
         # Limpar
         widget.deleteLater()

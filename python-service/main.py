@@ -57,13 +57,18 @@ def process():
     layout_config = data.get('layout_config')
     latitude = data.get('latitude')
 
-    result = process_csv_content(
-        csv_text,
-        image_title=title,
-        generate_image=generate_image,
-        layout_config=layout_config,
-        latitude=latitude
-    )
+    try:
+        result = process_csv_content(
+            csv_text,
+            image_title=title,
+            generate_image=generate_image,
+            layout_config=layout_config,
+            latitude=latitude
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
     
     return jsonify(result)
 
