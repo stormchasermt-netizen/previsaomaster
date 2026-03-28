@@ -47,6 +47,7 @@ RUN SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])") 
 ENV QT_API=pyqt5
 ENV QT_QPA_PLATFORM=offscreen
 ENV PYQTGRAPH_QT_LIB=PyQt5
+ENV PYTHONPATH=/usr/lib/python3/dist-packages
 ENV XDG_RUNTIME_DIR=/tmp/runtime-root
 
 EXPOSE 8080
