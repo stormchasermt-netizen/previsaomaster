@@ -1,11 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { processCSVContent } from '@/lib/soundingUtils';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export async function POST(req: NextRequest) {
   try {
-    const { csvUrl, isAverage, csvUrls, generateImage, imageTitle } = await req.json();
+    const { csvUrl, isAverage, csvUrls, generateImage, imageTitle, latitude, nativeSpcLayout } = await req.json();
 
-    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'https://sounding-engine-303740989273.us-central1.run.app';
+    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'http://127.0.0.1:8095';
+
+    // Buscar Layout Customizado no Firestore
+    let layoutConfig = null;
+    if (db) {
+      try {
+        const layoutDoc = await getDoc(doc(db, 'app_configs', 'sounding_layout'));
+        if (layoutDoc.exists()) {
+          layoutConfig = layoutDoc.data().layout;
+          console.log("Layout v6.1 recuperado para processamento global!");
+        }
+      } catch (err) {
+        console.error("Erro ao buscar layout no Firestore (API):", err);
+      }
+    }
 
     if (isAverage) {
       if (!csvUrls || csvUrls.length === 0) {
@@ -33,7 +48,14 @@ export async function POST(req: NextRequest) {
       const response = await fetch(`${pythonServiceUrl}/api/process-sounding`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvUrl, generateImage, imageTitle })
+        body: JSON.stringify({ 
+          csvUrl, 
+          generateImage, 
+          imageTitle, 
+          latitude, 
+          nativeSpcLayout,
+          layout_config: layoutConfig 
+        })
       });
       
       if (!response.ok) {

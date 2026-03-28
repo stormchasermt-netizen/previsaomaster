@@ -15,6 +15,8 @@ export interface PythonSoundingData {
     STP_0_500m: number;
   };
   base64_img?: string;
+  /** Graus: negativo = hemisfério sul (usado em SHARPpy / flip_barb MetPy). */
+  site_latitude?: number;
 }
 
 export function SkewTChart({ data, meanData }: { data?: PythonSoundingData, meanData?: any }) {

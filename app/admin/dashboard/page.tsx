@@ -87,7 +87,26 @@ export default function AdminDashboardPage() {
       const result = await res.json();
       
       if (result.success) {
-        setActiveData(result.data);
+        // Normalize indices for frontend (lowercase from Python to CamelCase)
+        const normalizedData = {
+          ...result.data,
+          indices: result.data.indices ? {
+            mlCAPE: result.data.indices.mlcape ?? 0,
+            mlLCL: result.data.indices.mllcl ?? 0,
+            CAPE03ml: result.data.indices['3cape'] ?? 0,
+            EFFshear: result.data.indices.eff_shear ?? 0,
+            Shr_0_500m: result.data.indices.shr_0_500m ?? 0,
+            srh_0_1km: result.data.indices.srh_0_1km ?? 0,
+            srh_0_3km: result.data.indices.srh_0_3km ?? 0,
+            STP_0_1km: result.data.indices.stp_0_1km ?? 0,
+            STP_0_500m: result.data.indices.stp_0_500m ?? 0,
+            scp: result.data.indices.scp ?? 0,
+            stp: result.data.indices.stp ?? 0,
+            pw: result.data.indices.pw ?? 0,
+            dcape: result.data.indices.dcape ?? 0
+          } : {}
+        };
+        setActiveData(normalizedData);
         addToast('Sondagem processada com sucesso!', 'success');
       } else {
         addToast('Erro: ' + (result.error || 'Falha no processamento, tente novamente.'), 'error');
@@ -124,7 +143,26 @@ export default function AdminDashboardPage() {
           throw new Error(result.error || 'Falha no processo backend.');
       }
 
-      const processedObjList: PythonSoundingData[] = result.data;
+      const rawProcessedObjList = result.data;
+      const processedObjList: PythonSoundingData[] = rawProcessedObjList.map((d: any) => ({
+        ...d,
+        indices: d.indices ? {
+          mlCAPE: d.indices.mlcape ?? 0,
+          mlLCL: d.indices.mllcl ?? 0,
+          CAPE03ml: d.indices['3cape'] ?? 0,
+          EFFshear: d.indices.eff_shear ?? 0,
+          Shr_0_500m: d.indices.shr_0_500m ?? 0,
+          srh_0_1km: d.indices.srh_0_1km ?? 0,
+          srh_0_3km: d.indices.srh_0_3km ?? 0,
+          STP_0_1km: d.indices.stp_0_1km ?? 0,
+          STP_0_500m: d.indices.stp_0_500m ?? 0,
+          scp: d.indices.scp ?? 0,
+          stp: d.indices.stp ?? 0,
+          pw: d.indices.pw ?? 0,
+          dcape: d.indices.dcape ?? 0
+        } : {}
+      }));
+      
       setAllSoundingsData(processedObjList);
 
       // Calculando o Mean Profile no Frontend
@@ -293,8 +331,8 @@ export default function AdminDashboardPage() {
                     </div>
                     
                     {currentDisplay.base64_img && !currentDisplay.base64_img.startsWith("ERROR:") ? (
-                      <div className="w-full bg-slate-50 rounded-xl overflow-hidden shadow-inner flex justify-center items-center min-h-[600px] border border-slate-300">
-                        <img src={currentDisplay.base64_img} alt="Professional Skew-T" className="w-full h-auto object-contain max-h-[95vh] drop-shadow-2xl" />
+                      <div className="w-full bg-slate-200 rounded-xl overflow-hidden shadow-inner flex justify-center items-center min-h-[600px] border border-slate-400">
+                        <img src={currentDisplay.base64_img} alt="Professional Skew-T" className="w-full h-auto object-contain max-h-[95vh]" />
                       </div>
                     ) : (
                       <div className="space-y-8">
@@ -312,8 +350,8 @@ export default function AdminDashboardPage() {
                                <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><TrendingUp className="w-4 h-4"/> Hodógrafa</h4>
                                <div className="bg-slate-50 aspect-square rounded-xl relative p-2 overflow-hidden shadow-inner">
                                  <HodographChart 
-                                   data={currentDisplay.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))} 
-                                   backgroundData={averageData ? allSoundingsData.map(d => d.profile.filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))) : undefined}
+                                   data={(currentDisplay.profile || []).filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))} 
+                                   backgroundData={averageData ? allSoundingsData.map(d => (d.profile || []).filter(p => p.u !== null && p.height <= 12100).map(p => ({ u: p.u, v: p.v, height: p.height }))) : undefined}
                                  />
                                </div>
                            </div>
