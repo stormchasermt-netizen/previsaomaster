@@ -74,6 +74,11 @@ export default function Home() {
                         <Radio className="w-5 h-5" /> Modo Ao Vivo
                     </button>
                 </Link>
+                <Link href="/sondagem">
+                    <button className="bg-black text-white px-8 py-4 rounded-full font-bold flex items-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.15)] group border-2 border-cyan-500/50">
+                        <CloudLightning className="w-5 h-5 text-cyan-400" /> Sondagem (Sharppy)
+                    </button>
+                </Link>
             </div>
         </motion.div>
 

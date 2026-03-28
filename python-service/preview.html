@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sounding Designer v8.0 — Preview</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 1.6em;
+            margin-bottom: 16px;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0,212,255,0.3);
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .controls input[type="file"] {
+            display: none;
+        }
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff, #0066ff);
+            color: white;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,212,255,0.4); }
+        .btn-secondary {
+            background: #2a2a4a;
+            color: #ccc;
+            border: 1px solid #444;
+        }
+        .btn-secondary:hover { background: #3a3a5a; }
+        .status {
+            margin-bottom: 12px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+        }
+        .status.loading { display: block; background: #1a3a5a; color: #00d4ff; }
+        .status.error { display: block; background: #5a1a1a; color: #ff4444; }
+        .status.success { display: block; background: #1a5a2a; color: #44ff88; }
+        .preview-container {
+            background: white;
+            border-radius: 12px;
+            padding: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            max-width: 95vw;
+            overflow: auto;
+        }
+        .preview-container img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        .no-image {
+            padding: 80px 40px;
+            text-align: center;
+            color: #666;
+            font-size: 16px;
+        }
+        .indices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
+            margin-top: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+        .idx-card {
+            background: #2a2a4a;
+            border-radius: 8px;
+            padding: 10px 14px;
+            border-left: 3px solid #00d4ff;
+        }
+        .idx-card .label { font-size: 11px; color: #888; text-transform: uppercase; }
+        .idx-card .value { font-size: 18px; font-weight: 700; color: #fff; }
+    </style>
+</head>
+<body>
+    <h1>🌪️ Sounding Designer v8.0 — SPC Preview</h1>
+
+    <div class="controls">
+        <label class="btn btn-primary" for="csvInput">📂 Carregar CSV</label>
+        <input type="file" id="csvInput" accept=".csv">
+        <input type="text" id="titleInput" placeholder="Título do Sounding" 
+               style="padding:10px 16px; border-radius:8px; border:1px solid #444; background:#2a2a4a; color:#eee; font-size:14px; width:250px;"
+               value="Sounding Designer v8.0">
+        <button class="btn btn-primary" onclick="processCSV()">⚡ Gerar Preview</button>
+        <button class="btn btn-secondary" onclick="loadSedenova()">📋 Usar sedenova.csv</button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="preview-container">
+        <div id="preview">
+            <div class="no-image">Carregue um CSV ou clique em "Usar sedenova.csv" para gerar o preview</div>
+        </div>
+    </div>
+
+    <div id="indicesGrid" class="indices-grid"></div>
+
+    <script>
+        const API = 'http://127.0.0.1:9090/process';
+        let currentCSV = '';
+
+        document.getElementById('csvInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                currentCSV = evt.target.result;
+                setStatus('success', `CSV carregado: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+                processCSV();
+            };
+            reader.readAsText(file);
+        });
+
+        async function loadSedenova() {
+            setStatus('loading', '⏳ Carregando sedenova.csv...');
+            try {
+                const resp = await fetch('../sedenova.csv');
+                currentCSV = await resp.text();
+                document.getElementById('titleInput').value = 'SEDENOVA - SHARPpy v8.0';
+                setStatus('success', 'sedenova.csv carregado!');
+                processCSV();
+            } catch (err) {
+                setStatus('error', 'Erro ao carregar sedenova.csv: ' + err.message);
+            }
+        }
+
+        async function processCSV() {
+            if (!currentCSV) {
+                setStatus('error', 'Nenhum CSV carregado!');
+                return;
+            }
+
+            const title = document.getElementById('titleInput').value || 'Sounding';
+            setStatus('loading', '⏳ Processando sondagem com SHARPpy v8.0...');
+
+            try {
+                const resp = await fetch(API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ csv: currentCSV, title: title })
+                });
+
+                const data = await resp.json();
+
+                if (data.error) {
+                    setStatus('error', '❌ Erro: ' + data.error);
+                    return;
+                }
+
+                // Show image
+                const img = document.createElement('img');
+                img.src = data.base64_img;
+                img.alt = 'Sounding Preview';
+                const preview = document.getElementById('preview');
+                preview.innerHTML = '';
+                preview.appendChild(img);
+
+                // Show indices
+                if (data.indices) {
+                    renderIndices(data.indices);
+                }
+
+                setStatus('success', '✅ Preview gerado com sucesso!');
+
+            } catch (err) {
+                setStatus('error', '❌ Erro de conexão: ' + err.message + ' — Verifique se o backend está rodando na porta 8095');
+            }
+        }
+
+        function renderIndices(indices) {
+            const grid = document.getElementById('indicesGrid');
+            grid.innerHTML = '';
+            const highlights = ['SBCAPE','MLCAPE','MUCAPE','SRH 500','SRH 1km','SRH 3km',
+                               'Shear 6km','STP fix','STP cin','STP 0-500m','SHIP','Supercell (LM)',
+                               'Critical Angle','PW','DCAPE','Sfc-3km Lapse','3-6km Lapse'];
+            for (const key of highlights) {
+                if (indices[key] !== undefined) {
+                    const card = document.createElement('div');
+                    card.className = 'idx-card';
+                    const val = typeof indices[key] === 'number' ? 
+                        (Number.isInteger(indices[key]) ? indices[key] : indices[key].toFixed(2)) : indices[key];
+                    card.innerHTML = `<div class="label">${key}</div><div class="value">${val}</div>`;
+                    grid.appendChild(card);
+                }
+            }
+        }
+
+        function setStatus(type, msg) {
+            const el = document.getElementById('status');
+            el.className = 'status ' + type;
+            el.textContent = msg;
+        }
+    </script>
+</body>
+</html>
