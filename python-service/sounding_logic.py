@@ -13,15 +13,11 @@ import platform
 import pandas as pd
 import numpy as np
 
-# SHARPpy imports (devem vir depois de configurar o Qt)
-import sharppy.sharptab as tab
-import sharppy.io.spc_decoder as spc_decoder
-from sutils.config import Config
-
 # PyQt5 / Headless
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QImage, QPainter, QPolygonF, QColor, QPen, QBrush
 from PyQt5.QtCore import Qt, QPointF, QRect, QPoint, QBuffer, QIODevice
+
 
 # Fix para o erro: TypeError: argument 1 has unexpected type 'numpy.float64'
 # O SHARPpy calcula coordenadas em numpy.float64, mas o PyQt5 (C++) exige float nativo ou int.
@@ -94,6 +90,14 @@ def _patch_qt(cls, method_name):
 
 for m in ['drawLine', 'drawRect', 'drawEllipse', 'drawPoint', 'drawText', 'drawPolygon', 'drawPolyline', 'drawLines']:
     _patch_qt(QPainter, m)
+
+# ═══════════════════════════════════════════
+# AGORA SIM PODEMOS IMPORTAR O SHARPPY 
+# (pois todos os patches do PyQt5 já estão no lugar)
+# ═══════════════════════════════════════════
+import sharppy.sharptab as tab
+import sharppy.io.spc_decoder as spc_decoder
+from sutils.config import Config
 
 # --- THEME OVERRIDER (CLASSIC BLACK + CUSTOM HODO) ---
 from sharppy.viz import thermo, kinematics, analogues, stp, hodo, watch, skew, srwinds
@@ -804,8 +808,10 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
     Isso garante o layout idêntico ao SPC.
     """
     try:
+        app = get_qapp()
         # 1. Carregar Dados
         df = pd.read_csv(io.StringIO(csv_text))
+
         col_map = {
             'Pressure': 'pres', 'pressure': 'pres',
             'Altitude': 'hght', 'altitude': 'hght',

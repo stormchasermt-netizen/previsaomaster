@@ -27,10 +27,21 @@ def get_csv_text(data):
     csv_url = data.get('csvUrl', '')
     
     if not csv_text and csv_url:
+        if csv_url.startswith('gs://'):
+            import urllib.parse
+            # Conveter formato gs://bucket_name/caminho/do/arquivo
+            parts = csv_url.replace('gs://', '').split('/', 1)
+            if len(parts) == 2:
+                bucket, path = parts
+                encoded_path = urllib.parse.quote(path, safe='')
+                csv_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encoded_path}?alt=media"
+
         try:
             resp = requests.get(csv_url, timeout=10)
             if resp.ok:
                 csv_text = resp.text
+            else:
+                print(f"Erro HTTP {resp.status_code} ao baixar CSV: {resp.text}")
         except Exception as e:
             print(f"Erro ao baixar CSV da URL: {e}")
             
