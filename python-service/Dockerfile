@@ -1,4 +1,4 @@
-FROM python:3.9-slim-bookworm
+FROM python:3.9-bookworm
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     wget curl libsm6 libxext6 libxrender-dev libgl1-mesa-glx \
     libfontconfig1 libx11-6 libxcb1 libxkbcommon-x11-0 libdbus-1-3 \
-    libnss3 libasound2 libxtst6 libxss1 libxrandr2 \
+    libnss3 libasound2 libxtst6 libxss1 libxrandr2 libegl1 libopengl0 \
     && rm -rf /var/lib/apt/lists/*
     
 RUN pip install --no-cache-dir -r requirements.txt
