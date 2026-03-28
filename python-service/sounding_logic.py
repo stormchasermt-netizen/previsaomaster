@@ -49,6 +49,37 @@ try:
 except:
     pass
 
+# Patch especial para QFont: QFont(family, pointSize, weight, italic)
+# O SHARPpy passa numpy.float64 como pointSize/weight, mas o Qt exige int.
+from PyQt5.QtGui import QFont as _QFont_orig_class
+_QFont_orig_init = _QFont_orig_class.__init__
+def _qfont_patched_init(self, *args, **kwargs):
+    new_args = []
+    for i, a in enumerate(args):
+        if i == 0:
+            # Primeiro arg é family (str) ou QFont - deixar como está
+            new_args.append(a)
+        elif isinstance(a, (np.float64, np.float32, np.integer, float)):
+            new_args.append(int(round(float(a))))
+        else:
+            new_args.append(a)
+    new_kwargs = {}
+    for k, v in kwargs.items():
+        if isinstance(v, (np.float64, np.float32, np.integer, float)):
+            new_kwargs[k] = int(round(float(v)))
+        else:
+            new_kwargs[k] = v
+    try:
+        _QFont_orig_init(self, *new_args, **new_kwargs)
+    except TypeError:
+        # Fallback: tentar sem args extras
+        try:
+            _QFont_orig_init(self, *new_args[:1])
+        except:
+            _QFont_orig_init(self)
+_QFont_orig_class.__init__ = _qfont_patched_init
+
+
 def _patch_qt(cls, method_name):
     orig = getattr(cls, method_name)
     def fixed(self, *args):
