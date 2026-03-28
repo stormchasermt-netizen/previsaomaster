@@ -11,7 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender-dev \
     libgl1-mesa-glx \
+    fontconfig \
+    fonts-liberation \
+    fonts-dejavu \
     libfontconfig1 \
+    libfontconfig1-dev \
     libx11-6 \
     libxcb1 \
     libxkbcommon-x11-0 \
@@ -33,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb-xkb1 \
     && rm -rf /var/lib/apt/lists/*
 
+
 COPY requirements.txt .
 
 # Adicionar PyQt5 explicitamente para o PIP
@@ -50,6 +55,8 @@ ENV QT_API=pyqt5
 ENV QT_QPA_PLATFORM=offscreen
 ENV PYQTGRAPH_QT_LIB=PyQt5
 ENV XDG_RUNTIME_DIR=/tmp/runtime-root
+ENV PANGOCAIRO_BACKEND=fontconfig
+
 
 EXPOSE 8080
 

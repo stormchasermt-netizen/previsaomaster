@@ -829,7 +829,12 @@ def get_qapp():
     if _qapp is None:
         import sys
         _qapp = QApplication.instance() or QApplication(sys.argv)
+        # Forçar fonte padrão para sistemas Linux que não tem as fontes Windows
+        from PyQt5.QtGui import QFont
+        font = QFont("Liberation Sans", 10)
+        _qapp.setFont(font)
     return _qapp
+
 
 def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
     """
@@ -902,12 +907,17 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         # Forçar o tamanho (SPC padrão é 1180x800 como visto no Windows em SPCWindow.py)
         width, height = 1180, 800
         widget.resize(width, height)
+        widget.setFixedSize(width, height)
         widget.setAttribute(Qt.WA_DontShowOnScreen)
         widget.show()
+        
+        # O SPCWidget às vezes precisa de um pequeno processamento de eventos para renderizar textos
+        get_qapp().processEvents()
         
         # Converter para Base64 (usando tempfile para máxima compatibilidade)
         import tempfile
         pixmap = widget.grab()
+
         tmp_path = os.path.join(tempfile.gettempdir(), "sounding_render.png")
         pixmap.save(tmp_path, "PNG")
         with open(tmp_path, "rb") as f:
