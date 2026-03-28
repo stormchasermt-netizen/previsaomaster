@@ -1,8 +1,10 @@
-"""
-Sounding Designer v9.1 — Cloud Engine Hub (SHARPpy Native Headless)
-Compatível com Admin Dashboard: Processa CSVs individuais e médias.
-"""
 import os
+
+# Forçar Qt Headless e Bindings ANTES de qualquer outro import
+os.environ["QT_API"] = "pyqt5"
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["PYQTGRAPH_QT_LIB"] = "PyQt5"
+
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS

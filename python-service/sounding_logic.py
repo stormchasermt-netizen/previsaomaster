@@ -1,8 +1,10 @@
-"""
-Sounding Designer v9.0 — Motor SHARPpy Native (SPC Gold Standard)
-Renderiza o Skew-T e Hodógrafo usando os componentes originais do SHARPpy via PyQt5.
-"""
 import os
+
+# Forçar Qt Headless e Bindings ANTES de qualquer outro import
+os.environ["QT_API"] = "pyqt5"
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["PYQTGRAPH_QT_LIB"] = "PyQt5"
+
 import io
 import base64
 import datetime
@@ -11,7 +13,7 @@ import platform
 import pandas as pd
 import numpy as np
 
-# SHARPpy imports
+# SHARPpy imports (devem vir depois de configurar o Qt)
 import sharppy.sharptab as tab
 import sharppy.io.spc_decoder as spc_decoder
 from sutils.config import Config
