@@ -20,6 +20,7 @@ RUN SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") &
     cp custom_skew.py $SITE_PACKAGES/sharppy/viz/skew.py
 
 
+ENV QT_API=pyqt5
 ENV QT_QPA_PLATFORM=offscreen
 ENV XDG_RUNTIME_DIR=/tmp/runtime-root
 
