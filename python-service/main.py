@@ -1,9 +1,16 @@
 import os
+import sys
 
 # Forçar Qt Headless e Bindings ANTES de qualquer outro import
 os.environ["QT_API"] = "pyqt5"
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["PYQTGRAPH_QT_LIB"] = "PyQt5"
+os.environ["XDG_RUNTIME_DIR"] = "/tmp/runtime-root"
+
+# Inicializar QApplication ANTES de qualquer import do SHARPpy
+# O Qt exige que QApp exista na thread principal antes de criar widgets
+from PyQt5.QtWidgets import QApplication
+_qapp = QApplication.instance() or QApplication(sys.argv)
 
 import requests
 from flask import Flask, request, jsonify, send_from_directory
@@ -12,6 +19,7 @@ from sounding_logic import process_csv_content
 
 app = Flask(__name__)
 CORS(app)
+
 
 def get_csv_text(data):
     """Extrai o texto do CSV seja via 'csv' (texto direto) ou 'csvUrl' (download)."""
