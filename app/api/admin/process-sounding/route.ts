@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
   try {
     const { csvUrl, isAverage, csvUrls, generateImage, imageTitle, latitude, nativeSpcLayout } = await req.json();
 
-    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'http://127.0.0.1:8095';
+    const pythonServiceUrl = process.env.PYTHON_ENGINE_URL || 'https://sounding-engine-303740989273.us-central1.run.app';
 
     // Buscar Layout Customizado no Firestore
     let layoutConfig = null;
