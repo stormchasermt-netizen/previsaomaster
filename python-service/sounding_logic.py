@@ -106,7 +106,19 @@ def _patch_qt(cls, method_name):
     setattr(cls, method_name, fixed)
 
 for m in ['drawLine', 'drawRect', 'drawEllipse', 'drawPoint', 'drawText', 'drawPolygon', 'drawPolyline', 'drawLines']:
-    _patch_qt(QPainter, m)
+    try:
+        _patch_qt(QPainter, m)
+    except: pass
+
+for m in ['setPixelSize', 'setPointSize']:
+    try:
+        _patch_qt(_QFont_orig_class, m)
+    except: pass
+
+from PyQt5.QtGui import QPen
+try:
+    _patch_qt(QPen, 'setWidth')
+except: pass
 
 # ═══════════════════════════════════════════
 # AGORA SIM PODEMOS IMPORTAR O SHARPPY 
