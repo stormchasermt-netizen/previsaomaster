@@ -767,14 +767,13 @@ def get_qapp():
         _qapp = QApplication.instance() or QApplication(sys.argv)
     return _qapp
 
-def render_to_base64(csv_text, title="Sounding", is_hs=True):
+def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
     """
-    Renderiza os componentes nativos do SHARPpy para uma imagem Base64.
+    Novo motor v9.0: Usa o SPCWidget (nativo) em vez de compor painéis manualmente.
+    Isso garante o layout idêntico ao SPC.
     """
     try:
-        app = get_qapp()
-        
-        # 1. Parse CSV para Profile do SHARPpy
+        # 1. Carregar Dados
         df = pd.read_csv(io.StringIO(csv_text))
         col_map = {
             'Pressure': 'pres', 'pressure': 'pres',
@@ -795,7 +794,14 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True):
         ws = df['wspd'].astype(float).tolist()
         
         # Forçar latitude negativa para Hemisfério Sul se solicitado
-        lat = -25.0 if is_hs else 40.0 
+        lat = -25.0
+        if latitude is not None:
+            try:
+                lat = float(latitude)
+            except:
+                lat = -25.0
+        elif not is_hs:
+            lat = 40.0
         curr_date = datetime.datetime.now()
         
         prof = tab.profile.create_profile(
@@ -849,8 +855,33 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True):
         # Limpar
         widget.deleteLater()
         
+        # Extrair índices úteis para o dashboard também (além da imagem)
+        indices_dict = {}
+        try:
+            # Pegar alguns índices básicos do perfil para o frontend
+            indices_dict = {
+                'mlcape': float(prof.mlcape),
+                'mllcl': float(prof.mllcl),
+                '3cape': float(prof.ml3km),
+                'eff_shear': float(prof.ebwd),
+                'shr_0_500m': float(prof.sfc_500m_shear[1]),
+                'srh_0_1km': float(prof.srh1km[0]),
+                'srh_0_3km': float(prof.srh3km[0]),
+                'stp_0_1km': float(prof.stp_fixed),
+                'stp_0_500m': float(prof.stp_fixed), # Fallback
+                'pw': float(prof.pw),
+                'dcape': float(prof.dcape)
+            }
+        except:
+            pass
+
         return {
             'base64_img': f'data:image/png;base64,{b64}',
+            'data': {
+                'indices': indices_dict,
+                'profile': [] # O dashboard usa a imagem, opcional retornar perfil
+            },
+            'success': True,
             'status': 'success'
         }
 
@@ -861,15 +892,13 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True):
             'status': 'error'
         }
 
-def process_csv_content(csv_text, image_title="Sounding", generate_image=True, layout_config=None):
+def process_csv_content(csv_text, image_title="Sounding", generate_image=True, layout_config=None, latitude=None):
     """Router para a versão nativa."""
     # Como o usuário quer Nativo, ignoramos cálculos manuais e usamos o motor do widget
     if not generate_image:
-        # Se quiser apenas índices, ainda retornamos o dict do profile do SHARPpy
-        # mas aqui focaremos na imagem "Gold Standard" solicitada
         return {'error': 'Apenas renderização nativa suportada nesta versão.'}
         
-    return render_to_base64(csv_text, title=image_title, is_hs=True)
+    return render_to_base64(csv_text, title=image_title, is_hs=True, latitude=latitude)
 
 # Helper para o test_render.py
 def render_to_file(csv_text, output_path, title="Sounding"):
