@@ -1,16 +1,9 @@
-FROM debian:bookworm-slim
-
-# Evitar prompts durante a instalação
-ENV DEBIAN_FRONTEND=noninteractive
+FROM python:3.11-bookworm
 
 WORKDIR /app
 
-# Instalar Python, Pip e PyQt5 nativos do sistema
+# Instalar TODAS as bibliotecas de sistema necessárias para o PyQt5 Headless
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    python3-setuptools \
-    python3-pyqt5 \
     git \
     wget \
     curl \
@@ -30,27 +23,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     libegl1 \
     libopengl0 \
+    libxcb-xinerama0 \
+    libxcb-icccm4 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
+    libxcb-render-util0 \
+    libxcb-shape0 \
+    libxcb-util1 \
+    libxcb-xkb1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-# Instalar dependências via Pip garantindo que usem o Python3 do sistema
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+# Adicionar PyQt5 explicitamente para o PIP
+RUN pip install --no-cache-dir PyQt5==5.15.10 qtpy requests flask flask-cors pandas numpy gunicorn Pillow metpy matplotlib
+RUN pip install --no-cache-dir git+https://github.com/sharppy/sharppy.git
 
 COPY . .
 
 # Sobrescrever skew.py nativo do SHARPpy com nossa versão customizada local
-RUN SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
+RUN SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])") && \
     cp custom_skew.py $SITE_PACKAGES/sharppy/viz/skew.py
 
-# Configurações de ambiente para o motor v9.2
+# Configurações de ambiente Headless
 ENV QT_API=pyqt5
 ENV QT_QPA_PLATFORM=offscreen
 ENV PYQTGRAPH_QT_LIB=PyQt5
-ENV PYTHONPATH=/usr/lib/python3/dist-packages
 ENV XDG_RUNTIME_DIR=/tmp/runtime-root
 
 EXPOSE 8080
 
-# Executar usando o Python3 do sistema
-CMD ["python3", "-m", "gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "--workers", "1", "--threads", "8", "main:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "--workers", "1", "--threads", "8", "main:app"]
