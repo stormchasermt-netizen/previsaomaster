@@ -45,6 +45,23 @@ try:
 except:
     pass
 
+# Patch especial para widgets que recusam kwargs nomeados nativos (ex: exclusive=True)
+# O PyQt5 causa crash: TypeError: 'exclusive' is an unknown keyword argument
+from PyQt5.QtWidgets import QActionGroup, QButtonGroup
+def patch_exclusive_kwarg(cls):
+    try:
+        orig_init = cls.__init__
+        def new_init(self, *args, **kwargs):
+            exclusive_mode = kwargs.pop('exclusive', None)
+            orig_init(self, *args, **kwargs)
+            if exclusive_mode is not None and hasattr(self, 'setExclusive'):
+                self.setExclusive(exclusive_mode)
+        cls.__init__ = new_init
+    except: pass
+
+patch_exclusive_kwarg(QActionGroup)
+patch_exclusive_kwarg(QButtonGroup)
+
 # Patch especial para QFont: QFont(family, pointSize, weight, italic)
 # O SHARPpy passa numpy.float64 como pointSize/weight, mas o Qt exige int.
 from PyQt5.QtGui import QFont as _QFont_orig_class
