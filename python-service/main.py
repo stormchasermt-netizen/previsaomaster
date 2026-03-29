@@ -105,18 +105,28 @@ def process_average():
         return jsonify({'success': False, 'error': 'Nenhuma lista de URLs fornecida.'}), 400
 
     processed_list = []
+    all_profiles = []
     for url in csv_urls:
         try:
-            resp = requests.get(url, timeout=5)
+            resp = requests.get(url, timeout=30)
             if resp.ok:
-                # Processa apenas os dados (sem imagem para média rápida)
-                res = process_csv_content(resp.text, generate_image=False)
-                if res.get('success'):
-                    processed_list.append(res.get('data'))
-        except:
+                res = process_csv_content(resp.text, generate_image=True)
+                if res.get('status') == 'success' or res.get('success'):
+                    res_data = res.get('data') or {}
+                    processed_list.append(res_data)
+                    if res_data.get('profile'):
+                        all_profiles.append(res_data.get('profile'))
+        except Exception:
             continue
 
-    return jsonify({'success': True, 'data': processed_list})
+    from sounding_logic import render_ensemble_hodograph
+    ensemble_res = render_ensemble_hodograph(all_profiles)
+    
+    return jsonify({
+        'success': True, 
+        'data': processed_list,
+        'base64_img': ensemble_res.get('base64_img') if ensemble_res.get('status') == 'success' else None
+    })
 
 if __name__ == '__main__':
     # Porta padrão para execução local (Next.js route as vezes aponta para 9090)

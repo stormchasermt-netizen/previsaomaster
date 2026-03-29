@@ -8,6 +8,7 @@ import base64
 import datetime
 import traceback
 import platform
+import math
 import pandas as pd
 import numpy as np
 
@@ -783,7 +784,7 @@ def get_qapp():
         _qapp = QApplication.instance() or QApplication(sys.argv)
     return _qapp
 
-def render_to_base64(csv_text, title="Sounding", is_hs=True):
+def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
     """
     Renderiza os componentes nativos do SHARPpy para uma imagem Base64.
     """
@@ -810,8 +811,14 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True):
         wd = df['wdir'].astype(float).tolist()
         ws = df['wspd'].astype(float).tolist()
         
-        # Forçar latitude negativa para Hemisfério Sul se solicitado
-        lat = -25.0 if is_hs else 40.0 
+        # Latitude: pedido explícito, ou hemisfério sul por defeito
+        if latitude is not None:
+            try:
+                lat = float(latitude)
+            except (TypeError, ValueError):
+                lat = -25.0 if is_hs else 40.0
+        else:
+            lat = -25.0 if is_hs else 40.0
         curr_date = datetime.datetime.now()
         
         prof = tab.profile.create_profile(
@@ -882,6 +889,29 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True):
             }
         except Exception:
             pass
+
+        profile_out = []
+        try:
+            for i in range(len(df)):
+                pr = float(df['pres'].iloc[i])
+                hg = float(df['hght'].iloc[i])
+                tm = float(df['temp'].iloc[i])
+                dp = float(df['dwpt'].iloc[i])
+                wdir = float(df['wdir'].iloc[i])
+                wspd = float(df['wspd'].iloc[i])
+                rad = math.radians(wdir)
+                u = -wspd * math.sin(rad)
+                v = -wspd * math.cos(rad)
+                profile_out.append({
+                    'pressure': pr,
+                    'height': hg,
+                    'temp': tm,
+                    'dwpt': dp,
+                    'u': u,
+                    'v': v,
+                })
+        except Exception:
+            profile_out = []
         
         return {
             'base64_img': f'data:image/png;base64,{b64}',
@@ -889,7 +919,7 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True):
             'success': True,
             'data': {
                 'indices': indices_dict,
-                'profile': [],
+                'profile': profile_out,
             },
         }
 
@@ -901,7 +931,121 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True):
             'success': False,
         }
 
-def process_csv_content(csv_text, image_title="Sounding", generate_image=True, layout_config=None):
+import matplotlib
+matplotlib.use('Agg') # Headless mode
+import matplotlib.pyplot as plt
+from metpy.plots import Hodograph
+from metpy.units import units
+
+def render_ensemble_hodograph(profiles_list):
+    """
+    Gera uma Hodógrafa de Conjunto (Ensemble) a partir de uma lista de perfis.
+    Cada perfil é uma lista de dicts com 'height', 'u', 'v'.
+    Retorna dicionário com 'base64_img'.
+    """
+    try:
+        if not profiles_list:
+            return {'status': 'error', 'error': 'Nenhum perfil para média.'}
+
+        # Níveis de interpolação padrão (0 a 12km, a cada 100m)
+        target_h = np.linspace(0, 12000, 121)
+        standardized_profiles = []
+
+        for prof in profiles_list:
+            if not prof: continue
+            h = np.array([p['height'] for p in prof])
+            u = np.array([p['u'] for p in prof])
+            v = np.array([p['v'] for p in prof])
+            
+            # Remover duplicatas de altura para interpolação
+            _, unique_idx = np.unique(h, return_index=True)
+            h = h[unique_idx]
+            u = u[unique_idx]
+            v = v[unique_idx]
+            
+            # Interpolar para níveis padrão
+            u_interp = np.interp(target_h, h, u, left=np.nan, right=np.nan)
+            v_interp = np.interp(target_h, h, v, left=np.nan, right=np.nan)
+            standardized_profiles.append({'u': u_interp, 'v': v_interp})
+
+        if not standardized_profiles:
+            return {'status': 'error', 'error': 'Dados insuficientes para interpolação.'}
+
+        # Calcular Média
+        all_u = np.array([p['u'] for p in standardized_profiles])
+        all_v = np.array([p['v'] for p in standardized_profiles])
+        mean_u = np.nanmean(all_u, axis=0)
+        mean_v = np.nanmean(all_v, axis=0)
+
+        # Plotar
+        fig = plt.figure(figsize=(8, 8), dpi=100)
+        ax = fig.add_subplot(1, 1, 1)
+        hodo = Hodograph(ax, component_range=80.)
+        
+        # Background: Range Rings & Axes
+        hodo.add_grid(increment=10, color='#EEEEEE', linestyle='--', linewidth=0.5)
+        # Customiza os anéis de 20, 40, 60 para facilitar leitura
+        for ring in [20, 40, 60]:
+            circle = plt.Circle((0, 0), ring, color='#DDDDDD', fill=False, linestyle='-', linewidth=0.8)
+            ax.add_artist(circle)
+            ax.text(ring * 0.707, ring * 0.707, f"{ring}", color='#AAAAAA', fontsize=8, ha='center', va='center')
+
+        ax.axhline(0, color='black', lw=1)
+        ax.axvline(0, color='black', lw=1)
+
+        # 1. Traços Individuais (Cinza)
+        for p in standardized_profiles:
+            ax.plot(p['u'], p['v'], color='#CCCCCC', alpha=0.3, lw=1)
+
+        # 2. Traço Médio Colorido
+        # Definir limites de segmentos (em metros)
+        # 0-0.5 (Red), 0.5-3 (Green), 3-6 (Yellow), 6-9 (Cyan), 9-12 (Purple)
+        segments = [
+            (0, 500, 'red'),
+            (500, 3000, 'green'),
+            (3000, 6000, 'yellow'),
+            (6000, 9000, 'cyan'),
+            (9000, 12000, '#FF00FF') # Purple
+        ]
+
+        # Plotar cada segmento da média
+        for start_h, end_h, color in segments:
+            mask = (target_h >= start_h) & (target_h <= end_h)
+            if np.any(mask):
+                # Inclui um ponto a mais no final para conectar os segmentos
+                next_idx = np.where(mask)[0][-1] + 1
+                if next_idx < len(target_h):
+                    mask_ext = mask.copy()
+                    mask_ext[next_idx] = True
+                    ax.plot(mean_u[mask_ext], mean_v[mask_ext], color=color, lw=4, solid_capstyle='round')
+                else:
+                    ax.plot(mean_u[mask], mean_v[mask], color=color, lw=4, solid_capstyle='round')
+
+        # Títulos e Estética
+        ax.set_title("Hodógrafa Média (Conjunto Convectivo)", color='white', pad=15, fontsize=14, fontweight='bold')
+        fig.patch.set_facecolor('#0f172a') # bg-slate-900 para combinar com site
+        ax.set_facecolor('#0f172a')
+        ax.axis('off') # Remove box externo, mantemos os eixos internos do Hodograph
+
+        # Salvar em Base64
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
+        plt.close(fig)
+        buf.seek(0)
+        b64 = base64.b64encode(buf.read()).decode('utf-8')
+        
+        return {
+            'status': 'success',
+            'base64_img': f'data:image/png;base64,{b64}',
+            'data': {
+                'indices': {}, # Média não calcula índices via este plotter
+                'profile': [{'height': h, 'u': u, 'v': v} for h, u, v in zip(target_h, mean_u, mean_v)]
+            }
+        }
+    except Exception as e:
+        return {'status': 'error', 'error': str(e), 'traceback': traceback.format_exc()}
+
+def process_csv_content(csv_text, image_title="Sounding", generate_image=True, layout_config=None, latitude=None, **_kwargs):
     """Router para a versão nativa."""
     # Como o usuário quer Nativo, ignoramos cálculos manuais e usamos o motor do widget
     if not generate_image:
@@ -909,7 +1053,7 @@ def process_csv_content(csv_text, image_title="Sounding", generate_image=True, l
         # mas aqui focaremos na imagem "Gold Standard" solicitada
         return {'error': 'Apenas renderização nativa suportada nesta versão.'}
         
-    return render_to_base64(csv_text, title=image_title, is_hs=True)
+    return render_to_base64(csv_text, title=image_title, is_hs=True, latitude=latitude)
 
 # Helper para o test_render.py
 def render_to_file(csv_text, output_path, title="Sounding"):
