@@ -83,8 +83,17 @@ def process():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e), 'trace': traceback.format_exc()}), 500
-    
-    return jsonify(result)
+
+    # Formato estável para o Next.js (success + data + base64_img no topo)
+    if result.get('status') == 'success' or result.get('success'):
+        payload = result.get('data') or {}
+        return jsonify({
+            'success': True,
+            'base64_img': result.get('base64_img'),
+            'data': payload,
+        })
+    err = result.get('error') or 'Falha no processamento'
+    return jsonify({'success': False, 'error': err, 'trace': result.get('trace')}), 500
 
 @app.route('/api/process-average-sounding', methods=['POST'])
 def process_average():

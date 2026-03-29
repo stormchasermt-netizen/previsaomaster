@@ -90,6 +90,7 @@ export default function AdminDashboardPage() {
         // Normalize indices for frontend (lowercase from Python to CamelCase)
         const normalizedData = {
           ...result.data,
+          base64_img: result.base64_img,
           indices: result.data.indices ? {
             mlCAPE: result.data.indices.mlcape ?? 0,
             mlLCL: result.data.indices.mllcl ?? 0,
@@ -331,12 +332,14 @@ export default function AdminDashboardPage() {
                     </div>
                     
                     {currentDisplay.base64_img && !currentDisplay.base64_img.startsWith("ERROR:") ? (
-                      <div className="w-full bg-white rounded-xl overflow-hidden shadow-2xl flex justify-center items-center min-h-[700px] border-4 border-slate-800">
-                        <img 
-                          src={currentDisplay.base64_img} 
-                          alt="Professional Skew-T" 
-                          className="w-full h-auto object-contain max-h-[85vh] shadow-lg" 
-                        />
+                      <div className="w-full bg-slate-900 rounded-xl overflow-hidden shadow-2xl flex flex-col items-center gap-4">
+                        <div className="w-full bg-white p-2 flex justify-center items-center border-4 border-slate-800 rounded-lg shadow-inner">
+                          <img 
+                            src={currentDisplay.base64_img} 
+                            alt="Professional Skew-T" 
+                            className="w-full h-auto object-contain max-h-[85vh]" 
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-8">
@@ -361,7 +364,7 @@ export default function AdminDashboardPage() {
                            </div>
                         </div>
                         
-                        {/* Stats Cards (Only if no integrated image) */}
+                        {/* Stats Cards (Fallback) */}
                         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
                             <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Índices de Severidade</h4>
                             {averageData ? (

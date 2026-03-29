@@ -1,30 +1,25 @@
+"""
+Sounding Designer v9.0 — Motor SHARPpy Native (SPC Gold Standard)
+Renderiza o Skew-T e Hodógrafo usando os componentes originais do SHARPpy via PyQt5.
+"""
 import os
-import sys
-
-# Bindings ANTES de qualquer outro import Qt
-os.environ["QT_API"] = "pyqt5"
-os.environ["PYQTGRAPH_QT_LIB"] = "PyQt5"
-# Offscreen é necessário em Linux headless (Docker). No Windows, o QPA offscreen costuma
-# não desenhar texto (eixos Skew-T, tabelas CAPE/SRH) — usar QPA nativo como no SHARPpy GUI.
-if os.environ.get("FORCE_QT_OFFSCREEN", "").lower() in ("1", "true", "yes"):
-    os.environ["QT_QPA_PLATFORM"] = "offscreen"
-elif sys.platform.startswith("linux"):
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 import io
 import base64
 import datetime
 import traceback
 import platform
-import time
 import pandas as pd
 import numpy as np
+
+# SHARPpy imports
+import sharppy.sharptab as tab
+import sharppy.io.spc_decoder as spc_decoder
+from sutils.config import Config
 
 # PyQt5 / Headless
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QImage, QPainter, QPolygonF, QColor, QPen, QBrush
 from PyQt5.QtCore import Qt, QPointF, QRect, QPoint, QBuffer, QIODevice
-
 
 # Fix para o erro: TypeError: argument 1 has unexpected type 'numpy.float64'
 # O SHARPpy calcula coordenadas em numpy.float64, mas o PyQt5 (C++) exige float nativo ou int.
@@ -52,54 +47,6 @@ try:
 except:
     pass
 
-# Patch especial para widgets que recusam kwargs nomeados nativos (ex: exclusive=True)
-# O PyQt5 causa crash: TypeError: 'exclusive' is an unknown keyword argument
-from PyQt5.QtWidgets import QActionGroup, QButtonGroup
-def patch_exclusive_kwarg(cls):
-    try:
-        orig_init = cls.__init__
-        def new_init(self, *args, **kwargs):
-            exclusive_mode = kwargs.pop('exclusive', None)
-            orig_init(self, *args, **kwargs)
-            if exclusive_mode is not None and hasattr(self, 'setExclusive'):
-                self.setExclusive(exclusive_mode)
-        cls.__init__ = new_init
-    except: pass
-
-patch_exclusive_kwarg(QActionGroup)
-patch_exclusive_kwarg(QButtonGroup)
-
-# Patch especial para QFont: QFont(family, pointSize, weight, italic)
-# O SHARPpy passa numpy.float64 como pointSize/weight, mas o Qt exige int.
-from PyQt5.QtGui import QFont as _QFont_orig_class
-_QFont_orig_init = _QFont_orig_class.__init__
-def _qfont_patched_init(self, *args, **kwargs):
-    new_args = []
-    for i, a in enumerate(args):
-        if i == 0:
-            # Primeiro arg é family (str) ou QFont - deixar como está
-            new_args.append(a)
-        elif isinstance(a, (np.float64, np.float32, np.integer, float)):
-            new_args.append(int(round(float(a))))
-        else:
-            new_args.append(a)
-    new_kwargs = {}
-    for k, v in kwargs.items():
-        if isinstance(v, (np.float64, np.float32, np.integer, float)):
-            new_kwargs[k] = int(round(float(v)))
-        else:
-            new_kwargs[k] = v
-    try:
-        _QFont_orig_init(self, *new_args, **new_kwargs)
-    except TypeError:
-        # Fallback: tentar sem args extras
-        try:
-            _QFont_orig_init(self, *new_args[:1])
-        except:
-            _QFont_orig_init(self)
-_QFont_orig_class.__init__ = _qfont_patched_init
-
-
 def _patch_qt(cls, method_name):
     orig = getattr(cls, method_name)
     def fixed(self, *args):
@@ -113,27 +60,7 @@ def _patch_qt(cls, method_name):
     setattr(cls, method_name, fixed)
 
 for m in ['drawLine', 'drawRect', 'drawEllipse', 'drawPoint', 'drawText', 'drawPolygon', 'drawPolyline', 'drawLines']:
-    try:
-        _patch_qt(QPainter, m)
-    except: pass
-
-for m in ['setPixelSize', 'setPointSize']:
-    try:
-        _patch_qt(_QFont_orig_class, m)
-    except: pass
-
-from PyQt5.QtGui import QPen
-try:
-    _patch_qt(QPen, 'setWidth')
-except: pass
-
-# ═══════════════════════════════════════════
-# AGORA SIM PODEMOS IMPORTAR O SHARPPY 
-# (pois todos os patches do PyQt5 já estão no lugar)
-# ═══════════════════════════════════════════
-import sharppy.sharptab as tab
-import sharppy.io.spc_decoder as spc_decoder
-from sutils.config import Config
+    _patch_qt(QPainter, m)
 
 # --- THEME OVERRIDER (CLASSIC BLACK + CUSTOM HODO) ---
 from sharppy.viz import thermo, kinematics, analogues, stp, hodo, watch, skew, srwinds
@@ -154,7 +81,7 @@ skew.drawBarb = barbs.drawBarb
 kinematics.drawBarb = barbs.drawBarb
 
 # 2. HODÓGRAFO — AGL relativo ao 1.º nível; cada cor só no intervalo [z_bot, z_top] (6–12 km roxo corta em 12 km)
-# (Não redesenhar storm motion aqui — plotData já chama drawSMV; evita linha extra.)
+# drawSMV não traça origem→tempestade; essa seta é desenhada no fim de new_draw_hodo.
 _LAYER_COLORS = (
     QColor("#9B30FF"),  # 0 – 0.5 km roxo
     QColor("#CC0000"),  # 0.5 – 1 km vermelho
@@ -230,6 +157,24 @@ def new_draw_hodo(self, qp, prof, colors, width=2):
                 x, y = self.uv_to_pix(uc, vc)
                 qp.setPen(QPen(QColor("#000000"), 1))
                 qp.drawText(int(x + 3), int(y + 3), text)
+
+    # Seta: origem (0,0) → vetor de movimento (Bunkers RM ou LM conforme use_left)
+    try:
+        rstu, rstv, lstu, lstv = self.srwind
+        sm_u, sm_v = (rstu, rstv) if not self.use_left else (lstu, lstv)
+        if tab.utils.QC(sm_u) and tab.utils.QC(sm_v):
+            cx, cy = self.uv_to_pix(0.0, 0.0)
+            sx, sy = self.uv_to_pix(sm_u, sm_v)
+            qp.setPen(QPen(self.fg_color, 2, Qt.SolidLine))
+            qp.drawLine(
+                int(round(cx)),
+                int(round(cy)),
+                int(round(sx)),
+                int(round(sy)),
+            )
+    except Exception:
+        pass
+
 
 hodo.plotHodo.draw_hodo = new_draw_hodo
 
@@ -836,71 +781,17 @@ def get_qapp():
     if _qapp is None:
         import sys
         _qapp = QApplication.instance() or QApplication(sys.argv)
-        # Offscreen + fonte inexistente = texto invisível (Helvetica/plotText depende de métricas corretas).
-        from PyQt5.QtGui import QFont, QFontInfo
-        if platform.system() == "Windows":
-            font = QFont("Segoe UI", 10)
-        elif platform.system() == "Darwin":
-            font = QFont(".AppleSystemUIFont", 10)
-        else:
-            font = QFont("Liberation Sans", 10)
-        if not QFontInfo(font).exactMatch():
-            font = QFont()
-        _qapp.setFont(font)
     return _qapp
 
-
-def _wait_spcwidget_ready(widget, app, timeout_sec=3.0):
+def render_to_base64(csv_text, title="Sounding", is_hs=True):
     """
-    Com QPA offscreen, um único processEvents() não aplica o layout: plotText/Skew-T
-    podem ter altura 0 → QFont pixel size 0 e tabelas vazias. Espera até os painéis
-    principais terem geometria válida.
-    """
-    deadline = time.monotonic() + timeout_sec
-    while time.monotonic() < deadline:
-        app.processEvents()
-        try:
-            sound = getattr(widget, "sound", None)
-            conv = getattr(widget, "convective", None)
-            if (
-                sound is not None
-                and conv is not None
-                and sound.height() > 50
-                and conv.height() > 30
-                and widget.width() > 100
-                and widget.height() > 100
-            ):
-                break
-        except Exception:
-            pass
-        time.sleep(0.015)
-    for _ in range(12):
-        app.processEvents()
-        time.sleep(0.008)
-    try:
-        widget.update()
-        widget.repaint()
-        app.processEvents()
-    except Exception:
-        pass
-    # setProf correu antes do layout (tamanho 0); redesenha índices/texto com geometria final.
-    try:
-        widget.updateProfs()
-        app.processEvents()
-    except Exception:
-        pass
-
-
-def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
-    """
-    Novo motor v9.0: Usa o SPCWidget (nativo) em vez de compor painéis manualmente.
-    Isso garante o layout idêntico ao SPC.
+    Renderiza os componentes nativos do SHARPpy para uma imagem Base64.
     """
     try:
         app = get_qapp()
-        # 1. Carregar Dados
+        
+        # 1. Parse CSV para Profile do SHARPpy
         df = pd.read_csv(io.StringIO(csv_text))
-
         col_map = {
             'Pressure': 'pres', 'pressure': 'pres',
             'Altitude': 'hght', 'altitude': 'hght',
@@ -920,14 +811,7 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         ws = df['wspd'].astype(float).tolist()
         
         # Forçar latitude negativa para Hemisfério Sul se solicitado
-        lat = -25.0
-        if latitude is not None:
-            try:
-                lat = float(latitude)
-            except:
-                lat = -25.0
-        elif not is_hs:
-            lat = 40.0
+        lat = -25.0 if is_hs else 40.0 
         curr_date = datetime.datetime.now()
         
         prof = tab.profile.create_profile(
@@ -938,6 +822,7 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         )
         
         # Criar Coleção (necessário para o SPCWidget)
+        # O ProfCollection espera um dict de membros e uma lista de datas
         prof_dict = {'Sounding': [prof]}
         dates = [curr_date]
         prof_col = ProfCollection(prof_dict, dates)
@@ -947,63 +832,41 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         prof_col.setMeta('run', curr_date)
         prof_col.setMeta('base_time', curr_date)
         
-        # 2. Inicializar Widget Nativo (SPCWidget)
+        # 2. Configurar o Widget Nativo
         cfg = get_native_config()
-        # Forçar alto contraste (fundo branco / texto preto) conforme a referência 'linda'
-        try:
-            cfg['preferences', 'bg_color'] = '#FFFFFF'
-            cfg['preferences', 'fg_color'] = '#000000'
-            cfg['preferences', 'adiab_color'] = '#D0D0D0'
-            cfg['preferences', 'isotherm_color'] = '#E0E0E0'
-            cfg['preferences', 'skew_adiab_color'] = '#D0D0D0'
-            cfg['preferences', 'skew_itherm_color'] = '#E0E0E0'
-        except:
-            pass
         
-        from sharppy.viz.SPCWindow import SPCWidget
-        # Iniciar com o Config via kwarg
+        # O SPCWidget monta o layout idêntico ao da imagem
         widget = SPCWidget(cfg=cfg)
-        # Adicionar a coleção de perfis (isso dispara o cabeçalho e as tabelas)
         widget.addProfileCollection(prof_col, "Sounding")
         
-        # Mesmo tamanho base do SPCWindow (1180×800)
+        # Ajustar para Hemisfério Sul (Bunkers Left) caso o widget não detecte
+        if is_hs:
+            widget.toggleVector('left') # Força Bunkers Left Mover como foco
+        
+        # Forçar o tamanho (SPC padrão é 1180x800 como visto no Windows em SPCWindow.py)
         width, height = 1180, 800
         widget.resize(width, height)
-        widget.setFixedSize(width, height)
         widget.setAttribute(Qt.WA_DontShowOnScreen)
-        
-        # Forçar Paleta para garantir texto preto nítido
-        from PyQt5.QtGui import QPalette, QColor
-        palette = widget.palette()
-        palette.setColor(QPalette.Window, QColor("#FFFFFF"))
-        palette.setColor(QPalette.WindowText, QColor("#000000"))
-        palette.setColor(QPalette.Base, QColor("#FFFFFF"))
-        palette.setColor(QPalette.Text, QColor("#000000"))
-        widget.setPalette(palette)
-        
         widget.show()
-        _wait_spcwidget_ready(widget, app)
-
-        # grab() compõe o painel completo (incl. QPixmap internos do plotText); render() pode omitir texto.
-        import tempfile
+        
+        # 3. Capturar Imagem
+        # O grab() captura o widget exatamente como ele aparece na tela
         pixmap = widget.grab()
-
-        tmp_path = os.path.join(tempfile.gettempdir(), "sounding_render.png")
-        pixmap.save(tmp_path, "PNG")
-        with open(tmp_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode('utf-8')
-        try:
-            os.remove(tmp_path)
-        except:
-            pass
+        
+        # Converter para Base64
+        byte_array = io.BytesIO()
+        img = pixmap.toImage()
+        buffer = QBuffer()
+        buffer.open(QIODevice.ReadWrite)
+        img.save(buffer, "PNG")
+        
+        b64 = base64.b64encode(buffer.data()).decode('utf-8')
         
         # Limpar
         widget.deleteLater()
-        
-        # Extrair índices úteis para o dashboard também (além da imagem)
+
         indices_dict = {}
         try:
-            # Pegar alguns índices básicos do perfil para o frontend
             indices_dict = {
                 'mlcape': float(prof.mlcape),
                 'mllcl': float(prof.mllcl),
@@ -1013,37 +876,40 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
                 'srh_0_1km': float(prof.srh1km[0]),
                 'srh_0_3km': float(prof.srh3km[0]),
                 'stp_0_1km': float(prof.stp_fixed),
-                'stp_0_500m': float(prof.stp_fixed), # Fallback
+                'stp_0_500m': float(prof.stp_fixed),
                 'pw': float(prof.pw),
-                'dcape': float(prof.dcape)
+                'dcape': float(prof.dcape),
             }
-        except:
+        except Exception:
             pass
-
+        
         return {
             'base64_img': f'data:image/png;base64,{b64}',
+            'status': 'success',
+            'success': True,
             'data': {
                 'indices': indices_dict,
-                'profile': [] # O dashboard usa a imagem, opcional retornar perfil
+                'profile': [],
             },
-            'success': True,
-            'status': 'success'
         }
 
     except Exception as e:
         return {
             'error': str(e),
             'trace': traceback.format_exc(),
-            'status': 'error'
+            'status': 'error',
+            'success': False,
         }
 
-def process_csv_content(csv_text, image_title="Sounding", generate_image=True, layout_config=None, latitude=None):
+def process_csv_content(csv_text, image_title="Sounding", generate_image=True, layout_config=None):
     """Router para a versão nativa."""
     # Como o usuário quer Nativo, ignoramos cálculos manuais e usamos o motor do widget
     if not generate_image:
+        # Se quiser apenas índices, ainda retornamos o dict do profile do SHARPpy
+        # mas aqui focaremos na imagem "Gold Standard" solicitada
         return {'error': 'Apenas renderização nativa suportada nesta versão.'}
         
-    return render_to_base64(csv_text, title=image_title, is_hs=True, latitude=latitude)
+    return render_to_base64(csv_text, title=image_title, is_hs=True)
 
 # Helper para o test_render.py
 def render_to_file(csv_text, output_path, title="Sounding"):
