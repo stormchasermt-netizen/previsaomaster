@@ -435,6 +435,8 @@ export default function AoVivoPage() {
   // Controle de Animação
   const [isPlaying, setIsPlaying] = useState(false);
   const [animationSpeedMultiplier, setAnimationSpeedMultiplier] = useState(1);
+  /** Duração da animação em minutos (60 / 240 / 1440) */
+  const [animationDuration, setAnimationDuration] = useState<60 | 240 | 1440>(60);
 
   const toggleAnimationSpeed = useCallback(() => {
     setAnimationSpeedMultiplier((prev) => {
@@ -452,18 +454,23 @@ export default function AoVivoPage() {
         playIntervalRef.current = setInterval(() => {
           setSliderMinutesAgo((prev) => {
             if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
-              // Modo único: usa timestamps validados
-              const currentIndex = validSliderMinutesAgo.indexOf(prev);
-              if (currentIndex < 0) return validSliderMinutesAgo[0]; 
+              // Modo único: usa timestamps validados, mas limita à duração da animação (ex: 60 min)
+              const allowedFrames = validSliderMinutesAgo.filter(m => m <= animationDuration);
+              if (allowedFrames.length === 0) return 0;
+
+              const currentIndex = allowedFrames.indexOf(prev);
+              // Se o frame atual não estiver nos permitidos (ex: estava em 120 e mudou pra 60), volta pro mais antigo permitido
+              if (currentIndex < 0) return Math.max(...allowedFrames); 
+              
               const nextIndex = currentIndex + 1;
-              if (nextIndex >= validSliderMinutesAgo.length) {
-                return validSliderMinutesAgo[0]; // Reset loop
+              if (nextIndex >= allowedFrames.length) {
+                return Math.min(...allowedFrames); // Reset loop (mais recente, geralmente 0)
               }
-              return validSliderMinutesAgo[nextIndex];
+              return allowedFrames[nextIndex];
             } else {
-              // Modo mosaico: usa step fixo de 5 min
+              // Modo mosaico: usa step fixo de 5 min, limitado à animationDuration
               const next = prev - 5;
-              return next < 0 ? maxSliderMinutesAgo : next;
+              return next < 0 ? animationDuration : next;
             }
           });
         }, 800 / animationSpeedMultiplier); // 800ms / multiplier por frame
@@ -480,7 +487,7 @@ export default function AoVivoPage() {
         playIntervalRef.current = null;
       }
     };
-  }, [isPlaying, validSliderMinutesAgo, maxSliderMinutesAgo, animationSpeedMultiplier]);
+  }, [isPlaying, validSliderMinutesAgo, animationDuration, animationSpeedMultiplier]);
 
   const handleSkipBack = useCallback(() => {
     if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
@@ -540,10 +547,6 @@ export default function AoVivoPage() {
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   /** Split: 1 = painel único, 2 = Refletividade|Doppler lado a lado, 4 = grade 2x2 (simplificado por ora) */
   const [splitCount, setSplitCount] = useState<1 | 2 | 4>(1);
-  /** Animação: tocando ou pausada */
-  const [animationPlaying, setAnimationPlaying] = useState(false);
-  /** Duração da animação em minutos (60 / 240 / 1440) */
-  const [animationDuration, setAnimationDuration] = useState<60 | 240 | 1440>(60);
   /** Menu de animação (1h/4h/24h) aberto */
   const [showAnimationMenu, setShowAnimationMenu] = useState(false);
   /** Menu de split (1/2/4) aberto */
@@ -1484,24 +1487,6 @@ export default function AoVivoPage() {
     return () => clearInterval(i);
   }, [sliderMinutesAgo, historicalTimestampOverride]);
 
-  /** Animação: avança slider para trás no tempo (6 min a cada ~2s; 60 min ≈ 20s, 4h ≈ 80s) */
-  useEffect(() => {
-    if (!animationPlaying) return;
-    const stepMinutes = 6;
-    const interval = 2000;
-    const i = setInterval(() => {
-      setSliderMinutesAgo((prev) => {
-        const next = prev + stepMinutes;
-        if (next >= animationDuration) {
-          setAnimationPlaying(false);
-          return animationDuration;
-        }
-        return next;
-      });
-    }, interval);
-    return () => clearInterval(i);
-  }, [animationPlaying, animationDuration]);
-
   /** Inicializa mapa quando localização é concedida ou quando usuário está excluído da requisição */
   const locationExcluded = user ? LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid) : false;
   const canShowMap = locationPermission === 'granted' || locationExcluded;
@@ -2084,7 +2069,10 @@ export default function AoVivoPage() {
         const isHdMode = radarSourceMode === 'hd';
         const hasSipam = !!dr.station.sipamSlug;
         const hasRedemet = hasRedemetFallback(dr.station.slug);
-        const useCptecUrls = !isHdMode || (!hasSipam && !hasRedemet);
+        
+        // Agora sempre tenta CPTEC primeiro, mesmo em modo HD. O falling back para Redemet/SIPAM acontece se o CPTEC falhar.
+        const useCptecUrls = true;
+        
         if (useFallback) {
           if (useCptecUrls) {
             const seenTs = new Set<string>();
@@ -4417,26 +4405,26 @@ export default function AoVivoPage() {
         <div className="relative">
           <button
             onClick={() => {
-              if (animationPlaying) {
-                setAnimationPlaying(false);
+              if (isPlaying) {
+                setIsPlaying(false);
                 setShowAnimationMenu(false);
               } else {
                 setShowAnimationMenu((v) => !v);
               }
             }}
-            className={`group/tab ${!isDesktop ? 'hidden' : 'flex'} flex-col items-center gap-1 p-2.5 rounded-xl min-w-[3rem] transition-all duration-200 relative ${animationPlaying ? 'text-amber-400' : showAnimationMenu ? 'text-cyan-400' : 'text-slate-500 hover:text-white'}`}
-            title={animationPlaying ? 'Pausar animação' : 'Reproduzir animação'}
+            className={`group/tab ${!isDesktop ? 'hidden' : 'flex'} flex-col items-center gap-1 p-2.5 rounded-xl min-w-[3rem] transition-all duration-200 relative ${isPlaying ? 'text-amber-400' : showAnimationMenu ? 'text-cyan-400' : 'text-slate-500 hover:text-white'}`}
+            title={isPlaying ? 'Pausar animação' : 'Reproduzir animação'}
           >
-            {(animationPlaying || showAnimationMenu) && (
-              <motion.div layoutId="bottomBarGlow" className={`absolute inset-0 rounded-xl border ${animationPlaying ? 'bg-amber-400/10 border-amber-400/20' : 'bg-cyan-400/10 border-cyan-400/20'}`} />
+            {(isPlaying || showAnimationMenu) && (
+              <motion.div layoutId="bottomBarGlow" className={`absolute inset-0 rounded-xl border ${isPlaying ? 'bg-amber-400/10 border-amber-400/20' : 'bg-cyan-400/10 border-cyan-400/20'}`} />
             )}
             <div className="relative z-10 transition-transform duration-200 group-hover/tab:scale-110 group-hover/tab:-translate-y-0.5">
-              {animationPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
         </div>
-            <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">{animationPlaying ? 'Pausar' : 'Play'}</span>
+            <span className="relative z-10 text-[9px] font-bold tracking-widest uppercase">{isPlaying ? 'Pausar' : 'Play'}</span>
           </button>
           <AnimatePresence>
-          {showAnimationMenu && !animationPlaying && (
+          {showAnimationMenu && !isPlaying && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setShowAnimationMenu(false)} aria-hidden />
               <motion.div 
@@ -4447,7 +4435,7 @@ export default function AoVivoPage() {
                 {([60, 240, 1440] as const).map((mins) => (
                   <button
                     key={mins}
-                    onClick={() => { setAnimationDuration(mins); setShowAnimationMenu(false); setAnimationPlaying(true); }}
+                    onClick={() => { setAnimationDuration(mins); setShowAnimationMenu(false); setIsPlaying(true); }}
                     className={`w-full px-4 py-2.5 text-left text-xs font-bold tracking-wider uppercase transition-all ${animationDuration === mins ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
                   >
                     {mins === 60 ? '1 hora' : mins === 240 ? '4 horas' : '24 horas'}

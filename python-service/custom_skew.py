@@ -1089,7 +1089,7 @@ class plotSkewT(backgroundSkewT):
 
                 if self.wind_units == 'm/s':
                     ss = tab.utils.KTS2MS(ss)
-                drawBarb( qp, self.barbx, y, dd, vv, shemis=(prof.latitude < 0) )
+                drawBarb( qp, self.barbx, y, dd, ss, shemis=(prof.latitude < 0) )
                 i += 1
         else:
             pres = np.arange(prof.pres[prof.sfc], prof.pres[prof.top], -40)
