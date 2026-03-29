@@ -77,7 +77,7 @@ def process():
             image_title=title,
             generate_image=generate_image,
             layout_config=layout_config,
-            latitude=latitude
+            latitude=latitude,
         )
     except Exception as e:
         import traceback
@@ -119,13 +119,10 @@ def process_average():
         except Exception:
             continue
 
-    from sounding_logic import render_ensemble_hodograph
-    ensemble_res = render_ensemble_hodograph(all_profiles)
-    
     return jsonify({
         'success': True, 
         'data': processed_list,
-        'base64_img': ensemble_res.get('base64_img') if ensemble_res.get('status') == 'success' else None
+        'base64_img': None
     })
 
 if __name__ == '__main__':

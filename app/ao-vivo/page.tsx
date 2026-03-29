@@ -1013,6 +1013,10 @@ export default function AoVivoPage() {
   }, []);
 
   const handleOpenEditRadar = useCallback((dr: DisplayRadar) => {
+    if (user?.type !== 'admin') {
+      addToast('Apenas administradores podem configurar radares.', 'info');
+      return;
+    }
     const cfg = radarConfigs.find((c) => c.stationSlug === (dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`));
     setEditingRadar(dr);
     setEditMinutesAgo(0);
@@ -1029,7 +1033,7 @@ export default function AoVivoPage() {
   }, []);
 
   const saveEditConfig = useCallback(async (overrideLat?: number, overrideLng?: number) => {
-    if (!editingRadar) return;
+    if (!editingRadar || user?.type !== 'admin') return;
     const lat = overrideLat ?? (editLiveCenter ? editLiveCenter.lat : editCenterLat);
     const lng = overrideLng ?? (editLiveCenter ? editLiveCenter.lng : editCenterLng);
     const slug = editingRadar.type === 'cptec' ? editingRadar.station.slug : `argentina:${editingRadar.station.id}`;
@@ -1065,7 +1069,7 @@ export default function AoVivoPage() {
   }, [editingRadar, radarConfigs, editCenterLat, editCenterLng, editLiveCenter, editRangeKm, editRotationDegrees, getDefaultUrlTemplate, addToast]);
 
   const handleSaveEditPosition = useCallback(async (lat: number, lng: number) => {
-    if (!editingRadar) return;
+    if (!editingRadar || user?.type !== 'admin') return;
     setEditCenterLat(lat);
     setEditCenterLng(lng);
     await saveEditConfig(lat, lng);
@@ -3585,7 +3589,7 @@ export default function AoVivoPage() {
                               {hhmm}{source === 'redemet' ? ' (REDEMET)' : ''}
                             </span>
                           </div>
-                          {dr && (
+                          {dr && user?.type === 'admin' && (
                             <button
                               type="button"
                               onClick={() => handleOpenEditRadar(dr)}

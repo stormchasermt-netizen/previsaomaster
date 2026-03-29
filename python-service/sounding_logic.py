@@ -22,14 +22,59 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QImage, QPainter, QPolygonF, QColor, QPen, QBrush
 from PyQt5.QtCore import Qt, QPointF, QRect, QPoint, QBuffer, QIODevice
 
-# Fix para o erro: TypeError: argument 1 has unexpected type 'numpy.float64'
-# O SHARPpy calcula coordenadas em numpy.float64, mas o PyQt5 (C++) exige float nativo ou int.
+# patches de compatibilidade PyQt5/SHARPpy
+from PyQt5 import QtWidgets, QtGui, QtCore
+import numpy as np
+
+# 1. Patch QFont (Constructor e setPixelSize)
+_orig_QFont = QtGui.QFont
+class PatchedQFont(_orig_QFont):
+    def __init__(self, *args, **kwargs):
+        if len(args) > 1 and isinstance(args[1], (float, np.number)):
+            args = list(args)
+            args[1] = int(round(float(args[1])))
+        try:
+            super().__init__(*args, **kwargs)
+        except TypeError:
+            super().__init__()
+
+_orig_setPixelSize = _orig_QFont.setPixelSize
+def patched_setPixelSize(self, size):
+    if isinstance(size, (float, np.number)):
+        size = int(round(float(size)))
+    return _orig_setPixelSize(self, size)
+PatchedQFont.setPixelSize = patched_setPixelSize
+
+# Aplicar patch globalmente
+QtGui.QFont = PatchedQFont
+import qtpy.QtGui
+qtpy.QtGui.QFont = PatchedQFont
+
+# 2. Patch QActionGroup (parâmetro exclusive)
+_orig_QActionGroup = QtWidgets.QActionGroup
+class PatchedQActionGroup(_orig_QActionGroup):
+    def __init__(self, parent, exclusive=None):
+        super().__init__(parent)
+        if exclusive is not None:
+            self.setExclusive(exclusive)
+QtWidgets.QActionGroup = PatchedQActionGroup
+import qtpy.QtWidgets
+qtpy.QtWidgets.QActionGroup = PatchedQActionGroup
+
+# 3. Patch QPen (setWidth)
+_orig_setWidth = QtGui.QPen.setWidth
+def patched_setWidth(self, width):
+    if isinstance(width, (float, np.number)):
+        width = int(round(float(width)))
+    return _orig_setWidth(self, width)
+QtGui.QPen.setWidth = patched_setWidth
+
+# 4. Patch Geometria (QRect, QPoint)
 def _qc(a):
     if isinstance(a, (np.float64, np.float32, float)):
         return int(round(float(a)))
     return a
 
-# Patch nos Construtores de Geometria (QRect, QPoint)
 def patch_constructor(cls):
     orig_init = cls.__init__
     def new_init(self, *args, **kwargs):
@@ -38,13 +83,12 @@ def patch_constructor(cls):
         try:
             orig_init(self, *args, **kwargs)
         except TypeError:
-            # Fallback para evitar recursão ou erros de assinatura
-            orig_init(self) 
+            orig_init(self)
     cls.__init__ = new_init
 
 try:
-    patch_constructor(QRect)
-    patch_constructor(QPoint)
+    patch_constructor(QtCore.QRect)
+    patch_constructor(QtCore.QPoint)
 except:
     pass
 
@@ -811,7 +855,6 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         wd = df['wdir'].astype(float).tolist()
         ws = df['wspd'].astype(float).tolist()
         
-        # Latitude: pedido explícito, ou hemisfério sul por defeito
         if latitude is not None:
             try:
                 lat = float(latitude)
@@ -930,120 +973,6 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
             'status': 'error',
             'success': False,
         }
-
-import matplotlib
-matplotlib.use('Agg') # Headless mode
-import matplotlib.pyplot as plt
-from metpy.plots import Hodograph
-from metpy.units import units
-
-def render_ensemble_hodograph(profiles_list):
-    """
-    Gera uma Hodógrafa de Conjunto (Ensemble) a partir de uma lista de perfis.
-    Cada perfil é uma lista de dicts com 'height', 'u', 'v'.
-    Retorna dicionário com 'base64_img'.
-    """
-    try:
-        if not profiles_list:
-            return {'status': 'error', 'error': 'Nenhum perfil para média.'}
-
-        # Níveis de interpolação padrão (0 a 12km, a cada 100m)
-        target_h = np.linspace(0, 12000, 121)
-        standardized_profiles = []
-
-        for prof in profiles_list:
-            if not prof: continue
-            h = np.array([p['height'] for p in prof])
-            u = np.array([p['u'] for p in prof])
-            v = np.array([p['v'] for p in prof])
-            
-            # Remover duplicatas de altura para interpolação
-            _, unique_idx = np.unique(h, return_index=True)
-            h = h[unique_idx]
-            u = u[unique_idx]
-            v = v[unique_idx]
-            
-            # Interpolar para níveis padrão
-            u_interp = np.interp(target_h, h, u, left=np.nan, right=np.nan)
-            v_interp = np.interp(target_h, h, v, left=np.nan, right=np.nan)
-            standardized_profiles.append({'u': u_interp, 'v': v_interp})
-
-        if not standardized_profiles:
-            return {'status': 'error', 'error': 'Dados insuficientes para interpolação.'}
-
-        # Calcular Média
-        all_u = np.array([p['u'] for p in standardized_profiles])
-        all_v = np.array([p['v'] for p in standardized_profiles])
-        mean_u = np.nanmean(all_u, axis=0)
-        mean_v = np.nanmean(all_v, axis=0)
-
-        # Plotar
-        fig = plt.figure(figsize=(8, 8), dpi=100)
-        ax = fig.add_subplot(1, 1, 1)
-        hodo = Hodograph(ax, component_range=80.)
-        
-        # Background: Range Rings & Axes
-        hodo.add_grid(increment=10, color='#EEEEEE', linestyle='--', linewidth=0.5)
-        # Customiza os anéis de 20, 40, 60 para facilitar leitura
-        for ring in [20, 40, 60]:
-            circle = plt.Circle((0, 0), ring, color='#DDDDDD', fill=False, linestyle='-', linewidth=0.8)
-            ax.add_artist(circle)
-            ax.text(ring * 0.707, ring * 0.707, f"{ring}", color='#AAAAAA', fontsize=8, ha='center', va='center')
-
-        ax.axhline(0, color='black', lw=1)
-        ax.axvline(0, color='black', lw=1)
-
-        # 1. Traços Individuais (Cinza)
-        for p in standardized_profiles:
-            ax.plot(p['u'], p['v'], color='#CCCCCC', alpha=0.3, lw=1)
-
-        # 2. Traço Médio Colorido
-        # Definir limites de segmentos (em metros)
-        # 0-0.5 (Red), 0.5-3 (Green), 3-6 (Yellow), 6-9 (Cyan), 9-12 (Purple)
-        segments = [
-            (0, 500, 'red'),
-            (500, 3000, 'green'),
-            (3000, 6000, 'yellow'),
-            (6000, 9000, 'cyan'),
-            (9000, 12000, '#FF00FF') # Purple
-        ]
-
-        # Plotar cada segmento da média
-        for start_h, end_h, color in segments:
-            mask = (target_h >= start_h) & (target_h <= end_h)
-            if np.any(mask):
-                # Inclui um ponto a mais no final para conectar os segmentos
-                next_idx = np.where(mask)[0][-1] + 1
-                if next_idx < len(target_h):
-                    mask_ext = mask.copy()
-                    mask_ext[next_idx] = True
-                    ax.plot(mean_u[mask_ext], mean_v[mask_ext], color=color, lw=4, solid_capstyle='round')
-                else:
-                    ax.plot(mean_u[mask], mean_v[mask], color=color, lw=4, solid_capstyle='round')
-
-        # Títulos e Estética
-        ax.set_title("Hodógrafa Média (Conjunto Convectivo)", color='white', pad=15, fontsize=14, fontweight='bold')
-        fig.patch.set_facecolor('#0f172a') # bg-slate-900 para combinar com site
-        ax.set_facecolor('#0f172a')
-        ax.axis('off') # Remove box externo, mantemos os eixos internos do Hodograph
-
-        # Salvar em Base64
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor())
-        plt.close(fig)
-        buf.seek(0)
-        b64 = base64.b64encode(buf.read()).decode('utf-8')
-        
-        return {
-            'status': 'success',
-            'base64_img': f'data:image/png;base64,{b64}',
-            'data': {
-                'indices': {}, # Média não calcula índices via este plotter
-                'profile': [{'height': h, 'u': u, 'v': v} for h, u, v in zip(target_h, mean_u, mean_v)]
-            }
-        }
-    except Exception as e:
-        return {'status': 'error', 'error': str(e), 'traceback': traceback.format_exc()}
 
 def process_csv_content(csv_text, image_title="Sounding", generate_image=True, layout_config=None, latitude=None, **_kwargs):
     """Router para a versão nativa."""
