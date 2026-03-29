@@ -2070,8 +2070,8 @@ export default function AoVivoPage() {
         const hasSipam = !!dr.station.sipamSlug;
         const hasRedemet = hasRedemetFallback(dr.station.slug);
         
-        // Agora sempre tenta CPTEC primeiro, mesmo em modo HD. O falling back para Redemet/SIPAM acontece se o CPTEC falhar.
-        const useCptecUrls = true;
+        // Separação estrita: Super HD usa CPTEC. HD usa Redemet/Sipam.
+        const useCptecUrls = !isHdMode; 
         
         if (useFallback) {
           if (useCptecUrls) {
@@ -2097,11 +2097,11 @@ export default function AoVivoPage() {
                 return recentFrames.map(f => ({
                   url: `/api/sipam/image?radar=${dr.station.sipamSlug}&produto=${produto}&timestamp=${f.sipamTs}`,
                   ts12: f.ts12,
-                  source: 'cptec' as const,
+                  source: 'cptec' as const, // Mantemos cptec como marcador visual de fonte nativa
                 }));
               }).catch(() => null);
           }
-          if (hasRedemet && productType === 'reflectividade') {
+          if (isHdMode && hasRedemet && productType === 'reflectividade') {
             const area = getRedemetArea(dr.station.slug)!;
             const ts12ForRedemet = getNearestRadarTimestamp(nominalTs, dr.station);
             redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=false`)
@@ -2110,22 +2110,20 @@ export default function AoVivoPage() {
               .catch(() => null);
           }
         } else {
-          // Histórico CPTEC
-          if (useCptecUrls) {
-            const seenTs = new Set<string>();
-            for (let back = 0; back <= 60; back += 6) {
-              const baseTs = back === 0 ? timestamp : subtractMinutesFromTimestamp12UTC(timestamp, back);
-              const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
-              if (seenTs.has(ts12)) continue;
-              seenTs.add(ts12);
-              urlsToTry.push({ url: buildNowcastingPngUrl(dr.station, ts12, productType, true), ts12, source: 'cptec' });
-              const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
-              if (proxyUrl.includes('radar-proxy')) urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
-            }
+          // Histórico CPTEC (sempre permitido no slider histórico, independente do modo live)
+          const seenTs = new Set<string>();
+          for (let back = 0; back <= 60; back += 6) {
+            const baseTs = back === 0 ? timestamp : subtractMinutesFromTimestamp12UTC(timestamp, back);
+            const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
+            if (seenTs.has(ts12)) continue;
+            seenTs.add(ts12);
+            urlsToTry.push({ url: buildNowcastingPngUrl(dr.station, ts12, productType, true), ts12, source: 'cptec' });
+            const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
+            if (proxyUrl.includes('radar-proxy')) urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
           }
         }
       } else {
-        // Argentina
+        // Argentina (Sempre usa CPTEC/Nowcasting como base de processamento)
         const interval = dr.station.updateIntervalMinutes ?? 10;
         const seenTs = new Set<string>();
         for (let back = 0; back <= 60; back += interval) {
@@ -2199,29 +2197,52 @@ export default function AoVivoPage() {
             tryIndex += 1;
           } else if (sipamFramesPromise) {
             sipamFramesPromise.then(sipamUrls => {
-              if (sipamUrls && sipamUrls.length > 0) { urlsToTry = [...urlsToTry, ...sipamUrls]; sipamFramesPromise = null; tryNext(); }
-              else { sipamFramesPromise = null; tryNext(); }
+              sipamFramesPromise = null;
+              if (sipamUrls && sipamUrls.length > 0) { urlsToTry = [...urlsToTry, ...sipamUrls]; tryNext(); }
+              else { tryNext(); }
+            });
+          } else if (redemetFindPromise) {
+            redemetFindPromise.then(url => {
+              redemetFindPromise = null;
+              if (url) { urlsToTry.push({ url, ts12: timestamp, source: 'redemet' }); tryNext(); }
+              else { tryNext(); }
             });
           } else if (ipmetStoragePromise) {
-             ipmetStoragePromise.then(url => { if (url) urlsToTry.push({ url, ts12: timestamp, source: 'cptec' }); ipmetStoragePromise = null; tryNext(); });
-          } else if (redemetFindPromise) {
-             redemetFindPromise.then(url => { if (url) urlsToTry.push({ url, ts12: timestamp, source: 'redemet' }); redemetFindPromise = null; tryNext(); });
+            ipmetStoragePromise.then(url => {
+              ipmetStoragePromise = null;
+              if (url) { urlsToTry.push({ url, ts12: timestamp, source: 'cptec' }); tryNext(); }
+              else { tryNext(); }
+            });
           } else if (storageFallbackPromise) {
-             storageFallbackPromise.then(url => { if (url) urlsToTry.push({ url, ts12: timestamp, source: 'cptec' }); storageFallbackPromise = null; tryNext(); });
+            storageFallbackPromise.then(url => {
+              storageFallbackPromise = null;
+              if (url) { urlsToTry.push({ url, ts12: timestamp, source: 'cptec' }); tryNext(); }
+              else { tryNext(); }
+            });
           } else {
+            // Falhou em tudo: Remove src para não mostrar ícone quebrado e finaliza
+            img.src = "";
+            (ov as any).loadedSuccessfully = false;
             setFailedRadars(p => new Set(p).add(radarKey));
             resolveLoad();
           }
         };
         img.onerror = tryNext;
         img.onload = () => {
-          if (img.src.startsWith('data:')) { markProcessed(); return; }
+          if (img.src === "" || img.src.includes('undefined')) return;
+          if (img.src.startsWith('data:')) { 
+            (ov as any).loadedSuccessfully = true;
+            markProcessed(); 
+            return; 
+          }
           const loaded = urlsToTry[tryIndex - 1];
           const effectiveTs12 = loaded?.ts12 ?? timestamp;
           setRadarEffectiveTimestamps((p) => ({ ...p, [radarKey]: effectiveTs12 }));
           if (loaded?.source) setRadarEffectiveSource((p) => ({ ...p, [radarKey]: loaded.source }));
           setFailedRadars((p) => { const next = new Set(p); next.delete(radarKey); return next; });
           cacheRadarImage(img.src, dr.type === 'cptec' ? dr.station.slug : `argentina_${dr.station.id}`, effectiveTs12, productType as any);
+          
+          (ov as any).loadedSuccessfully = true;
           applyNoiseFilter();
         };
 
@@ -2257,7 +2278,10 @@ export default function AoVivoPage() {
         });
         pendingOverlays.forEach(ov => {
           const div = (ov as any).divEl;
-          if (div) div.style.display = 'block';
+          // SÓ MOSTRA SE CARREGOU COM SUCESSO. Evita ícone de quebrado/branco.
+          if (div && (ov as any).loadedSuccessfully) {
+            div.style.display = 'block';
+          }
         });
         overlaysArrRef.current = pendingOverlays;
       } else {
