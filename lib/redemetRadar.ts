@@ -14,6 +14,7 @@ const CPTEC_TO_REDEMET: Record<string, string> = {
   picodocouto: 'pc',
   gama: 'ga',
   santatereza: 'st',
+  tresmarias: 'tm',
   natal: 'nt',
   maceio: 'mo',
   salvador: 'sv',
@@ -28,6 +29,9 @@ const CPTEC_TO_REDEMET: Record<string, string> = {
   macapa: 'mq',
   santarem: 'sn',
   cangucu: 'cn',
+  belem: 'be',
+  petrolina: 'pl',
+  saoluis: 'sl',
 };
 
 /** Radares sem fallback REDEMET. */
@@ -36,11 +40,13 @@ const NO_REDEMET: Set<string> = new Set([
 ]);
 
 /**
- * Verifica se o radar CPTEC tem fallback REDEMET.
- * Usuário solicitou usar Redemet APENAS para Santiago.
+ * Verifica se o radar CPTEC tem fallback REDEMET (CDN maxcappi).
+ * Usa a tabela oficial em docs/radaresv2.txt (REDEMET) + `CPTEC_TO_REDEMET`.
+ * Radares em `NO_REDEMET` não tentam pasta DECEA (URL/produto incompatível ou outra fonte).
  */
 export function hasRedemetFallback(slug: string): boolean {
-  return slug === 'santiago' || slug === 'morroigreja';
+  if (NO_REDEMET.has(slug)) return false;
+  return slug in CPTEC_TO_REDEMET;
 }
 
 /**

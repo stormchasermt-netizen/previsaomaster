@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "audit:radar": "node scripts/audit-radar-catalog.mjs"
   },
   "dependencies": {
     "@turf/helpers": "^7.1.0",

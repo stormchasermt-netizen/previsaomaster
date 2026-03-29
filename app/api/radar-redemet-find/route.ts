@@ -16,7 +16,6 @@ const BROWSER_HEADERS: Record<string, string> = {
 };
 
 function extractSessionCookie(headers: Headers): string {
-  // getSetCookie() retorna array de todos os Set-Cookie (Node 18+)
   const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
   if (typeof getSetCookie === 'function') {
     const cookies = getSetCookie.call(headers);
@@ -43,7 +42,6 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
   const mm = ts12.slice(10, 12);
   const datahora = `${d}/${mo}/${y} ${hh}:${mm}`;
 
-  // Passo 1: obter sessão PHP na página de produtos (onde o form plota_radar vive)
   let sessionCookie = '';
   try {
     const pageRes = await fetch(REDEMET_PRODUCTS_URL, {
@@ -57,7 +55,6 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
     // continua sem cookie
   }
 
-  // Passo 2: POST no plota_radar.php (Referer = página do form)
   const postHeaders: Record<string, string> = {
     ...BROWSER_HEADERS,
     Referer: REDEMET_PRODUCTS_URL,
@@ -67,7 +64,6 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
   };
   if (sessionCookie) postHeaders['Cookie'] = sessionCookie;
 
-  // Use the exact payload from the user's snippet
   const params = new URLSearchParams();
   params.append('radar[]', 'maxcappi');
   params.append('datahora', datahora);
@@ -90,13 +86,10 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
 
   const html = await res.text();
 
-  // Pattern from user: old/radar/.*?\.png
-  // Make it specific to the requested area to avoid grabbing other radars (like 'be')
   const regex = new RegExp(`old/radar/.*?/${area}/.*?\\.png`);
   const match = html.match(regex);
-  
+
   if (!match?.[0]) {
-    // Fallback if the simple regex fails, check the existing one too
     const oldRegex = new RegExp(`carrega_radar\\s*\\(\\s*\\d+\\s*,\\s*'${area}'\\s*,\\s*'([^']+)'`);
     const oldMatch = html.match(oldRegex);
     if (!oldMatch?.[1]) {
@@ -129,14 +122,13 @@ export async function GET(req: NextRequest) {
   try {
     const result = await findViaPlotaRadar(area, ts12);
 
-    return NextResponse.json(
-      result,
-      { headers: { 'Cache-Control': result.url ? 'public, max-age=86400' : 'no-cache' } },
-    );
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': result.url ? 'public, max-age=86400' : 'no-cache' },
+    });
   } catch (err: unknown) {
     return NextResponse.json(
       { url: null, error: err instanceof Error ? err.message : 'search failed' },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

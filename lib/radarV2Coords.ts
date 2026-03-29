@@ -1,6 +1,10 @@
 /**
- * Constantes de coordenadas V2 extraídas da tabela técnica do CPTEC/INPE.
- * Garante precisão milimétrica no encaixe das imagens de radar no mapa.
+ * Constantes de coordenadas V2 extraídas da tabela técnica do CPTEC/INPE (nowcasting).
+ * Fonte de referência completa no repositório: `docs/radaresv2.txt` (export da tabela:
+ * id, Nome, Raio_km, lon_centro, lat_centro, minLon, minLat, maxLon, maxLat).
+ *
+ * Conversão para `bounds`: north = maxLat, south = minLat, east = maxLon, west = minLon.
+ * Centro no mapa: sempre [lat, lng] como no Leaflet — os valores aqui seguem lat_centro/lon_centro.
  */
 export const RADAR_V2_COORDS: Record<string, { lat: number; lng: number; bounds: { north: number; south: number; east: number; west: number } }> = {
   'saofrancisco': {

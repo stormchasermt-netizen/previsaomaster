@@ -473,7 +473,7 @@ export default function AoVivoPage() {
               return next < 0 ? animationDuration : next;
             }
           });
-        }, 800 / animationSpeedMultiplier); // 800ms / multiplier por frame
+        }, (radarMode === 'mosaico' ? 1100 : 800) / animationSpeedMultiplier);
       }
     } else {
       if (playIntervalRef.current) {
@@ -487,7 +487,7 @@ export default function AoVivoPage() {
         playIntervalRef.current = null;
       }
     };
-  }, [isPlaying, validSliderMinutesAgo, animationDuration, animationSpeedMultiplier]);
+  }, [isPlaying, validSliderMinutesAgo, animationDuration, animationSpeedMultiplier, radarMode]);
 
   const handleSkipBack = useCallback(() => {
     if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
@@ -2298,9 +2298,14 @@ export default function AoVivoPage() {
     setFailedRadars(new Set());
     setRadarEffectiveTimestamps({});
     setRadarEffectiveSource({});
-    activeFrameOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
-    activeFrameOverlaysRef.current = [];
-    if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) return;
+    // Não remover overlays aqui: addRadarOverlays só substitui quando o novo lote terminou de carregar
+    // (evita mapa em branco / flash entre frames na animação do mosaico).
+    if (!mapReady || !mapInstanceRef.current) return;
+    if (displayRadars.length === 0) {
+      activeFrameOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      activeFrameOverlaysRef.current = [];
+      return;
+    }
     
     // Na janela 1, usamos sempre Reflectividade se estiver em split, ou o produto selecionado se único
     const product = (splitCount >= 2) ? 'reflectividade' : radarProductType;
@@ -2308,8 +2313,12 @@ export default function AoVivoPage() {
     const radarsToShow = editingRadar
       ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
       : displayRadars;
-    if (radarsToShow.length === 0 && !editingRadar) return;
-    
+    if (radarsToShow.length === 0 && !editingRadar) {
+      activeFrameOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      activeFrameOverlaysRef.current = [];
+      return;
+    }
+
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(
       mapInstanceRef.current,
@@ -2329,9 +2338,11 @@ export default function AoVivoPage() {
 
   /** Overlays Mapa 2 (Doppler) */
   useEffect(() => {
-    activeFrameOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-    activeFrameOverlays2Ref.current = [];
-    if (!map2Ready || !map2InstanceRef.current || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) return;
+    if (!map2Ready || !map2InstanceRef.current || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) {
+      activeFrameOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      activeFrameOverlays2Ref.current = [];
+      return;
+    }
     
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(
@@ -2352,9 +2363,11 @@ export default function AoVivoPage() {
 
   /** Overlays Mapa 3 (VIL) */
   useEffect(() => {
-    activeFrameOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-    activeFrameOverlays3Ref.current = [];
-    if (!map3Ready || !map3InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
+    if (!map3Ready || !map3InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) {
+      activeFrameOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      activeFrameOverlays3Ref.current = [];
+      return;
+    }
     
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(
@@ -2375,9 +2388,11 @@ export default function AoVivoPage() {
 
   /** Overlays Mapa 4 (Waldvogel) */
   useEffect(() => {
-    activeFrameOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-    activeFrameOverlays4Ref.current = [];
-    if (!map4Ready || !map4InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
+    if (!map4Ready || !map4InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) {
+      activeFrameOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+      activeFrameOverlays4Ref.current = [];
+      return;
+    }
     
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(

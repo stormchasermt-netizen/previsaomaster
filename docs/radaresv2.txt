@@ -1,0 +1,772 @@
+# Nowcasting CPTEC/INPE - Radares e produtos
+# Fonte: https://nowcasting.cptec.inpe.br/
+
+=== TABELA DE RADARES (HTML app.radares) ===
+id	Nome	Raio_km	lon_centro	lat_centro	minLon	minLat	maxLon	maxLat
+8345	São Francisco	250	-44.69525	-16.017361	-47.009944916	-18.237812042	-42.335361481	-13.748636246
+8344	Jaraguari	250	-54.47396	-20.27855	-56.837623596	-22.503732681	-52.047153473	-18.014743805
+2247	Chapecó	250	-52.598625	-27.03354	-55.1672	-29.28548	-50.03005	-24.7816
+4964	Morro da Igreja	250	-49.4719928	-28.1078451	-52.0632	-30.3648	-46.8704	-25.8599
+1379	Porto Velho	500	-63.8892325	-8.7075825	-66.1714	-10.951855	-61.607065	-6.46331
+1377	Macapá	500	-51.0923775	0.050085	-53.3348	-2.19112	-48.849955	2.29129
+2169	Santa Tereza	250	-40.54523388	-19.97280738	-42.939214	-22.22030575	-38.15125375	-17.725309
+5984	Três Marias	250	-45.460556	-18.207222	-47.797908783	-20.43413353	-43.067661285	-15.945045471
+4963	Pico do Couto	250	-43.2971821	-22.4466503	-45.7583	-24.701	-40.8262	-20.2013
+4960	São Roque	250	-47.097778	-23.598889	-49.6153	-25.8356	-44.6369	-21.3348
+1380	Santarém	500	-54.7945175	-2.424504	-57.0426	-4.666354	-52.546435	-0.182654
+2238	Guaratiba	250	-43.58794022	-22.99324989	-46.05399022	-25.24309989	-41.12189022	-20.74339989
+8343	Natal	250	-35.25401	-5.90448	-37.506313324	-8.141628265	-32.989379883	-3.65220499
+7011	Quixeramobim	400	-39.2669	-5.06917	-42.8899	-8.6533	-35.6439	-1.47747
+8346	Salvador	250	-38.326667	-12.9025	-40.613765717	-15.134028435	-36.004219055	-10.644747734
+8325	Maceió	250	-35.770833	-9.551389	-38.036766052	-11.785545349	-33.480552673	-7.296182156
+1375	Boa Vista	500	-60.695705	2.8479	-62.9452	0.60589	-58.44621	5.08991
+1382	Tabatinga	500	-69.93045	-4.2425575	-72.1855	-6.485105	-67.6754	-2.00001
+1250	Gama	250	-48.021985	-15.9648935	-50.3701	-18.2131	-45.6527	-13.7188
+4965	Santiago	250	-54.9406844	-29.2045064	-57.5513	-31.4619	-52.2986	-26.956
+1378	Manaus	500	-59.986935	-3.143476	-62.2375	-5.385601	-57.73637	-0.901351
+1376	Cruzeiro do Sul	500	-72.76509	-7.5884075	-75.0391	-9.832245	-70.49108	-5.34457
+4962	Canguçu	250	-52.7126416	-31.3821522	-55.3873	-33.6406	-50.0057	-29.1325
+4966	Almenara	250	-40.647541	-16.18919963	-42.990238	-18.43678125	-38.304844	-13.941618
+1383	Tefé	500	-64.6886875	-3.3672025	-66.9401	-5.609415	-62.437275	-1.12499
+2241	Macaé	250	-41.86047745	-22.40584946	-44.32652745	-24.65569946	-39.39442745	-20.15599946
+1374	Belém	500	-48.45733	-1.4019665	-50.7025	-3.643424	-46.21216	0.839491
+8342	Petrolina	250	-40.573	-9.367	-42.838165283	-11.60140419	-38.28440094	-7.11203622
+1136	Fortaleza	480	-38.5575	-3.7944	-42.1691	-7.378549	-34.94578	-0.205189
+1381	São Gabriel	500	-67.05253	-0.139185	-69.2951	-2.38039	-64.80996	2.10202
+4961	Lontras	250	-49.4559	-27.214725	-52.029	-29.46675	-46.8827	-24.9627
+1390	São Luiz	500	-44.23476	-2.595277	-46.4834	-4.837192	-41.98612	-0.353362
+
+=== PRODUTOS POR RADAR (API /api/camadas/radar/{id}/imagens) ===
+
+### Radar 8345 - São Francisco
+  R12458345 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/saofrancisco/cappi/cappi3km
+  R12454680 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/saofrancisco/previsao_radar/cent_sistconvectivo
+  R12457234 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/saofrancisco/chuva/chuva24h
+  R12454671 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/saofrancisco/previsao_radar/rast_tempestade
+  R12457388 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/saofrancisco/ppi/ppivr
+  R12452185 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/saofrancisco/agua_liquida/dvil
+  R12454603 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/saofrancisco/echotop/echotop20dbz
+  R12454604 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/saofrancisco/echotop/echotop35dbz
+  R12457387 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/saofrancisco/ppi/ppicz
+  R12452184 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/saofrancisco/agua_liquida/vil
+  R12454605 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/saofrancisco/echotop/waldvogel
+
+### Radar 8344 - Jaraguari
+  R12278344 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/jaraguari/cappi/cappi3km
+  R12274674 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/jaraguari/previsao_radar/cent_sistconvectivo
+  R12277225 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/jaraguari/chuva/chuva24h
+  R12274599 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/jaraguari/previsao_radar/rast_tempestade
+  R12277384 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/jaraguari/ppi/ppivr
+  R12272181 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/jaraguari/agua_liquida/dvil
+  R12274498 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/jaraguari/echotop/echotop20dbz
+  R12274499 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/jaraguari/echotop/echotop35dbz
+  R12277383 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/jaraguari/ppi/ppicz
+  R12272180 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/jaraguari/agua_liquida/vil
+  R12274497 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/jaraguari/echotop/waldvogel
+
+### Radar 2247 - Chapecó
+  R12132247 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sdcsc/chapeco/cappi/cappi3km
+  R12127270 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/chapeco/chuva/chuva24h
+  R12137762 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/chapeco/ppi/ppivr
+  R12132557 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/chapeco/agua_liquida/dvil
+  R12134628 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sdcsc/chapeco/echotop/echotop20dbz
+  R12134627 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/chapeco/echotop/echotop35dbz
+  R12137761 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sdcsc/chapeco/ppi/ppicz
+  R12132556 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/chapeco/agua_liquida/vil
+  R12134629 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/chapeco/echotop/waldvogel
+
+### Radar 4964 - Morro da Igreja
+  R12544964 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/morroigreja/cappi/cappi3km
+  R12544594 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/morroigreja/previsao_radar/cent_sistconvectivo
+  R12547548 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/morroigreja/chuva/chuva24h
+  R12574588 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/morroigreja/previsao_radar/rast_tempestade
+  R12544956 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/morroigreja/ppi/ppivr
+  R12542173 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/morroigreja/agua_liquida/dvil
+  R12547599 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/morroigreja/echotop/echotop20dbz
+  R12544485 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/morroigreja/echotop/echotop35dbz
+  R12544957 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/morroigreja/ppi/ppicz
+  R12544955 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/morroigreja/agua_liquida/vil
+  R12544489 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/morroigreja/echotop/waldvogel
+
+### Radar 1379 - Porto Velho
+  R13792141 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/portovelho/cappi/cappi_3km
+  R12797325 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/portovelho/chuva/chuva24h
+  R12797326 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/portovelho/chuva/chuva48h
+  R12797327 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/portovelho/chuva/chuva72h
+  R12797370 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/portovelho/ppi/ppivr
+  R12792392 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/portovelho/agua_liquida/dvil
+  R12794664 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/portovelho/echotop/echotop20dbz
+  R12794663 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/portovelho/echotop/echotop35dbz
+  R12797767 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/portovelho/ppi/ppicz
+  R12792393 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/portovelho/agua_liquida/vil
+  R12794665 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/portovelho/echotop/waldvogel
+
+### Radar 1377 - Macapá
+  R12772255 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/macapa/cappi/cappi3km
+  R12777286 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/macapa/chuva/chuva24h
+  R12777287 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/macapa/chuva/chuva48h
+  R12777288 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/macapa/chuva/chuva72h
+  R12777366 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/macapa/ppi/ppivr
+  R12772567 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/macapa/agua_liquida/dvil
+  R12774643 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/macapa/echotop/echotop20dbz
+  R12774642 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/macapa/echotop/echotop35dbz
+  R12777586 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/macapa/ppi/ppicz
+  R12772568 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/macapa/agua_liquida/vil
+  R12774644 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/macapa/echotop/waldvogel
+
+### Radar 2169 - Santa Tereza
+  R12972169 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/santatereza/cappi/cappi3km
+  R12974679 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/santatereza/previsao_radar/cent_sistconvectivo
+  R12977246 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/santatereza/chuva/chuva24h
+  R12974670 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/santatereza/previsao_radar/rast_tempestade
+  R12977394 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/santatereza/ppi/ppivr
+  R12972191 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/santatereza/agua_liquida/dvil
+  R12974612 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/santatereza/echotop/echotop20dbz
+  R12974613 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/santatereza/echotop/echotop35dbz
+  R12977393 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/santatereza/ppi/ppicz
+  R12972190 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/santatereza/agua_liquida/vil
+  R12974614 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/santatereza/echotop/waldvogel
+
+### Radar 5984 - Três Marias
+  R12475984 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/tresmarias/cappi/cappi3km
+  R12474681 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/tresmarias/previsao_radar/cent_sistconvectivo
+  R12477242 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/tresmarias/chuva/chuva24h
+  R12474672 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/tresmarias/previsao_radar/rast_tempestade
+  R12477392 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/tresmarias/ppi/ppivr
+  R12472189 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/tresmarias/agua_liquida/dvil
+  R12474609 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/tresmarias/echotop/echotop20dbz
+  R12474610 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/tresmarias/echotop/echotop35dbz
+  R12477391 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/tresmarias/ppi/ppicz
+  R12472188 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/tresmarias/agua_liquida/vil
+  R12474611 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/tresmarias/echotop/waldvogel
+
+### Radar 4963 - Pico do Couto
+  R12564963 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/picocouto/cappi/cappi3km
+  R12564595 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/picocouto/previsao_radar/cent_sistconvectivo
+  R12567547 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/picocouto/chuva/chuva24h
+  R12574589 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/picocouto/previsao_radar/rast_tempestade
+  R12567537 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/picocouto/ppi/ppivr
+  R12564845 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/picocouto/agua_liquida/dvil
+  R12567552 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/picocouto/echotop/echotop20dbz
+  R12564844 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/picocouto/echotop/echotop35dbz
+  R12567564 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/picocouto/ppi/ppicz
+  R12567556 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/picocouto/agua_liquida/vil
+  R12564846 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/picocouto/echotop/waldvogel
+
+### Radar 4960 - São Roque
+  R12534960 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/saoroque/cappi/cappi3km
+  R12534597 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/saoroque/previsao_radar/cent_sistconvectivo
+  R12537544 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/saoroque/chuva/chuva24h
+  R12574591 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/saoroque/previsao_radar/rast_tempestade
+  R12537536 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/saoroque/ppi/ppivr
+  R12534842 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/saoroque/agua_liquida/dvil
+  R12537539 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/saoroque/echotop/echotop20dbz
+  R12534841 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/saoroque/echotop/echotop35dbz
+  R12537563 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/saoroque/ppi/ppicz
+  R12537542 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/saoroque/agua_liquida/vil
+  R12534843 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/saoroque/echotop/waldvogel
+
+### Radar 1380 - Santarém
+  R13802142 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/santarem/cappi/cappi3km
+  R12807321 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/santarem/chuva/chuva24h
+  R12807322 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/santarem/chuva/chuva48h
+  R12807323 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/santarem/chuva/chuva72h
+  R12807372 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/santarem/ppi/ppivr
+  R12802391 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/santarem/agua_liquida/dvil
+  R12804661 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/santarem/echotop/echotop20dbz
+  R12804660 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/santarem/echotop/echotop35dbz
+  R12807592 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/santarem/ppi/ppicz
+  R12802579 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/santarem/agua_liquida/vil
+  R12804662 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/santarem/echotop/waldvogel
+
+### Radar 2238 - Guaratiba
+  R12952238 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/inea/guaratiba/cappi/cappi3km
+  R12957254 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/guaratiba/chuva/chuva24h
+  R12957398 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/guaratiba/ppi/ppivr
+  R12952195 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/guaratiba/agua_liquida/dvil
+  R12954619 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/inea/guaratiba/echotop/echotop20dbz
+  R12954618 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/guaratiba/echotop/echotop35dbz
+  R12957397 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/inea/guaratiba/ppi/ppicz
+  R12952194 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/guaratiba/agua_liquida/vil
+  R12954620 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/guaratiba/echotop/waldvogel
+
+### Radar 8343 - Natal
+  R12248343 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/natal/cappi/cappi3km
+  R12244676 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/natal/previsao_radar/cent_sistconvectivo
+  R12247516 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/natal/chuva/chuva24h
+  R12244667 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/natal/previsao_radar/rast_tempestade
+  R12247380 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/natal/ppi/ppivr
+  R12242176 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/natal/agua_liquida/dvil
+  R12244492 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/natal/echotop/echotop20dbz
+  R12244493 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/natal/echotop/echotop35dbz
+  R12247379 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/natal/ppi/ppicz
+  R12242177 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/natal/agua_liquida/vil
+  R12244491 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/natal/echotop/waldvogel
+
+### Radar 7011 - Quixeramobim
+  R13967011 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/funceme/quixeramobim/cappi/cappi3km
+  R13967006 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/quixeramobim/chuva/chuva24h
+  R13967018 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/quixeramobim/ppi/ppivr
+  R13967013 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/quixeramobim/agua_liquida/dvil
+  R13967015 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/funceme/quixeramobim/echotop/echotop20dbz
+  R13967014 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/quixeramobim/echotop/echotop35dbz
+  R13967017 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/funceme/quixeramobim/ppi/ppicz
+  R13967012 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/quixeramobim/agua_liquida/vil
+  R13967016 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/quixeramobim/echotop/waldvogel
+
+### Radar 8346 - Salvador
+  R12468346 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/salvador/cappi/cappi3km
+  R12464678 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/salvador/previsao_radar/cent_sistconvectivo
+  R12467238 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/salvador/chuva/chuva24h
+  R12464669 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/salvador/previsao_radar/rast_tempestade
+  R12467390 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/salvador/ppi/ppivr
+  R12462187 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/salvador/agua_liquida/dvil
+  R12464606 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/salvador/echotop/echotop20dbz
+  R12464607 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/salvador/echotop/echotop35dbz
+  R12467389 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/salvador/ppi/ppicz
+  R12462186 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/salvador/agua_liquida/vil
+  R12464608 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/salvador/echotop/waldvogel
+
+### Radar 8325 - Maceió
+  R12448325 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/maceio/cappi/cappi3km
+  R12444675 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/maceio/previsao_radar/cent_sistconvectivo
+  R12447230 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/maceio/chuva/chuva24h
+  R12444666 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/maceio/previsao_radar/rast_tempestade
+  R12447386 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/maceio/ppi/ppivr
+  R12442183 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/maceio/agua_liquida/dvil
+  R12444601 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/maceio/echotop/echotop20dbz
+  R12444602 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/maceio/echotop/echotop35dbz
+  R12447385 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/maceio/ppi/ppicz
+  R12442182 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/maceio/agua_liquida/vil
+  R12444600 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/maceio/echotop/waldvogel
+
+### Radar 1375 - Boa Vista
+  R13752137 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/boavista/cappi/cappi_3km
+  R12757278 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/boavista/chuva/chuva24h
+  R12757279 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/boavista/chuva/chuva48h
+  R12757280 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/boavista/chuva/chuva72h
+  R12757361 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/boavista/ppi/ppivr
+  R12752563 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/boavista/agua_liquida/dvil
+  R12754637 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/boavista/echotop/echotop20dbz
+  R12754636 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/boavista/echotop/echotop35dbz
+  R12757581 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/boavista/ppi/ppicz
+  R12752564 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/boavista/agua_liquida/vil
+  R12754638 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/boavista/echotop/waldvogel
+
+### Radar 1382 - Tabatinga
+  R13822144 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tabatinga/cappi/cappi3km
+  R12827317 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tabatinga/chuva/chuva24h
+  R12827318 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tabatinga/chuva/chuva48h
+  R12827319 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tabatinga/chuva/chuva72h
+  R12827378 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tabatinga/ppi/ppivr
+  R12822577 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tabatinga/agua_liquida/dvil
+  R12824658 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tabatinga/echotop/echotop20dbz
+  R12824657 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tabatinga/echotop/echotop35dbz
+  R12827598 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tabatinga/ppi/ppicz
+  R12822578 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tabatinga/agua_liquida/vil
+  R12824659 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tabatinga/echotop/waldvogel
+
+### Radar 1250 - Gama
+  R12504961 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/gama/cappi/cappi3km
+  R12504593 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/gama/previsao_radar/cent_sistconvectivo
+  R12507545 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/gama/chuva/chuva24h
+  R12574587 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/gama/previsao_radar/rast_tempestade
+  R12507562 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/gama/ppi/ppivr
+  R12502174 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/gama/agua_liquida/dvil
+  R12507557 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/gama/echotop/echotop20dbz
+  R12504486 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/gama/echotop/echotop35dbz
+  R12507565 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/gama/ppi/ppicz
+  R12507561 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/gama/agua_liquida/vil
+  R12504490 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/gama/echotop/waldvogel
+
+### Radar 4965 - Santiago
+  R12554965 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/santiago/cappi/cappi3km
+  R12554596 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/santiago/previsao_radar/cent_sistconvectivo
+  R12557549 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/santiago/chuva/chuva24h
+  R12574590 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/santiago/previsao_radar/rast_tempestade
+  R12558323 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/santiago/ppi/ppivr
+  R12552171 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/santiago/agua_liquida/dvil
+  R12558320 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/santiago/echotop/echotop20dbz
+  R12554483 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/santiago/echotop/echotop35dbz
+  R12558322 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/santiago/ppi/ppicz
+  R12558321 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/santiago/agua_liquida/vil
+  R12554487 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/santiago/echotop/waldvogel
+
+### Radar 1378 - Manaus
+  R12782140 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/manaus/cappi/cappi3km
+  R12787290 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/manaus/chuva/chuva24h
+  R12787291 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/manaus/chuva/chuva48h
+  R12787292 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/manaus/chuva/chuva72h
+  R12787367 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/manaus/ppi/ppivr
+  R12782569 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/manaus/agua_liquida/dvil
+  R12784646 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/manaus/echotop/echotop20dbz
+  R12784645 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/manaus/echotop/echotop35dbz
+  R12787587 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/manaus/ppi/ppicz
+  R12782570 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/manaus/agua_liquida/vil
+  R12784647 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/manaus/echotop/waldvogel
+
+### Radar 1376 - Cruzeiro do Sul
+  R12762138 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/cappi/cappi_3km
+  R12767282 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/chuva/chuva24h
+  R12767283 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/chuva/chuva48h
+  R12767284 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/chuva/chuva72h
+  R12767363 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/ppi/ppivr
+  R12762565 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/agua_liquida/dvil
+  R12764640 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/echotop/echotop20dbz
+  R12764639 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/echotop/echotop35dbz
+  R12767583 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/ppi/ppicz
+  R12762566 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/agua_liquida/vil
+  R12764641 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/cruzeirodosul/echotop/waldvogel
+
+### Radar 4962 - Canguçu
+  R12574962 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/cangucu/cappi/cappi3km
+  R12574592 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/cangucu/previsao_radar/cent_sistconvectivo
+  R12577546 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/cangucu/chuva/chuva24h
+  R12574586 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/decea/cangucu/previsao_radar/rast_tempestade
+  R12577538 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/cangucu/ppi/ppivr
+  R12572172 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/cangucu/agua_liquida/dvil
+  R12578314 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/cangucu/echotop/echotop20dbz
+  R12574484 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/cangucu/echotop/echotop35dbz
+  R12578316 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/decea/cangucu/ppi/ppicz
+  R12578315 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/cangucu/agua_liquida/vil
+  R12574488 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/decea/cangucu/echotop/waldvogel
+
+### Radar 4966 - Almenara
+  R12894966 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/almenara/cappi/cappi3km
+  R12894673 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/almenara/previsao_radar/cent_sistconvectivo
+  R12897250 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/almenara/chuva/chuva24h
+  R12894598 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/almenara/previsao_radar/rast_tempestade
+  R12897396 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/almenara/ppi/ppivr
+  R12892193 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/almenara/agua_liquida/dvil
+  R12894616 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/almenara/echotop/echotop20dbz
+  R12894615 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/almenara/echotop/echotop35dbz
+  R12897395 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/almenara/ppi/ppicz
+  R12892192 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/almenara/agua_liquida/vil
+  R12894617 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/almenara/echotop/waldvogel
+
+### Radar 1383 - Tefé
+  R12832258 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tefe/cappi/cappi3km
+  R12837294 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tefe/chuva/chuva24h
+  R12837295 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tefe/chuva/chuva48h
+  R12837296 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tefe/chuva/chuva72h
+  R12837377 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tefe/ppi/ppivr
+  R12832571 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tefe/agua_liquida/dvil
+  R12834649 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tefe/echotop/echotop20dbz
+  R12834648 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tefe/echotop/echotop35dbz
+  R12837597 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/tefe/ppi/ppicz
+  R12832572 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tefe/agua_liquida/vil
+  R12834650 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/tefe/echotop/waldvogel
+
+### Radar 2241 - Macaé
+  R12992241 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/inea/macae/cappi/cappi3km
+  R12997258 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/macae/chuva/chuva24h
+  R12997758 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/macae/ppi/ppivr
+  R12992197 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/macae/agua_liquida/dvil
+  R12994622 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/inea/macae/echotop/echotop20dbz
+  R12994621 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/macae/echotop/echotop35dbz
+  R12997399 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/inea/macae/ppi/ppicz
+  R12992196 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/macae/agua_liquida/vil
+  R12994623 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/inea/macae/echotop/waldvogel
+
+### Radar 1374 - Belém
+   |  |  | fase= | freq= min | 
+
+### Radar 8342 - Petrolina
+  R12258342 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/petrolina/cappi/cappi3km
+  R12254677 | Centróides | TXT | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/petrolina/previsao_radar/cent_sistconvectivo
+  R12257222 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/petrolina/chuva/chuva24h
+  R12254668 | Clusters 20 min | PNG | fase=Sistema de Previsão | freq=10 min | /oper/share/radar/cemaden/petrolina/previsao_radar/rast_tempestade
+  R12257382 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/petrolina/ppi/ppivr
+  R12252179 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/petrolina/agua_liquida/dvil
+  R12254495 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/petorlina/echotop/echotop20dbz
+  R12254496 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/petrolina/echotop/echotop35dbz
+  R12257381 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/cemaden/petrolina/ppi/ppicz
+  R12252178 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/petrolina/agua_liquida/vil
+  R12254494 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/cemaden/petrolina/echotop/waldvogel
+
+### Radar 1136 - Fortaleza
+  R13851136 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/funceme/fortaleza/cappi/cappi3km
+  R13851131 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/fortaleza/chuva/chuva24h
+  R13851143 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/fortaleza/ppi/ppivr
+  R13851138 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/fortaleza/agua_liquida/dvil
+  R13851140 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/funceme/fortaleza/echotop/echotop20dbz
+  R13851139 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/fortaleza/echotop/echotop35dbz
+  R13851142 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/funceme/fortaleza/ppi/ppicz
+  R13851137 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/fortaleza/agua_liquida/vil
+  R13851141 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/funceme/fortaleza/echotop/waldvogel
+
+### Radar 1381 - São Gabriel
+  R13812143 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saogabriel/cappi/cappi3km
+  R12817298 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saogabriel/chuva/chuva24h
+  R12817299 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saogabriel/chuva/chuva48h
+  R12817311 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saogabriel/chuva/chuva72h
+  R12817374 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saogabriel/ppi/ppivr
+  R12812573 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saogabriel/agua_liquida/dvil
+  R12814652 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saogabriel/echotop/echotop20dbz
+  R12814651 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saogabriel/echotop/echotop35dbz
+  R12817594 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saogabriel/ppi/ppicz
+  R12812574 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saogabriel/agua_liquida/vil
+  R12814653 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saogabriel/echotop/waldvogel
+
+### Radar 4961 - Lontras
+  R12222244 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sdcsc/lontras/cappi/cappi3km
+  R12227262 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/lontras/chuva/chuva24h
+  R12227760 | Doppler | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/lontras/ppi/ppivr
+  R12222199 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/lontras/agua_liquida/dvil
+  R12224625 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sdcsc/lontras/echotop/echotop20dbz
+  R12224624 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/lontras/echotop/echotop35dbz
+  R12227759 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sdcsc/lontras/ppi/ppicz
+  R12222198 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/lontras/agua_liquida/vil
+  R12224626 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sdcsc/lontras/echotop/waldvogel
+
+### Radar 1390 - São Luiz
+  R12904967 | CAPPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saoluis/cappi/cappi3km
+  R12907313 | Chuva 24hrs | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saoluis/chuva/chuva24h
+  R12907314 | Chuva 48h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saoluis/chuva/chuva48h
+  R12907315 | Chuva 72h | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saoluis/chuva/chuva72h
+  R12907766 | Doppler | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saoluis/ppi/ppivr
+  R12902575 | DVIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saoluis/agua_liquida/dvil
+  R12904655 | Echotop 20 dBz | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saoluis/echotop/echotop20dbz
+  R12904654 | Echotop 35dBz | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saoluis/echotop/echotop35dbz
+  R12907765 | PPI | PNG | fase=Iniciação Convectiva | freq=10 min | /oper/share/radar/sipam/saoluis/ppi/ppicz
+  R12902576 | VIL | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saoluis/agua_liquida/vil
+  R12904656 | Waldvogel | PNG | fase=Convecção Madura | freq=10 min | /oper/share/radar/sipam/saoluis/echotop/waldvogel
+
+=== CONSULTA A DADOS HISTÓRICOS (PNG/TXT em s0–s3) ===
+
+OBSERVACAO IMPORTANTE SOBRE "WMS":
+  O Nowcasting nao expoe GetMap/GetCapabilities WMS para esses radares. O site usa
+  imagens estaticas (PNG/JPG/TIF) e TXT servidos por HTTPS nos hosts espelhados
+  s0, s1, s2 e s3.cptec.inpe.br — o mesmo caminho logico em qualquer espelho.
+
+LOGICA DE TEMPO E FREQUENCIA (campo freq em minutos, ex.: 10):
+  - A cada produto, o arquivo mais recente segue o padrao de nome:
+      {id_produto}_{YYYYMMDDHHMM}.{ext}
+    onde YYYYMMDDHHMM e o instante associado ao produto (no JSON da API: fileDate,
+    fileTime; no proprio site costuma-se referir horario em UTC).
+  - Para reconstruir um dia, use passos de "freq" minutos (ex.: freq=10 => tentar
+    00, 10, 20, ... 50 de cada hora). Na pratica podem faltar arquivos (falha,
+    manutencao, atraso de ingestao); trate 404 como "sem dado nesse instante".
+  - Pastas: .../{YYYY}/{MM}/{arquivo} — o mes e o da data do arquivo.
+
+MODELO DE URL (substituir partes):
+  Base publica = https://{s0|s1|s2|s3}.cptec.inpe.br
+  Se localizacao (API) = /oper/share/radar/... entao caminho web = /radar/...
+    (ou seja: remover o prefixo /oper/share).
+  URL completa:
+    {Base}{caminho_web}/{YYYY}/{MM}/{id_produto}_{YYYYMMDDHHMM}.{png|jpg|tif|txt}
+
+EXEMPLO UNICO (Sao Francisco, CAPPI, 07/11/2025 as 12:00 UTC):
+  id_produto = R12458345
+  Arquivo: R12458345_202511071200.png
+  Pasta: .../cappi/cappi3km/2025/11/
+  https://s0.cptec.inpe.br/radar/cemaden/saofrancisco/cappi/cappi3km/2025/11/R12458345_202511071200.png
+  (trocar s0 por s1, s2 ou s3 se um espelho falhar)
+
+CONVERSAO DE FUSO (referencia):
+  07/11/2025 12:00 UTC = 09:00 horario de Brasilia (BRT, UTC-3).
+  Se quiser montar o nome do arquivo pelo horario local, converta antes para UTC.
+
+EXEMPLO DE VARREDURA DO DIA 07/11/2025 (UTC), freq=10 min, produto CAPPI:
+  Instantaneos a testar: 202511070000, 202511070010, 202511070020, ... ate 202511072350.
+  Total de ate 144 tentativas por produto por dia (24*60/10).
+
+---
+
+TABELA: exemplo CAPPI por radar — 07/11/2025 12:00 UTC (arquivo ..._202511071200.png)
+Espelho usado na coluna URL: s0 (use s1–s3 como alternativa).
+
+radar_id	produto_id	Nome	URL_exemplo_20251107_1200UTC
+8345	R12458345	Sao Francisco	https://s0.cptec.inpe.br/radar/cemaden/saofrancisco/cappi/cappi3km/2025/11/R12458345_202511071200.png
+8344	R12278344	Jaraguari	https://s0.cptec.inpe.br/radar/cemaden/jaraguari/cappi/cappi3km/2025/11/R12278344_202511071200.png
+2247	R12132247	Chapeco	https://s0.cptec.inpe.br/radar/sdcsc/chapeco/cappi/cappi3km/2025/11/R12132247_202511071200.png
+4964	R12544964	Morro da Igreja	https://s0.cptec.inpe.br/radar/decea/morroigreja/cappi/cappi3km/2025/11/R12544964_202511071200.png
+1379	R13792141	Porto Velho	https://s0.cptec.inpe.br/radar/sipam/portovelho/cappi/cappi_3km/2025/11/R13792141_202511071200.png
+1377	R12772255	Macapa	https://s0.cptec.inpe.br/radar/sipam/macapa/cappi/cappi3km/2025/11/R12772255_202511071200.png
+2169	R12972169	Santa Tereza	https://s0.cptec.inpe.br/radar/cemaden/santatereza/cappi/cappi3km/2025/11/R12972169_202511071200.png
+5984	R12475984	Tres Marias	https://s0.cptec.inpe.br/radar/cemaden/tresmarias/cappi/cappi3km/2025/11/R12475984_202511071200.png
+4963	R12564963	Pico do Couto	https://s0.cptec.inpe.br/radar/decea/picocouto/cappi/cappi3km/2025/11/R12564963_202511071200.png
+4960	R12534960	Sao Roque	https://s0.cptec.inpe.br/radar/decea/saoroque/cappi/cappi3km/2025/11/R12534960_202511071200.png
+1380	R13802142	Santarem	https://s0.cptec.inpe.br/radar/sipam/santarem/cappi/cappi3km/2025/11/R13802142_202511071200.png
+2238	R12952238	Guaratiba	https://s0.cptec.inpe.br/radar/inea/guaratiba/cappi/cappi3km/2025/11/R12952238_202511071200.png
+8343	R12248343	Natal	https://s0.cptec.inpe.br/radar/cemaden/natal/cappi/cappi3km/2025/11/R12248343_202511071200.png
+7011	R13967011	Quixeramobim	https://s0.cptec.inpe.br/radar/funceme/quixeramobim/cappi/cappi3km/2025/11/R13967011_202511071200.png
+8346	R12468346	Salvador	https://s0.cptec.inpe.br/radar/cemaden/salvador/cappi/cappi3km/2025/11/R12468346_202511071200.png
+8325	R12448325	Maceio	https://s0.cptec.inpe.br/radar/cemaden/maceio/cappi/cappi3km/2025/11/R12448325_202511071200.png
+1375	R13752137	Boa Vista	https://s0.cptec.inpe.br/radar/sipam/boavista/cappi/cappi_3km/2025/11/R13752137_202511071200.png
+1382	R13822144	Tabatinga	https://s0.cptec.inpe.br/radar/sipam/tabatinga/cappi/cappi3km/2025/11/R13822144_202511071200.png
+1250	R12504961	Gama	https://s0.cptec.inpe.br/radar/decea/gama/cappi/cappi3km/2025/11/R12504961_202511071200.png
+4965	R12554965	Santiago	https://s0.cptec.inpe.br/radar/decea/santiago/cappi/cappi3km/2025/11/R12554965_202511071200.png
+1378	R12782140	Manaus	https://s0.cptec.inpe.br/radar/sipam/manaus/cappi/cappi3km/2025/11/R12782140_202511071200.png
+1376	R12762138	Cruzeiro do Sul	https://s0.cptec.inpe.br/radar/sipam/cruzeirodosul/cappi/cappi_3km/2025/11/R12762138_202511071200.png
+4962	R12574962	Cangucu	https://s0.cptec.inpe.br/radar/decea/cangucu/cappi/cappi3km/2025/11/R12574962_202511071200.png
+4966	R12894966	Almenara	https://s0.cptec.inpe.br/radar/cemaden/almenara/cappi/cappi3km/2025/11/R12894966_202511071200.png
+1383	R12832258	Tefe	https://s0.cptec.inpe.br/radar/sipam/tefe/cappi/cappi3km/2025/11/R12832258_202511071200.png
+2241	R12992241	Macae	https://s0.cptec.inpe.br/radar/inea/macae/cappi/cappi3km/2025/11/R12992241_202511071200.png
+1374	(N/A API)	Belem	(API indisponivel — definir id/path via API quando voltar)
+8342	R12258342	Petrolina	https://s0.cptec.inpe.br/radar/cemaden/petrolina/cappi/cappi3km/2025/11/R12258342_202511071200.png
+1136	R13851136	Fortaleza	https://s0.cptec.inpe.br/radar/funceme/fortaleza/cappi/cappi3km/2025/11/R13851136_202511071200.png
+1381	R13812143	Sao Gabriel	https://s0.cptec.inpe.br/radar/sipam/saogabriel/cappi/cappi3km/2025/11/R13812143_202511071200.png
+4961	R12222244	Lontras	https://s0.cptec.inpe.br/radar/sdcsc/lontras/cappi/cappi3km/2025/11/R12222244_202511071200.png
+1390	R12904967	Sao Luiz	https://s0.cptec.inpe.br/radar/sipam/saoluis/cappi/cappi3km/2025/11/R12904967_202511071200.png
+
+OUTROS PRODUTOS (mesma logica):
+  Troque o sufixo do caminho e o id_produto pela linha em "PRODUTOS POR RADAR" acima.
+  Ex.: Centróides TXT (Sao Francisco):
+    /radar/cemaden/saofrancisco/previsao_radar/cent_sistconvectivo/2025/11/R12454680_202511071200.txt
+  Ex.: PPI PNG:
+    .../ppi/ppicz/2025/11/R12457387_202511071200.png
+
+API (lista de instantes disponiveis sem adivinhar):
+  GET https://nowcasting.cptec.inpe.br/api/camadas/radar/{radar_id}/imagens?quantidade=N&nome={NomeRadar}
+  Na resposta JSON, cada imagem traz "url", "fileDate", "fileTime", "boundingBox" e o nome de arquivo.
+  Use quantidade alto (ex.: 50) para puxar mais historico recente; para arquivos antigos o site pode nao
+  listar — ai resta montar a URL pelo padrao acima ou contatar o CPTEC.
+
+
+================================================================================
+REDEMET (Rede de Meteorologia do Comando da Aeronautica) — redemet.decea.mil.br
+================================================================================
+Fonte do site: https://redemet.decea.mil.br/
+
+API BASE
+  https://api-redemet.decea.mil.br/
+  Parametro comum: api_key=... (o front publico embute uma chave; para uso estavel/automatizado,
+  obtenha chave e termos na documentacao oficial da API REDEMET.)
+
+ENDPOINTS OBSERVADOS (GET, todos com api_key)
+  /mensagens/sigmet
+  /mensagens/airmet
+  /mensagens/gamet
+  /aerodromos/status?pais=argentina,bolivia,brasil,chile,colombia,ecuador,guyana,paraguay,peru,surinam,uruguay,venezuela&emcar=true
+  /produtos/wms/                    — lista de camadas WMS (cartas aeronauticas ICA, ver abaixo)
+  /produtos/satelite/realcada?anima=15
+  /produtos/radar/maxcappi?anima=8  — lista de radares + bounds + URLs dos PNG quando disponiveis
+  /produtos/stsc/0                  — poligonos/pontos (produto STSC / tempestade)
+
+WMS — O QUE E RADAR E O QUE NAO E
+  - /produtos/wms/ retorna camadas do GeoServer ICA (cartas): base tipo
+      https://geoaisweb.decea.gov.br/geoserver/ICA/ows?
+    layers exemplo: ICA:fir, ICA:vw_aerovia_alta_v2, ICA:ENRC_* (rotas). NAO e mosaico de radar.
+  - Mapa de fundo no site pode usar WMS OSM externo (ex.: ows.terrestris.de/osm/service, layer OSM-WMS).
+  - O produto radar MAXCAPPI no fluxo do site e servido como PNG no CDN estatico (nao como WMS OGC do radar).
+
+CDN ESTATICO — RADAR MAXCAPPI (PNG, historico por data no path)
+  Padrao:
+    https://estatico-redemet.decea.mil.br/radar/{AAAA}/{MM}/{DD}/{localidade}/maxcappi/maps/{AAAA-MM-DD--HH:MM:SS}.png
+  Exemplo:
+    https://estatico-redemet.decea.mil.br/radar/2026/03/26/mn/maxcappi/maps/2026-03-26--03:19:44.png
+  Troque AAAA/MM/DD e o nome do ficheiro pelo instante desejado; 404 = sem arquivo naquele instante.
+
+CDN — SATELITE (realcada, exemplo visto na rede)
+  https://estatico-redemet.decea.mil.br/satelite/{AAAA}/{MM}/{DD}/realcada/maps/realcada_{AAAAMMDDHHMM}.png
+
+JSON /produtos/radar/maxcappi — CAMPOS UTEIS POR RADAR
+  id, nome, localidade (codigo curto de pasta), raio (km), lat_center, lon_center,
+  lat_min, lat_max, lon_min, lon_max (bounding box do produto),
+  path (URL PNG quando existe), data (data/hora do produto). path null = sem imagem naquele quadro.
+
+RAIO: na amostra da API, todos os radares listados abaixo com raio 400 km.
+
+TABELA REDEMET — id interno, nome, sigla (pasta localidade)
+  2   Almenara/MG           al
+  4   Belem/PA               be
+  6   Boa Vista/RR           bv
+  8   Cangucu/RS             cn
+  10  Cruzeiro do Sul/AC     cz
+  12  Gama/DF                ga
+  14  Jaraguari/MS           jr
+  16  Morro da Igreja/SC     mi
+  18  Manaus/AM              mn
+  20  Macapa/AP              mq
+  22  Maceio/AL              mo
+  24  Natal/RN               nt
+  26  Pico do Couto/RJ       pc
+  28  Petrolina/PE           pl
+  30  Porto Velho/RO         pv
+  32  Sao Francisco/MG       sf
+  34  Santiago/RS            sg
+  36  Sao Luis/MA            sl
+  38  Santarem/PA            sn
+  40  Sao Roque/SP           sr
+  42  Salvador/BA            sv
+  44  Santa Teresa/MG        st
+  46  Tefe/AM                tf
+  48  Tres Marias/MG         tm
+  50  Tabatinga/AM           tt
+  52  Sao Gabriel da Cachoeira/AM  ua
+  102 Vilhena/RO             vh
+  104 Rio Branco/AC          rb
+
+NOTA: REDEMET (DECEA) e Nowcasting (CPTEC) sao sistemas diferentes; ids e caminhos nao sao os mesmos.
+
+
+================================================================================
+FUNCEME — radar.funceme.br (Fundacao Cearense de Meteorologia e Recursos Hidricos)
+================================================================================
+Site: https://radar.funceme.br/
+App: Angular (SPA); rotas longas sao tratadas no cliente.
+
+ROTA TIPO (parametros na URL)
+  /radar/{equipamento}/{produto}/{contexto}/{num_imagens}/{legenda}/{velocidade}/{data}
+  Exemplo:
+    .../radar/GMWR1000SST/prsf/RADAR_FORTALEZARMF/20/true/2/2026-03-23
+  Segmentos:
+    equipamento  — modelo/site do radar (ver tabela abaixo)
+    produto      — ex.: prsf (reflectividade principal usada no app)
+    contexto     — ex.: RADAR_FORTALEZARMF (Fortaleza), RADAR_CEARA (mosaico/visada CE)
+    num_imagens  — quantidade de frames na animacao (ex.: 20)
+    legenda      — true/false
+    velocidade   — 1 = lenta, 2 = normal, 3 = rapida
+    data         — YYYY-MM-DD para historico; 0 = fluxo "atual" nas rotas padrao do app
+
+CONJUNTOS PRINCIPAIS (radares / equipamentos neste front)
+  GMWR1000SST + contexto RADAR_FORTALEZARMF  — radar Fortaleza
+  RMT0100DS   + contexto RADAR_CEARA         — composto / visada estado do Ceara
+  No codigo ha referencias a outros produtos (ex. acumhorario, acumdiario) e equipamento DWSR92X;
+  mesma ideia de URL trocando produto/equipamento.
+
+IMAGENS DE RADAR (CDN, PNG, historico por pasta)
+  Padrao observado:
+    https://cdn.funceme.br/radar/operadares/{EQUIPAMENTO}/plots/prsf/transparente/{AAAA}/{MM}/{DD}/PRSF{YYYYMMDDHHMMSS}{EQUIPAMENTO}_openlayer.png
+  Exemplo de nome:
+    PRSF20260324012435GMWR1000SST_openlayer.png
+  Substituir EQUIPAMENTO, data na arvore de pastas e timestamp no ficheiro; 404 = sem produto naquele instante.
+
+WMS
+  O produto radar e servido como PNG estatico (OpenLayers ImageStatic no app), nao como camada WMS OGC.
+
+BOUNDS / ALCANCE (referencia no bundle + KML)
+  Retangulo WGS84 usado para o dominio RMT (Ceara), antes de projecao no mapa:
+    minLon -42.6806, minLat -12.4827, maxLon -35.8536, maxLat -1.6557
+  Para a visada Fortaleza (GMWR), a extensao de visualizacao e derivada desse retangulo com margem (expandExtent no codigo).
+  KML de alcance no CDN (desenho de area):
+    https://cdn.funceme.br/assets/kml/rangeGMWR1000SST.kml   — associado a RADAR_FORTALEZARMF
+    https://cdn.funceme.br/assets/kml/rangeRMT0100DS.kml     — associado a RADAR_CEARA
+  Outros KML de contexto (limites administrativos, etc.): sob cdn.funceme.br/assets/kml/ (ex. municipios_ceara.kml, macro_regioes_radar.kml).
+
+
+NOTA: FUNCEME, Nowcasting (CPTEC) e REDEMET (DECEA) sao sistemas diferentes; formatos de URL e equipamentos nao coincidem.
+
+
+================================================================================
+WebMET / GRC — webmet.ohmc.ar (Grupo Radar Cordoba / OHMC, Argentina)
+================================================================================
+Site: https://webmet.ohmc.ar/
+Stack: Leaflet, jQuery, Materialize; imagens de radar como PNG estatico (imageOverlay), nao WMS de produto radar.
+
+--- API JSON (backend Django-style) ---
+  GET https://webmet.ohmc.ar/api_radares/radares/?format=json
+    Lista de radares: code, title, description, center_lat/long, img_radio (km), point1_lat/long (canto NE do retangulo),
+    point2_lat/long (canto SW). Usado para bounds do overlay e circulo de cobertura.
+
+  GET https://webmet.ohmc.ar/api_radares/images_radares/?format=json
+    Parametros esperados no codigo (funcao search_images): code_radar, polarimetric_var, date_from, date_to.
+    ATENCAO: em static/js/radares.js a funcao search_images() comeca com "return false;" — o cliente NAO chama esta API
+    para preencher a animacao; o fluxo principal e carregar PNG por URL fixa em /media/radares/images/...
+    Teste direto ao endpoint pode devolver [] se nao houver registos no intervalo.
+
+--- Dados de radar (historico = mesmo padrao de ficheiro por data/hora) ---
+  Base: https://webmet.ohmc.ar/media/radares/images/{CODE}/{YYYY}/{MM}/{DD}/
+  Ficheiro (moment.js): timestamp_actual_frame + 3 horas (taf_utc) para alinhar nomes a UTC (Argentina UTC-3).
+  Padrao:
+    {CODE}_{YYYYMMDDTHHmm}00Z_{VAR}_00.png
+  Variaveis VAR no HTML (polarimetrics_vars): COLMAX, KDP, RHOHVo, TDR (dual-pol, rotulo UI ~ ZDR), TH (reflectividade ~ Z),
+    VRAD, WRAD.
+  Topes de nube (pontos a partir de texto):
+    {CODE}_{YYYYMMDDTHHmm}00Z_TOPES_00.txt
+    (linhas: tipo,lat,lon,valor — T=tope em m, N=nucleo Z em dBZ)
+
+--- Raio e bounds ---
+  img_radio na API: 240 (km). No mapa: L.circle com radius = 1000 * img_radio (metros) = 240 km.
+  extent do PNG: retangulo LeafletBounds entre point2 (SW) e point1 (NE), todos em WGS84.
+
+--- Timeline / cadencia ---
+  timeround (minutos entre frames): calculado a partir do intervalo escolhido (slider -12h..+12h, delta_time 2..12 h),
+    minimo 10 minutos (graphic.js + functions.js). Rele automatico do "agora" a cada 15 minutos se nao estiver em modo data fixa.
+
+--- Outros recursos no HTML ---
+  Campo eletrico (imagens): /media/campo/CampoE0.png, /media/campo/CampoE1.png (podem 404 se nao publicados)
+  Estacoes meteorologicas: marcadores definidos no HTML (Estacion 001..009), sem API REST visivel no JS analisado.
+
+--- Tabela resumida de radares (API radares.json) ---
+code    title                 center_lat    center_long   radio_km
+AR5     Pergamino             -33.94612     -60.56260     240
+AR7     Parana                -31.84849     -60.53724     240
+AR8     Anguil                -36.53965     -63.98984     240
+RMA1    Cordoba               -31.44139     -64.19194     240
+RMA2    Ezeiza                -34.80082     -58.51557     240
+RMA3    Las Lomitas           -24.73028     -60.55139     240
+RMA4    Resistencia           -27.45167     -59.05083     240
+RMA5    Bernardo de Irigoyen  -26.27812     -53.67085     240
+RMA6    Mar del Plata         -37.91306     -57.52783     240
+RMA7    Neuquen               -38.87662     -68.14489     240
+RMA8    Mercedes              -29.19591     -58.04485     240
+RMA9    Rio Grande            -53.78399     -67.74426     240
+RMA10   Espora                -38.73426     -62.16341     240
+RMA11   TermasRioHondo        -27.50260     -64.90575     240
+RMA12   Las Grutas            -40.77221     -65.07604     240
+RMA13   Ituzaingo - Corrientes -27.62229    -56.84181     240
+RMA14   Bolivar               -36.18903     -61.07041     240
+RMA15   Patquia               -30.03080     -66.87630     240
+RMA16   Villa Reynolds        -33.71829     -65.37546     240
+RMA17   Alejandro Roca        -33.35140     -63.70360     240
+RMA18   Santa Isabel - La Pampa -36.22317  -66.93639     240
+RMA00   Bariloche             -41.13944     -71.14944     240
+
+NOTA: WebMET e independente de CPTEC, REDEMET e FUNCEME; ids (RMA*, AR*) sao da rede Argentina/GRC.
+
+
+================================================================================
+Chuva Online — chuvaonline.iag.usp.br (IAG-USP / STARNET, radar SP)
+================================================================================
+Pagina principal: https://www.chuvaonline.iag.usp.br/index_chuvaonline.php
+Assets JS/CSS: principalmente https://chuvaonline.iag.usp.br/arquivos/...
+Imagens de radar em producao: https://www.starnet.iag.usp.br/img_starnet/Radar_USP/...
+
+--- Radares / produtos (visao do front) ---
+  Nao ha lista multi-radar: o site gira em torno do radar do projeto CHUVA ONLINE (USP / STORM-T),
+  com TRES visualizacoes OpenLayers (ol.layer.Image + ol.source.ImageStatic), todas PNG — NAO e WMS OGC.
+
+  (1) Integracao (mapa "padrao" — index_chuvaonline.php + chuvaonline.js)
+      Ultima imagem: //www.starnet.iag.usp.br/img_starnet/Radar_USP/Integracao/integracao_last.png
+      Centro mapa: lat -23.5220, lon -46.6181 | zoom inicial 11
+      Extent WGS84 (minLon, minLat, maxLon, maxLat): -46.946592, -23.755570, -46.289584, -23.288351
+
+  (2) 36 km / Pelletron (index_chuvaonline_36km.php + chuvaonline_36km.js)
+      Ultima imagem: .../pelletron_36km/last/pelletron_cz_36km_05deg_last.png
+      UI: "Resolucao: 30 m" e "Range: 36 km"
+      Extent WGS84: -47.134155, -23.930042, -46.337808, -23.192604
+      Animacao (animacao_36km.php + chuvaonline_animacao_36km.js, data-args no HTML = numero de frames, ex. 10):
+        //www.starnet.iag.usp.br/img_starnet/Radar_USP/pelletron_36km/loop/36km_loop_{1..N}.png
+
+  (3) Radar XPOL (radar_xpol.php + chuvaonline_xpol.js em www.starnet.iag.usp.br)
+      Ultima imagem: //www.starnet.iag.usp.br/img_starnet/Radar_USP/XPOL/xpol_last.png
+      Centro: -23.6519, -46.6231 | zoom 10
+      Extent WGS84: -47.214630, -24.190365, -46.036431, -23.111205
+      Comentario no JS menciona ficheiros alternativos (nao activos): last_integracao_spol_xpol_novimet_hires_125m.png
+
+--- Mapa de fundo ---
+  OpenLayers ol.source.OSM (tiles padrao OpenStreetMap em {a|b|c}.tile.openstreetmap.org).
+
+--- Historico (Busca) ---
+  Pagina: busca.php — formulario POST para animacao_radar.php com datei, horarioi, datef, horariof (dd/mm/aaaa e HH:MM).
+  O PHP devolve HTML com array modImages[] de caminhos RELATIVOS, ex.:
+    YYYY-MM-DD/integracao_YYYYMMDDHHmm.png
+  Exemplo de cadencia no array de exemplo: passos de 15 minutos (0010, 0025, 0040, ...).
+  Resolucao do iframe da animacao: animation_width x animation_height = 745 x 577 (no template analisado).
+  Base URL efectiva das imagens: relativa ao documento animacao_radar.php (tipicamente sob o mesmo host chuvaonline);
+    verificar no navegador (Network) o GET exacto se um dia arquivado devolver 404.
+
+--- API REST ---
+  Nenhuma API JSON para inventario de radares; unico "backend" visivel e PHP (animacao_radar.php, formularios).
+
+--- WMS ---
+  Nao: produto radar = ImageStatic (PNG). Comentarios no chuvaonline.js citam exemplo BGS WMS (desactivado).
+
+--- Meta refresh ---
+  index_chuvaonline.php: refresh 100 s; animacao_36km.php: 120 s; radar_xpol.php: 300 s (recarrega pagina).
+
+--- Google Analytics ---
+  UA-58540012-1 (presente nas paginas).
+
