@@ -1,15 +1,22 @@
 import os
+import sys
 
-# Forçar Qt Headless e Bindings ANTES de qualquer outro import
+# Bindings ANTES de qualquer outro import Qt
 os.environ["QT_API"] = "pyqt5"
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["PYQTGRAPH_QT_LIB"] = "PyQt5"
+# Offscreen é necessário em Linux headless (Docker). No Windows, o QPA offscreen costuma
+# não desenhar texto (eixos Skew-T, tabelas CAPE/SRH) — usar QPA nativo como no SHARPpy GUI.
+if os.environ.get("FORCE_QT_OFFSCREEN", "").lower() in ("1", "true", "yes"):
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+elif sys.platform.startswith("linux"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import io
 import base64
 import datetime
 import traceback
 import platform
+import time
 import pandas as pd
 import numpy as np
 
@@ -829,11 +836,59 @@ def get_qapp():
     if _qapp is None:
         import sys
         _qapp = QApplication.instance() or QApplication(sys.argv)
-        # Forçar fonte padrão para sistemas Linux que não tem as fontes Windows
-        from PyQt5.QtGui import QFont
-        font = QFont("Liberation Sans", 10)
+        # Offscreen + fonte inexistente = texto invisível (Helvetica/plotText depende de métricas corretas).
+        from PyQt5.QtGui import QFont, QFontInfo
+        if platform.system() == "Windows":
+            font = QFont("Segoe UI", 10)
+        elif platform.system() == "Darwin":
+            font = QFont(".AppleSystemUIFont", 10)
+        else:
+            font = QFont("Liberation Sans", 10)
+        if not QFontInfo(font).exactMatch():
+            font = QFont()
         _qapp.setFont(font)
     return _qapp
+
+
+def _wait_spcwidget_ready(widget, app, timeout_sec=3.0):
+    """
+    Com QPA offscreen, um único processEvents() não aplica o layout: plotText/Skew-T
+    podem ter altura 0 → QFont pixel size 0 e tabelas vazias. Espera até os painéis
+    principais terem geometria válida.
+    """
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        app.processEvents()
+        try:
+            sound = getattr(widget, "sound", None)
+            conv = getattr(widget, "convective", None)
+            if (
+                sound is not None
+                and conv is not None
+                and sound.height() > 50
+                and conv.height() > 30
+                and widget.width() > 100
+                and widget.height() > 100
+            ):
+                break
+        except Exception:
+            pass
+        time.sleep(0.015)
+    for _ in range(12):
+        app.processEvents()
+        time.sleep(0.008)
+    try:
+        widget.update()
+        widget.repaint()
+        app.processEvents()
+    except Exception:
+        pass
+    # setProf correu antes do layout (tamanho 0); redesenha índices/texto com geometria final.
+    try:
+        widget.updateProfs()
+        app.processEvents()
+    except Exception:
+        pass
 
 
 def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
@@ -883,7 +938,6 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         )
         
         # Criar Coleção (necessário para o SPCWidget)
-        # O ProfCollection espera um dict de membros e uma lista de datas
         prof_dict = {'Sounding': [prof]}
         dates = [curr_date]
         prof_col = ProfCollection(prof_dict, dates)
@@ -893,28 +947,44 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         prof_col.setMeta('run', curr_date)
         prof_col.setMeta('base_time', curr_date)
         
-        # 2. Configurar o Widget Nativo
+        # 2. Inicializar Widget Nativo (SPCWidget)
         cfg = get_native_config()
+        # Forçar alto contraste (fundo branco / texto preto) conforme a referência 'linda'
+        try:
+            cfg['preferences', 'bg_color'] = '#FFFFFF'
+            cfg['preferences', 'fg_color'] = '#000000'
+            cfg['preferences', 'adiab_color'] = '#D0D0D0'
+            cfg['preferences', 'isotherm_color'] = '#E0E0E0'
+            cfg['preferences', 'skew_adiab_color'] = '#D0D0D0'
+            cfg['preferences', 'skew_itherm_color'] = '#E0E0E0'
+        except:
+            pass
         
-        # O SPCWidget monta o layout idêntico ao da imagem
+        from sharppy.viz.SPCWindow import SPCWidget
+        # Iniciar com o Config via kwarg
         widget = SPCWidget(cfg=cfg)
+        # Adicionar a coleção de perfis (isso dispara o cabeçalho e as tabelas)
         widget.addProfileCollection(prof_col, "Sounding")
         
-        # Ajustar para Hemisfério Sul (Bunkers Left) caso o widget não detecte
-        if is_hs:
-            widget.toggleVector('left') # Força Bunkers Left Mover como foco
-        
-        # Forçar o tamanho (SPC padrão é 1180x800 como visto no Windows em SPCWindow.py)
+        # Mesmo tamanho base do SPCWindow (1180×800)
         width, height = 1180, 800
         widget.resize(width, height)
         widget.setFixedSize(width, height)
         widget.setAttribute(Qt.WA_DontShowOnScreen)
+        
+        # Forçar Paleta para garantir texto preto nítido
+        from PyQt5.QtGui import QPalette, QColor
+        palette = widget.palette()
+        palette.setColor(QPalette.Window, QColor("#FFFFFF"))
+        palette.setColor(QPalette.WindowText, QColor("#000000"))
+        palette.setColor(QPalette.Base, QColor("#FFFFFF"))
+        palette.setColor(QPalette.Text, QColor("#000000"))
+        widget.setPalette(palette)
+        
         widget.show()
-        
-        # O SPCWidget às vezes precisa de um pequeno processamento de eventos para renderizar textos
-        get_qapp().processEvents()
-        
-        # Converter para Base64 (usando tempfile para máxima compatibilidade)
+        _wait_spcwidget_ready(widget, app)
+
+        # grab() compõe o painel completo (incl. QPixmap internos do plotText); render() pode omitir texto.
         import tempfile
         pixmap = widget.grab()
 

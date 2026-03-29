@@ -1,10 +1,13 @@
 import os
 import sys
 
-# Forçar Qt Headless e Bindings ANTES de qualquer outro import
+# Bindings ANTES de qualquer import Qt (alinhado a sounding_logic)
 os.environ["QT_API"] = "pyqt5"
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["PYQTGRAPH_QT_LIB"] = "PyQt5"
+if os.environ.get("FORCE_QT_OFFSCREEN", "").lower() in ("1", "true", "yes"):
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+elif sys.platform.startswith("linux"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["XDG_RUNTIME_DIR"] = "/tmp/runtime-root"
 
 # Inicializar QApplication ANTES de qualquer import do SHARPpy
