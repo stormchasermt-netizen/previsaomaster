@@ -162,6 +162,7 @@ async function filterValidSliderMinutesAgo(
   maxMinutes: number,
   radarConfigs: RadarConfig[],
   referenceTs12: string,
+  isHistorical: boolean,
   signal?: AbortSignal
 ): Promise<number[]> {
   const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
@@ -178,7 +179,7 @@ async function filterValidSliderMinutesAgo(
   }
 
   /** IPMET */
-  if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
+  if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru' && !isHistorical) {
     const baseTs12 = referenceTs12;
     const result: number[] = [0];
 
@@ -223,7 +224,7 @@ async function filterValidSliderMinutesAgo(
   }
 
   /** FUNCEME: busca frames reais da API ao invés de sondar URLs */
-  if (dr.type === 'cptec' && dr.station.org === 'funceme') {
+  if (dr.type === 'cptec' && dr.station.org === 'funceme' && !isHistorical) {
     const baseTs12 = referenceTs12;
     const dateStr = `${baseTs12.slice(0, 4)}-${baseTs12.slice(4, 6)}-${baseTs12.slice(6, 8)}`;
     try {
@@ -257,7 +258,7 @@ async function filterValidSliderMinutesAgo(
   }
 
   /** Chapecó (CPTEC Nowcasting): busca frames reais da API */
-  if (dr.type === 'cptec' && dr.station.slug === 'chapeco') {
+  if (dr.type === 'cptec' && dr.station.slug === 'chapeco' && !isHistorical) {
     const radarId = productType === 'velocidade' ? dr.station.velocityId : dr.station.id;
     try {
       const res = await fetch(`/api/nowcasting/chapeco/frames?radarId=${encodeURIComponent(radarId || dr.station.id)}`, { cache: 'no-store', signal });
@@ -290,7 +291,7 @@ async function filterValidSliderMinutesAgo(
   }
 
   /** SIPAM-HD: busca frames reais da API SIPAM (quando HD ativo e estação tem sipamSlug) */
-  if (dr.type === 'cptec' && dr.station.sipamSlug) {
+  if (dr.type === 'cptec' && dr.station.sipamSlug && !isHistorical) {
     try {
       const res = await fetch(`/api/sipam/frames?radar=${encodeURIComponent(dr.station.sipamSlug)}`, { cache: 'no-store', signal });
       const data = await res.json().catch(() => ({ frames: [] }));
@@ -505,6 +506,8 @@ export default function AoVivoPage() {
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
   /** Geração atual de overlays para evitar Race Conditions */
   const overlayGenerationRef = useRef(0);
+  /** Controla quantos workers/requests ainda estão rodando (para a animação esperar) */
+  const pendingRadarRequestsRef = useRef(0);
 
   // Função auxiliar para aplicar o estilo correto a qualquer instância de mapa
   const applyBaseMapStyle = useCallback((mapInstance: any) => {
@@ -529,34 +532,49 @@ export default function AoVivoPage() {
 
   // Lógica de Animação Automática (Play/Pause)
   useEffect(() => {
-    if (isPlaying) {
-      if (!playIntervalRef.current) {
-        playIntervalRef.current = setInterval(() => {
-          setSliderMinutesAgo((prev) => {
-            if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
-              const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
-              const nextIndex = currentIndex + 1;
-              if (nextIndex >= validSliderMinutesAgo.length) {
-                return validSliderMinutesAgo[0]; // Reset loop
-              }
-              return validSliderMinutesAgo[nextIndex];
-            } else {
-              const next = prev - 5;
-              if (next < 0) return maxSliderMinutesAgo;
-              return next;
-            }
-          });
-        }, 800 / animationSpeedMultiplier);
-      }
-    } else {
+    if (!isPlaying) {
       if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
+        clearTimeout(playIntervalRef.current);
         playIntervalRef.current = null;
       }
+      return;
     }
+
+    let isMounted = true;
+    
+    const tick = () => {
+      if (!isMounted || !isPlaying) return;
+
+      // Só avança se não houver radares carregando e já passou do tempo de fade (350ms)
+      if (pendingRadarRequestsRef.current > 0) {
+        playIntervalRef.current = setTimeout(tick, 150);
+        return;
+      }
+
+      setSliderMinutesAgo((prev) => {
+        if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
+          const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
+          const nextIndex = currentIndex + 1;
+          if (nextIndex >= validSliderMinutesAgo.length) {
+            return validSliderMinutesAgo[0]; // Reset loop
+          }
+          return validSliderMinutesAgo[nextIndex];
+        } else {
+          const next = prev - 5;
+          if (next < 0) return maxSliderMinutesAgo;
+          return next;
+        }
+      });
+
+      playIntervalRef.current = setTimeout(tick, 800 / animationSpeedMultiplier);
+    };
+
+    playIntervalRef.current = setTimeout(tick, 800 / animationSpeedMultiplier);
+
     return () => {
+      isMounted = false;
       if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
+        clearTimeout(playIntervalRef.current);
         playIntervalRef.current = null;
       }
     };
@@ -1436,7 +1454,8 @@ export default function AoVivoPage() {
     (async () => {
       const productForTimeline = splitCount === 2 ? 'velocidade' : radarProductType;
       const baseTs12 = historicalTimestampOverride || getNowMinusMinutesTimestamp12UTC(3);
-      const valid = await filterValidSliderMinutesAgo(dr, productForTimeline, maxMin, radarConfigs, baseTs12, ac.signal);
+      const isHistorical = !!historicalTimestampOverride;
+      const valid = await filterValidSliderMinutesAgo(dr, productForTimeline, maxMin, radarConfigs, baseTs12, isHistorical, ac.signal);
       if (!ac.signal.aborted) {
         setValidSliderMinutesAgo(valid);
         setSliderMinutesAgo((prev) => {
@@ -1935,6 +1954,15 @@ export default function AoVivoPage() {
       currentGen: number
     ) => {
       radars.forEach((dr) => {
+        pendingRadarRequestsRef.current++;
+        let finished = false;
+        const completeRequest = () => {
+          if (!finished) {
+            finished = true;
+            pendingRadarRequestsRef.current--;
+          }
+        };
+
         const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
         const slug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
 
@@ -1945,6 +1973,7 @@ export default function AoVivoPage() {
         const exactTs12 = floorTimestampToInterval(timestamp, radarInterval);
 
         const renderWebGLRadar = (imageUrl: string, source: string, finalTs: string) => {
+          completeRequest();
           if (currentGen !== overlayGenerationRef.current) return;
           const bufferIdx = currentGen % 2;
           const oldBufferIdx = (currentGen + 1) % 2;
@@ -1993,7 +2022,10 @@ export default function AoVivoPage() {
           });
         };
 
-        const markFailed = () => setFailedRadars((prev) => new Set(prev).add(radarKey));
+        const markFailed = () => {
+          completeRequest();
+          setFailedRadars((prev) => new Set(prev).add(radarKey));
+        };
 
         const processWithWorker = (imgUrl: string, source: string, finalTs: string, onFail: () => void) => {
           const genAtPost = currentGen;
@@ -2001,6 +2033,7 @@ export default function AoVivoPage() {
           if (radarWorkerRef.current) {
             const reqId = `g${genAtPost}-${radarKey}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
             workerCallbacks.current.set(reqId, (processedUrl, err) => {
+              completeRequest();
               if (genAtPost !== overlayGenerationRef.current) return;
               if (err || !processedUrl) onFail();
               else renderWebGLRadar(processedUrl, source, finalTs);
@@ -2166,7 +2199,6 @@ export default function AoVivoPage() {
     configs.forEach(({ ref, map, ready, product }) => {
       if (!ready || !map || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) return;
 
-      overlayGenerationRef.current += 1;
       const radars = editingRadar
         ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
         : displayRadars;
