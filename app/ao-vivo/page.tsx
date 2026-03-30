@@ -1783,7 +1783,7 @@ export default function AoVivoPage() {
       el.className = 'w-8 h-8 rounded-full border-2 border-white shadow-lg overflow-hidden bg-sky-500 cursor-pointer transition-transform hover:scale-110';
       el.style.backgroundImage = `url(${u.photoURL || 'https://starlight-temp.s3.amazonaws.com/user-placeholder.png'})`;
       el.style.backgroundSize = 'cover';
-      const marker = new maplibregl.Marker(el).setLngLat([u.lng, u.lat]).addTo(map);
+      const marker = new maplibregl.Marker({ element: el }).setLngLat([u.lng, u.lat]).addTo(map);
       marker.getElement().addEventListener('click', () => {
         if (u.isLiveStreaming && u.uid !== user?.uid && u.liveRoomName) {
           setLiveViewerUser(u); setLiveViewerOpen(true);
@@ -1889,7 +1889,7 @@ export default function AoVivoPage() {
         `;
       }
 
-      const marker = new maplibregl.Marker(el).setLngLat([pos.lng, pos.lat]).addTo(map);
+      const marker = new maplibregl.Marker({ element: el }).setLngLat([pos.lng, pos.lat]).addTo(map);
       marker.getElement().addEventListener('click', () => {
         const isUnfocus = focusedRadarKey === radarKey;
         if (isUnfocus) {
@@ -1913,7 +1913,7 @@ export default function AoVivoPage() {
       const el = document.createElement('div');
       el.className = `w-6 h-6 rotate-45 border-2 border-white shadow-xl cursor-pointer hover:scale-125 transition-transform ${r.type === 'tor' ? 'bg-red-600' : r.type === 'gra' ? 'bg-emerald-500' : 'bg-blue-500'}`;
       
-      const marker = new maplibregl.Marker(el).setLngLat([r.lng, r.lat]).addTo(map);
+      const marker = new maplibregl.Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map);
       marker.getElement().addEventListener('click', () => {
         const popup = new maplibregl.Popup({ offset: 25 })
           .setLngLat([r.lng, r.lat])
