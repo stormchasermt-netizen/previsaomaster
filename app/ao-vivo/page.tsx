@@ -110,6 +110,15 @@ function getProxiedRadarUrl(url: string): string {
   return `/api/radar-proxy?url=${encodeURIComponent(url)}`;
 }
 
+/** Texto seguro para HTML em popups (evita quebra por aspas / XSS). */
+function escapeHtmlForPopup(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /** Retorna [proxyUrl, directUrl] — fallback direto quando proxy retorna Backend Not Found (Firebase). */
 function getRadarUrlsWithFallback(url: string): [string, string] {
   return [getProxiedRadarUrl(url), url];
@@ -1941,14 +1950,38 @@ export default function AoVivoPage() {
     stormReports.forEach((r) => {
       const el = document.createElement('div');
       el.className = `w-6 h-6 rotate-45 border-2 border-white shadow-xl cursor-pointer hover:scale-125 transition-transform ${r.type === 'tor' ? 'bg-red-600' : r.type === 'gra' ? 'bg-emerald-500' : 'bg-blue-500'}`;
-      
-      const marker = new maplibregl.Marker({ element: el }).setLngLat([r.lng, r.lat]).addTo(map);
-      marker.getElement().addEventListener('click', () => {
-        const popup = new maplibregl.Popup({ offset: 25 })
-          .setLngLat([r.lng, r.lat])
-          .setHTML(`<div class="p-2 text-slate-800 font-bold">${r.type.toUpperCase()}: ${r.detail || ''}<br/><span class="text-[10px] font-normal">por ${r.displayName}</span></div>`)
-          .addTo(map);
-      });
+      el.style.pointerEvents = 'auto';
+
+      const detailHtml = escapeHtmlForPopup(r.detail?.trim() || '—');
+      const nameHtml = escapeHtmlForPopup(r.displayName || '');
+      const mediaHtml =
+        r.mediaUrl && /^https?:\/\//i.test(r.mediaUrl)
+          ? `<p class="mt-2 text-xs"><a href="${escapeHtmlForPopup(r.mediaUrl)}" target="_blank" rel="noopener noreferrer" class="text-cyan-600 underline font-semibold">Abrir mídia</a></p>`
+          : '';
+
+      const popup = new maplibregl.Popup({
+        offset: 25,
+        closeButton: true,
+        closeOnClick: true,
+        maxWidth: '320px',
+        className: 'storm-report-popup',
+      }).setHTML(
+        `<div class="p-2 text-slate-800"><p class="font-bold">${r.type.toUpperCase()}: ${detailHtml}</p><p class="text-[10px] font-normal mt-1">por ${nameHtml}</p>${mediaHtml}</div>`
+      );
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([r.lng, r.lat])
+        .setPopup(popup)
+        .addTo(map);
+
+      // MapLibre v5 abre o popup via map click quando o target é o marcador; em alguns layouts isso não dispara.
+      // Clique direto no ícone garante toggle do popup.
+      const onMarkerClick = (e: MouseEvent) => {
+        e.stopPropagation();
+        marker.togglePopup();
+      };
+      el.addEventListener('click', onMarkerClick, { capture: true });
+
       stormReportMarkersRef.current.push(marker);
     });
   }, [mapReady, stormReports, showReportsOnMap]);
