@@ -429,26 +429,23 @@ export default function AoVivoPage() {
   const [showCrosshair, setShowCrosshair] = useState(false);
   const cachedImageDataMap = useRef(new Map<string, { img: HTMLImageElement, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }>());
   
-  // Instância única do Worker para todos os radares
+  // Instância única do Worker — crachás (reqId) evitam trocar imagem entre radares e permitem fallback em cadeia
   const radarWorkerRef = useRef<Worker | null>(null);
-  /** Crachá (reqId) → callback da resposta; evita trocar imagens entre estações quando o Worker responde fora de ordem. */
-  const radarWorkerCallbacksRef = useRef(
-    new Map<string, (r: { url?: string; error?: string }) => void>()
-  );
+  const workerCallbacks = useRef(new Map<string, (url: string | null, err?: string) => void>());
   useEffect(() => {
-    const w = new Worker(new URL('../../workers/radarFilter.worker.ts', import.meta.url));
-    radarWorkerRef.current = w;
-    w.onmessage = (msg: MessageEvent<{ id?: string; url?: string; error?: string }>) => {
-      const { id, url, error } = msg.data || {};
-      if (!id) return;
-      const fn = radarWorkerCallbacksRef.current.get(id);
-      if (!fn) return;
-      radarWorkerCallbacksRef.current.delete(id);
-      fn({ url, error });
+    const worker = new Worker(new URL('../../workers/radarFilter.worker.ts', import.meta.url));
+    worker.onmessage = (e: MessageEvent<{ id?: string; url?: string; error?: string }>) => {
+      const { id, url, error } = e.data || {};
+      if (id && workerCallbacks.current.has(id)) {
+        const callback = workerCallbacks.current.get(id);
+        if (callback) callback(url ?? null, error);
+        workerCallbacks.current.delete(id);
+      }
     };
+    radarWorkerRef.current = worker;
     return () => {
-      radarWorkerCallbacksRef.current.clear();
-      w.terminate();
+      workerCallbacks.current.clear();
+      worker.terminate();
       radarWorkerRef.current = null;
     };
   }, []);
@@ -1933,63 +1930,37 @@ export default function AoVivoPage() {
     });
   }, [mapReady, stormReports, showReportsOnMap]);
 
-  const addRadarOverlaysMapLibre = useCallback((
-    map: any,
-    productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
-    radars: DisplayRadar[],
-    timestamp: string,
-    useFallback: boolean,
-    opacity: number,
-    currentGen: number,
-  ) => {
-    radars.forEach(async (dr) => {
-      const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
-      const slugParam = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
-      
-      const apiUrl = `/api/radar-frame?slug=${slugParam}&ts12=${timestamp}&product=${productType}&isLive=${useFallback}&sourceMode=${radarSourceMode}`;
-      
-      try {
-        let res = await fetch(apiUrl);
-        let data = await res.json().catch(()=>null);
+  const addRadarOverlaysMapLibre = useCallback(
+    (
+      map: any,
+      productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
+      radars: DisplayRadar[],
+      timestamp: string,
+      useFallback: boolean,
+      opacity: number,
+      currentGen: number
+    ) => {
+      radars.forEach((dr) => {
+        const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
+        const slug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
 
-        // 1. FALLBACK REDEMET: Se CPTEC caiu (404) ou HD Mode está ativo
-        if ((!res.ok || radarSourceMode === 'hd') && dr.type === 'cptec' && hasRedemetFallback(dr.station.slug) && productType === 'reflectividade') {
-            const area = getRedemetArea(dr.station.slug);
-            const exactTs12 = getNearestRadarTimestamp(timestamp, dr.station);
-            const redemetRes = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${exactTs12}`);
-            if (redemetRes.ok) {
-                const redemetData = await redemetRes.json().catch(()=>null);
-                if (redemetData?.url) {
-                    data = { url: getProxiedRadarUrl(redemetData.url), source: 'redemet', ts12: exactTs12 };
-                    res = { ok: true } as any;
-                }
-            }
-        }
+        const radarInterval =
+          dr.type === 'cptec'
+            ? dr.station.updateIntervalMinutes ?? 10
+            : (dr.station as ArgentinaRadarStation).updateIntervalMinutes;
+        const exactTs12 = floorTimestampToInterval(timestamp, radarInterval);
 
-        // 2. FALLBACK STORAGE: Se até a Redemet falhou (ou não existe Redemet para este radar)
-        if (!res.ok) {
-            const exactTs12 = dr.type === 'cptec' ? getNearestRadarTimestamp(timestamp, dr.station) : timestamp;
-            const storageRes = await fetch(`/api/radar-storage-fallback?radarId=${slugParam}&ts12=${exactTs12}&productType=${productType}`);
-            if (storageRes.ok) {
-                const storageData = await storageRes.json().catch(()=>null);
-                if (storageData?.url) {
-                    data = { url: storageData.url, source: 'storage', ts12: exactTs12 };
-                    res = { ok: true } as any;
-                }
-            }
-        }
-
-        const renderWebGLRadar = (imageUrl: string, meta: any) => {
+        const renderWebGLRadar = (imageUrl: string, source: string, finalTs: string) => {
+          if (currentGen !== overlayGenerationRef.current) return;
           const sourceId = `source-${radarKey}`;
           const layerId = `layer-${radarKey}`;
-          
-          // Se puxou da REDEMET, o sinalizador 'redemet' incha os limites para 400km automaticamente
-          const bounds = getBoundsForDisplayRadar(dr, meta.source);
+
+          const bounds = getBoundsForDisplayRadar(dr, source as any);
           const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
-            [bounds.west, bounds.north], 
-            [bounds.east, bounds.north], 
-            [bounds.east, bounds.south], 
-            [bounds.west, bounds.south]  
+            [bounds.west, bounds.north],
+            [bounds.east, bounds.north],
+            [bounds.east, bounds.south],
+            [bounds.west, bounds.south],
           ];
 
           const existingSource = map.getSource(sourceId) as any;
@@ -2001,43 +1972,158 @@ export default function AoVivoPage() {
               id: layerId,
               type: 'raster',
               source: sourceId,
-              paint: { 'raster-opacity': opacity, 'raster-fade-duration': 350 }
+              paint: { 'raster-opacity': opacity, 'raster-fade-duration': 350 },
             });
           }
-          
-          setRadarEffectiveTimestamps(prev => ({ ...prev, [radarKey]: meta.ts12 }));
-          setRadarEffectiveSource(prev => ({ ...prev, [radarKey]: meta.source }));
-          setFailedRadars(prev => { const next = new Set(prev); next.delete(radarKey); return next; });
+
+          setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: finalTs }));
+          setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: source as any }));
+          setFailedRadars((prev) => {
+            const next = new Set(prev);
+            next.delete(radarKey);
+            return next;
+          });
         };
 
-        // Worker: um reqId por tarefa; resposta roteada pelo id (sem sobrescrever onmessage por radar).
-        if (radarWorkerRef.current && data?.url) {
+        const markFailed = () => setFailedRadars((prev) => new Set(prev).add(radarKey));
+
+        const processWithWorker = (imgUrl: string, source: string, finalTs: string, onFail: () => void) => {
           const genAtPost = currentGen;
-          const reqId = `g${genAtPost}-${radarKey}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-          radarWorkerCallbacksRef.current.set(reqId, (result) => {
-            if (genAtPost !== overlayGenerationRef.current) return;
-            if (result.error) {
-              setFailedRadars((prev) => new Set(prev).add(radarKey));
-              return;
-            }
-            if (result.url) renderWebGLRadar(result.url, data);
-          });
-          radarWorkerRef.current.postMessage({
-            id: reqId,
-            imageUrl: data.url,
-            type: dr.type === 'cptec' ? dr.station.slug : 'argentina',
-            product: productType,
-          });
-        } else if (data?.url) {
-          renderWebGLRadar(data.url, data);
-        } else {
-          setFailedRadars((prev) => new Set(prev).add(radarKey));
+          const proxiedUrl = getProxiedRadarUrl(imgUrl);
+          if (radarWorkerRef.current) {
+            const reqId = `g${genAtPost}-${radarKey}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+            workerCallbacks.current.set(reqId, (processedUrl, err) => {
+              if (genAtPost !== overlayGenerationRef.current) return;
+              if (err || !processedUrl) onFail();
+              else renderWebGLRadar(processedUrl, source, finalTs);
+            });
+            radarWorkerRef.current.postMessage({
+              id: reqId,
+              imageUrl: proxiedUrl,
+              type: dr.type === 'cptec' ? dr.station.slug : 'argentina',
+            });
+          } else {
+            renderWebGLRadar(proxiedUrl, source, finalTs);
+          }
+        };
+
+        const tryStorage = async () => {
+          try {
+            const res = await fetch(
+              `/api/radar-storage-fallback?radarId=${encodeURIComponent(slug)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}`
+            );
+            const data = await res.json().catch(() => null);
+            if (data?.url) processWithWorker(data.url, 'storage', exactTs12, markFailed);
+            else markFailed();
+          } catch {
+            markFailed();
+          }
+        };
+
+        const tryRedemet = async () => {
+          if (dr.type !== 'cptec') {
+            void tryStorage();
+            return;
+          }
+          const st = dr.station as CptecRadarStation;
+          const wantRedemet =
+            radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
+          if (!wantRedemet) {
+            void tryStorage();
+            return;
+          }
+          const area = getRedemetArea(st.slug);
+          if (!area) {
+            void tryStorage();
+            return;
+          }
+          const tsRed = getNearestRadarTimestamp(timestamp, st);
+          try {
+            const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`);
+            const data = await res.json().catch(() => null);
+            if (data?.url) processWithWorker(data.url, 'redemet', tsRed, tryStorage);
+            else void tryStorage();
+          } catch {
+            void tryStorage();
+          }
+        };
+
+        const targetDate = new Date(
+          Date.UTC(
+            parseInt(exactTs12.slice(0, 4), 10),
+            parseInt(exactTs12.slice(4, 6), 10) - 1,
+            parseInt(exactTs12.slice(6, 8), 10),
+            parseInt(exactTs12.slice(8, 10), 10),
+            parseInt(exactTs12.slice(10, 12), 10)
+          )
+        );
+        const isHistorical = Date.now() - targetDate.getTime() > 48 * 60 * 60 * 1000;
+
+        if (isHistorical || ['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug)) {
+          if (useFallback && !isHistorical) {
+            if (slug === 'usp-starnet')
+              processWithWorker(
+                `https://www.starnet.iag.usp.br/img_starnet/Radar_USP/Integracao/integracao_last.png?t=${Date.now()}`,
+                'cptec',
+                exactTs12,
+                tryStorage
+              );
+            else if (slug === 'ipmet-bauru')
+              processWithWorker(`https://www.ipmetradar.com.br/out/brz_latest.png?t=${Date.now()}`, 'cptec', exactTs12, tryStorage);
+            else if (slug === 'climatempo-poa')
+              processWithWorker(
+                `https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png?t=${Date.now()}`,
+                'cptec',
+                exactTs12,
+                tryStorage
+              );
+          } else {
+            void tryStorage();
+          }
+          return;
         }
-      } catch (e) {
-        setFailedRadars(prev => new Set(prev).add(radarKey));
-      }
-    });
-  }, [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef, radarWorkerRef, radarWorkerCallbacksRef]);
+
+        if (dr.type === 'argentina') {
+          const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
+          const argUrl = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
+          processWithWorker(argUrl, 'argentina', argTs, markFailed);
+          return;
+        }
+
+        if (dr.station.slug === 'chapeco') {
+          const radarId = productType === 'velocidade' ? dr.station.velocityId || dr.station.id : dr.station.id;
+          processWithWorker(`/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${exactTs12}`, 'cptec', exactTs12, tryRedemet);
+          return;
+        }
+
+        if (dr.station.org === 'funceme') {
+          processWithWorker(
+            `/api/funceme/image?radar=${encodeURIComponent(dr.station.id)}&produto=${productType}&timestamp=${exactTs12}`,
+            'funceme',
+            exactTs12,
+            tryStorage
+          );
+          return;
+        }
+
+        if (dr.type === 'cptec' && radarSourceMode === 'hd' && dr.station.sipamSlug) {
+          const ns = getNearestRadarTimestamp(timestamp, dr.station);
+          const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
+          const sipUrl = buildSipamHdPngUrl(dr.station.sipamSlug, ns, sipProd);
+          processWithWorker(sipUrl, 'cptec', ns, tryRedemet);
+          return;
+        }
+
+        if (radarSourceMode !== 'hd') {
+          const cptecUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType as any, true);
+          processWithWorker(cptecUrl, 'cptec', exactTs12, tryRedemet);
+        } else {
+          void tryRedemet();
+        }
+      });
+    },
+    [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef]
+  );
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 

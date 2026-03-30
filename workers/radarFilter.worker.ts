@@ -1,31 +1,34 @@
 /**
  * Web Worker para processamento de imagens de radar.
- * Roda em uma thread separada para não bloquear a UI durante filtros complexos.
+ * Devolve sempre `id` no postMessage (sucesso ou erro) para o frontend rotear fallbacks.
  */
 
-// Tipagem básica para OffscreenCanvas (pode variar conforme ambiente)
 const _self: any = self;
-
-// --- Helpers de Filtragem de Pixels (Portados de radarImageFilter.ts) ---
 
 function filterPixels(data: Uint8ClampedArray): void {
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+    const r = data[i],
+      g = data[i + 1],
+      b = data[i + 2],
+      a = data[i + 3];
     if (a === 0) continue;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const max = Math.max(r, g, b),
+      min = Math.min(r, g, b);
     const delta = max - min;
     const lightness = Math.round((max + min) / 2);
-    if (delta < 20 && lightness > 60) {
-      data[i + 3] = 0;
-    }
+    if (delta < 20 && lightness > 60) data[i + 3] = 0;
   }
 }
 
 function filterClimatempoPixels(data: Uint8ClampedArray): void {
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+    const r = data[i],
+      g = data[i + 1],
+      b = data[i + 2],
+      a = data[i + 3];
     if (a === 0) continue;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const max = Math.max(r, g, b),
+      min = Math.min(r, g, b);
     const delta = max - min;
     if (delta < 60) {
       data[i + 3] = 0;
@@ -42,14 +45,9 @@ function filterClimatempoPixels(data: Uint8ClampedArray): void {
   }
 }
 
-// ... (Outras funções auxiliares de Super Res portadas conforme necessário)
-
 self.onmessage = async (e: MessageEvent) => {
-  const { id, imageUrl, type, product, chromaDelta, cropConfig } = e.data || {};
-  // Crachá obrigatório: sem id o main thread não consegue rotear a resposta ao radar correto.
-  if (!id || typeof id !== 'string') {
-    return;
-  }
+  const { id, imageUrl, type, cropConfig } = e.data || {};
+  if (!id || typeof id !== 'string') return;
 
   try {
     const res = await fetch(imageUrl);
@@ -64,7 +62,6 @@ self.onmessage = async (e: MessageEvent) => {
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
 
-    // Recorte de legendas se houver
     if (cropConfig) {
       const { top, bottom, left, right } = cropConfig;
       if (top > 0) ctx.clearRect(0, 0, canvas.width, canvas.height * top);
@@ -75,32 +72,16 @@ self.onmessage = async (e: MessageEvent) => {
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // Aplicação dos filtros
-    if (type === 'climatempo-poa') {
-      filterClimatempoPixels(imageData.data);
-    } else {
-      filterPixels(imageData.data);
-    }
-
-    // Chroma Key Dinâmico (Estúdio)
-    if (chromaDelta && chromaDelta > 0) {
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        if (imageData.data[i + 3] === 0) continue;
-        const r = imageData.data[i], g = imageData.data[i + 1], b = imageData.data[i + 2];
-        const max = Math.max(r, g, b), min = Math.min(r, g, b);
-        if (max - min < chromaDelta) imageData.data[i + 3] = 0;
-      }
-    }
+    if (type === 'climatempo-poa') filterClimatempoPixels(imageData.data);
+    else filterPixels(imageData.data);
 
     ctx.putImageData(imageData, 0, 0);
 
-    // Converte de volta para Blob para enviar ao Mapa
     const finalBlob = await canvas.convertToBlob({ type: 'image/png' });
     const finalUrl = URL.createObjectURL(finalBlob);
 
-    // 2. Devolve a imagem limpa E O ID para o mapa saber de quem é!
     self.postMessage({ id, url: finalUrl });
-  } catch (err) {
+  } catch {
     self.postMessage({ id, error: 'Worker processing failed' });
   }
 };
