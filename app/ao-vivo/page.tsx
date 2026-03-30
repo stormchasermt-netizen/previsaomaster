@@ -404,6 +404,7 @@ export default function AoVivoPage() {
   const [sampledValue2, setSampledValue2] = useState<number | null>(null);
   const [sampledValue3, setSampledValue3] = useState<number | null>(null);
   const [sampledValue4, setSampledValue4] = useState<number | null>(null);
+  const cachedImageDataMap = useRef(new Map<string, { img: HTMLImageElement, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }>());
 
   const [radarViewsRecord, setRadarViewsRecord] = useState<Record<string, number>>({});
   const [calendarMode, setCalendarMode] = useState<'days' | 'months' | 'years'>('days');
@@ -743,40 +744,49 @@ export default function AoVivoPage() {
     const lat = center.lat();
     const lng = center.lng();
 
-    // Encontrar o overlay que contém o centro
     for (let i = overlays.length - 1; i >= 0; i--) {
         const overlay = overlays[i];
         const bounds = overlay.getBounds();
         if (bounds.contains(center)) {
-            // Tentar obter a imagem de dentro do overlay
-            // GroundOverlay do Google Maps cria um DIV com uma imagem.
-            // Precisamos acessar o elemento DOM real ou recarregar via canvas.
-            // Como temos a URL do overlay, vamos carregar via canvas (cacheado pelo browser)
             const url = overlay.get('url') || overlay.getUrl?.();
             if (!url) continue;
 
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            img.src = url;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) return;
-                ctx.drawImage(img, 0, 0);
+            // Busca do cache para não recriar o canvas toda hora que mover o mapa
+            let cache = cachedImageDataMap.current.get(url);
+            
+            if (!cache) {
+                // Cria uma única vez para esta URL
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.src = url;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true }); // OTIMIZAÇÃO AQUI
+                    if (!ctx) return;
+                    ctx.drawImage(img, 0, 0);
+                    cachedImageDataMap.current.set(url, { img, canvas, ctx });
+                    
+                    // Chama a si mesmo novamente para ler agora que está no cache
+                    samplePixelFromOverlays(map, overlays, setVal, palette);
+                };
+                return;
+            }
 
-                const ne = bounds.getNorthEast();
-                const sw = bounds.getSouthWest();
-                
-                // Mapear lat/lng para x/y no canvas
-                const x = ((lng - sw.lng()) / (ne.lng() - sw.lng())) * img.width;
-                const y = ((ne.lat() - lat) / (ne.lat() - sw.lat())) * img.height;
+            // Se já está no cache, a leitura é instantânea (0ms)
+            const ne = bounds.getNorthEast();
+            const sw = bounds.getSouthWest();
+            const x = ((lng - sw.lng()) / (ne.lng() - sw.lng())) * cache.img.width;
+            const y = ((ne.lat() - lat) / (ne.lat() - sw.lat())) * cache.img.height;
 
-                const pixel = ctx.getImageData(x, y, 1, 1).data;
+            try {
+                const pixel = cache.ctx.getImageData(x, y, 1, 1).data;
                 const val = findClosestValue(pixel[0], pixel[1], pixel[2], palette);
                 setVal(val);
-            };
+            } catch (e) {
+                setVal(null);
+            }
             return;
         }
     }
@@ -2010,6 +2020,7 @@ export default function AoVivoPage() {
   const addRadarOverlays = useCallback((
     map: any,
     overlaysArr: any[],
+    oldOverlays: any[], // <--- Recebe os antigos para Double Buffering
     productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
     radars: DisplayRadar[],
     timestamp: string,
@@ -2266,7 +2277,7 @@ export default function AoVivoPage() {
         const img = document.createElement('img');
         img.className = 'pixelated-layer';
         const isUsp = dr.type === 'cptec' && dr.station.slug === 'usp-starnet';
-        img.style.cssText = `width:100%;height:100%;opacity:${effectiveOpacity};object-fit:fill;transform-origin:center center;${isUsp ? 'mix-blend-mode:multiply;' : ''}`;
+        img.style.cssText = `width:100%;height:100%;opacity:${effectiveOpacity};object-fit:fill;transform-origin:center center;transition:opacity 0.3s ease;${isUsp ? 'mix-blend-mode:multiply;' : ''}`;
         if (rotationDeg !== 0) img.style.transform = `rotate(${rotationDeg}deg)`;
         let noiseFiltered = false;
         /** Evita flicker: mostra o overlay apenas após carregar e processar filtros */
@@ -2275,6 +2286,17 @@ export default function AoVivoPage() {
           if (isFullyProcessed) return;
           isFullyProcessed = true;
           if (divEl) divEl.style.display = '';
+
+          // Lógica de Double Buffering: Remove os antigos APENAS quando o NOVO aparecer
+          if (oldOverlays.length > 0) {
+            setTimeout(() => {
+              oldOverlays.forEach(ov => {
+                try { ov.setMap(null); } catch (e) {}
+              });
+              // Limpar a array local de antigos para não repetir
+              oldOverlays.length = 0;
+            }, 100);
+          }
         };
 
         const applyNoiseFilter = () => {
@@ -2555,46 +2577,55 @@ export default function AoVivoPage() {
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
-  /** Overlays de radar no mapa principal. */
   useEffect(() => {
-    setFailedRadars(new Set());
-    setRadarEffectiveTimestamps({});
-    setRadarEffectiveSource({});
-    radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    // 1. NÃO APAGUE OS OVERLAYS AQUI! Salve-os em uma variável temporária.
+    const oldOverlays = [...radarOverlaysRef.current];
     radarOverlaysRef.current = [];
-    if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) return;
     
-    // Na janela 1, usamos sempre Reflectividade se estiver em split, ou o produto selecionado se único
+    if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
+    
     const product = (splitCount >= 2) ? 'reflectividade' : radarProductType;
-    
     const radarsToShow = editingRadar
       ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
       : displayRadars;
-    if (radarsToShow.length === 0 && !editingRadar) return;
+    
+    if (radarsToShow.length === 0 && !editingRadar) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
+
     addRadarOverlays(
       mapInstanceRef.current,
       radarOverlaysRef.current,
+      oldOverlays, // <--- PASSE OS ANTIGOS AQUI
       product,
       radarsToShow.length > 0 ? radarsToShow : [],
       effectiveRadarTimestamp,
       useFallbackForOverlays,
       radarOpacity,
     );
+    
     return () => {
-      radarOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlaysRef.current = [];
+      // O cleanup original aqui causaria flickers. Mantemos limpo apenas na desmontagem final se necessário.
     };
   }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, addRadarOverlays, editingRadar, radarConfigs]);
 
   /** Overlays Mapa 2 (Doppler) */
   useEffect(() => {
-    radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    const oldOverlays = [...radarOverlays2Ref.current];
     radarOverlays2Ref.current = [];
-    if (!map2Ready || !map2InstanceRef.current || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) return;
+    if (!map2Ready || !map2InstanceRef.current || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
     
     addRadarOverlays(
       map2InstanceRef.current,
       radarOverlays2Ref.current,
+      oldOverlays,
       'velocidade',
       displayRadars,
       effectiveRadarTimestamp,
@@ -2607,15 +2638,18 @@ export default function AoVivoPage() {
     };
   }, [map2Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
 
-  /** Overlays Mapa 3 (VIL) */
   useEffect(() => {
-    radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    const oldOverlays = [...radarOverlays3Ref.current];
     radarOverlays3Ref.current = [];
-    if (!map3Ready || !map3InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
+    if (!map3Ready || !map3InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
     
     addRadarOverlays(
       map3InstanceRef.current,
       radarOverlays3Ref.current,
+      oldOverlays,
       'vil',
       displayRadars,
       effectiveRadarTimestamp,
@@ -2623,20 +2657,22 @@ export default function AoVivoPage() {
       radarOpacity,
     );
     return () => {
-      radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays3Ref.current = [];
+      // Cleanup handled by Double Buffering in addRadarOverlays
     };
   }, [map3Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
 
-  /** Overlays Mapa 4 (Waldvogel) */
   useEffect(() => {
-    radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    const oldOverlays = [...radarOverlays4Ref.current];
     radarOverlays4Ref.current = [];
-    if (!map4Ready || !map4InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) return;
+    if (!map4Ready || !map4InstanceRef.current || displayRadars.length === 0 || splitCount !== 4) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
     
     addRadarOverlays(
       map4InstanceRef.current,
       radarOverlays4Ref.current,
+      oldOverlays,
       'waldvogel',
       displayRadars,
       effectiveRadarTimestamp,
@@ -2644,8 +2680,7 @@ export default function AoVivoPage() {
       radarOpacity,
     );
     return () => {
-      radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays4Ref.current = [];
+      // Cleanup handled by Double Buffering in addRadarOverlays
     };
   }, [map4Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays]);
 
@@ -2788,17 +2823,20 @@ export default function AoVivoPage() {
     };
   }, [mapReady, editingRadar, editCenterLat, editCenterLng, editRangeKm, editRotationDegrees, editLiveCenter, getEditRadarImageUrl, handleSaveEditPosition]);
 
-  /** Overlays de radar no mapa 2 (Doppler) — quando split=2 ou split=4 */
   useEffect(() => {
-    radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    const oldOverlays = [...radarOverlays2Ref.current];
     radarOverlays2Ref.current = [];
-    if ((splitCount !== 2 && splitCount !== 4) || !map2InstanceRef.current || !map2Ready || displayRadars.length === 0) return;
+    if ((splitCount !== 2 && splitCount !== 4) || !map2InstanceRef.current || !map2Ready || displayRadars.length === 0) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
     const radars2 = editingRadar
       ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
       : displayRadars;
     addRadarOverlays(
       map2InstanceRef.current,
       radarOverlays2Ref.current,
+      oldOverlays,
       'velocidade',
       radars2,
       effectiveRadarTimestamp,
@@ -2806,19 +2844,21 @@ export default function AoVivoPage() {
       radarOpacity,
     );
     return () => {
-      radarOverlays2Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays2Ref.current = [];
+       // Cleanup handled by Double Buffering
     };
   }, [displayRadars, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, map2Ready, addRadarOverlays, editingRadar, radarConfigs]);
 
-  /** Overlays de radar no mapa 3 (VIL) — quando split=4 */
   useEffect(() => {
-    radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    const oldOverlays = [...radarOverlays3Ref.current];
     radarOverlays3Ref.current = [];
-    if (splitCount !== 4 || !map3InstanceRef.current || !map3Ready || displayRadars.length === 0) return;
+    if (splitCount !== 4 || !map3InstanceRef.current || !map3Ready || displayRadars.length === 0) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
     addRadarOverlays(
       map3InstanceRef.current,
       radarOverlays3Ref.current,
+      oldOverlays,
       'vil',
       displayRadars,
       effectiveRadarTimestamp,
@@ -2826,19 +2866,21 @@ export default function AoVivoPage() {
       radarOpacity,
     );
     return () => {
-      radarOverlays3Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays3Ref.current = [];
+       // Cleanup handled by Double Buffering
     };
   }, [displayRadars, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, map3Ready, addRadarOverlays]);
 
-  /** Overlays de radar no mapa 4 (Waldvogel) — quando split=4 */
   useEffect(() => {
-    radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
+    const oldOverlays = [...radarOverlays4Ref.current];
     radarOverlays4Ref.current = [];
-    if (splitCount !== 4 || !map4InstanceRef.current || !map4Ready || displayRadars.length === 0) return;
+    if (splitCount !== 4 || !map4InstanceRef.current || !map4Ready || displayRadars.length === 0) {
+      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
+      return;
+    }
     addRadarOverlays(
       map4InstanceRef.current,
       radarOverlays4Ref.current,
+      oldOverlays,
       'waldvogel',
       displayRadars,
       effectiveRadarTimestamp,
@@ -2846,8 +2888,7 @@ export default function AoVivoPage() {
       radarOpacity,
     );
     return () => {
-      radarOverlays4Ref.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      radarOverlays4Ref.current = [];
+       // Cleanup handled by Double Buffering
     };
   }, [displayRadars, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, map4Ready, addRadarOverlays]);
 
