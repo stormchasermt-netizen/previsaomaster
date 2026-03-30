@@ -1587,8 +1587,6 @@ export default function AoVivoPage() {
   const locationExcluded = user ? LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid) : false;
   const canShowMap = locationPermission === 'granted' || locationExcluded;
 
-  if (!isMounted) return null;
-
   useEffect(() => {
     if (!canShowMap) return;
     let isMounted = true;
@@ -2134,7 +2132,8 @@ export default function AoVivoPage() {
   };
 
 
-  /** Trava de Hidratação para Performance (WebGL) */
+
+  /** Trava de Hidratação e Segurança Padrão Ouro (V11.7) */
   if (!isMounted) return null;
 
   if (!user) {
@@ -2192,6 +2191,7 @@ export default function AoVivoPage() {
     );
   }
 
+
   return (
     <AnimatePresence mode="wait">
       <motion.div 
@@ -2239,7 +2239,8 @@ export default function AoVivoPage() {
           <div className="flex-1 min-w-0 text-center flex flex-col items-center justify-center -ml-2 sm:-ml-0">
             <p className="text-[10px] sm:text-sm font-black tracking-wider text-white truncate uppercase max-w-[120px] sm:max-w-none">{headerTitle.name}</p>
             <p className="text-[9px] sm:text-[10px] tracking-widest text-cyan-400/80 uppercase font-medium mt-0 sm:mt-0.5 max-w-[130px] sm:max-w-none truncate">
-              <span className="hidden sm:inline">Última imagem: </span>{headerTitle.time ? `${headerTitle.time} (local)` : 'Carregando…'}
+              <span className="hidden sm:inline">Última imagem: </span>
+              {isMounted && headerTitle.time ? `${headerTitle.time} (local)` : !isMounted ? '--:--' : 'Carregando…'}
             </p>
             {focusedRadarKey && (
               <button
@@ -3347,6 +3348,7 @@ export default function AoVivoPage() {
                   <div className="text-center leading-none mt-1">
                     <span className="text-[10px] sm:text-sm font-black tracking-widest text-cyan-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]">
                       {(() => {
+                        if (!isMounted) return "--:--";
                         const ts = effectiveRadarTimestamp;
                         const d = new Date(Date.UTC(
                           parseInt(ts.slice(0, 4), 10),
