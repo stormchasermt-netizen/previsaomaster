@@ -1992,7 +1992,6 @@ export default function AoVivoPage() {
       productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
       radars: DisplayRadar[],
       timestamp: string,
-      useFallback: boolean,
       opacity: number,
       currentGen: number
     ) => {
@@ -2026,6 +2025,16 @@ export default function AoVivoPage() {
             ? dr.station.updateIntervalMinutes ?? 10
             : (dr.station as ArgentinaRadarStation).updateIntervalMinutes;
         const exactTs12 = floorTimestampToInterval(timestamp, radarInterval);
+        const targetDate = new Date(
+          Date.UTC(
+            parseInt(exactTs12.slice(0, 4), 10),
+            parseInt(exactTs12.slice(4, 6), 10) - 1,
+            parseInt(exactTs12.slice(6, 8), 10),
+            parseInt(exactTs12.slice(8, 10), 10),
+            parseInt(exactTs12.slice(10, 12), 10)
+          )
+        );
+        const isHistorical = Date.now() - targetDate.getTime() > 48 * 60 * 60 * 1000;
 
         const renderWebGLRadar = (imageUrl: string, source: string, finalTs: string) => {
           completeRequest();
@@ -2120,34 +2129,36 @@ export default function AoVivoPage() {
           }
         };
 
-        const tryStorage = async () => {
+        /** Storage primeiro (cache rápido); só então fontes públicas / Redemet. */
+        const tryStorageThen = async (next: () => void) => {
           try {
             const res = await fetch(
               `/api/radar-storage-fallback?radarId=${encodeURIComponent(slug)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}`
             );
             const data = await res.json().catch(() => null);
             if (data?.url) processWithWorker(data.url, 'storage', exactTs12, markFailed);
-            else markFailed();
+            else next();
           } catch {
-            markFailed();
+            next();
           }
         };
 
-        const tryRedemet = async () => {
+        /** Redemet só como fallback após Storage já tentado (não volta ao Storage). */
+        const tryRedemetAfterStorage = async () => {
           if (dr.type !== 'cptec') {
-            void tryStorage();
+            markFailed();
             return;
           }
           const st = dr.station as CptecRadarStation;
           const wantRedemet =
             radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
           if (!wantRedemet) {
-            void tryStorage();
+            markFailed();
             return;
           }
           const area = getRedemetArea(st.slug);
           if (!area) {
-            void tryStorage();
+            markFailed();
             return;
           }
           const tsRed = getNearestRadarTimestamp(timestamp, st);
@@ -2155,45 +2166,23 @@ export default function AoVivoPage() {
             const histParam = isHistorical ? '&historical=true' : '';
             const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}${histParam}`);
             const data = await res.json().catch(() => null);
-            if (data?.url) processWithWorker(data.url, 'redemet', tsRed, tryStorage);
-            else void tryStorage();
+            if (data?.url) processWithWorker(data.url, 'redemet', tsRed, markFailed);
+            else markFailed();
           } catch {
-            void tryStorage();
+            markFailed();
           }
         };
 
-        const targetDate = new Date(
-          Date.UTC(
-            parseInt(exactTs12.slice(0, 4), 10),
-            parseInt(exactTs12.slice(4, 6), 10) - 1,
-            parseInt(exactTs12.slice(6, 8), 10),
-            parseInt(exactTs12.slice(8, 10), 10),
-            parseInt(exactTs12.slice(10, 12), 10)
-          )
-        );
-        const isHistorical = Date.now() - targetDate.getTime() > 48 * 60 * 60 * 1000;
-
-        if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug)) {
-          if (useFallback && !isHistorical) {
-            if (slug === 'usp-starnet')
-              processWithWorker(
-                `https://www.starnet.iag.usp.br/img_starnet/Radar_USP/Integracao/integracao_last.png?t=${Date.now()}`,
-                'cptec',
-                exactTs12,
-                tryStorage
-              );
-            else if (slug === 'ipmet-bauru')
-              processWithWorker(`https://www.ipmetradar.com.br/out/brz_latest.png?t=${Date.now()}`, 'cptec', exactTs12, tryStorage);
-            else if (slug === 'climatempo-poa')
-              processWithWorker(
-                `https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png?t=${Date.now()}`,
-                'cptec',
-                exactTs12,
-                tryStorage
-              );
-          } else {
-            void tryStorage();
-          }
+        /** USP / IPMET / Climatempo POA: sempre Storage → depois URL com timestamp (Cloud Function / Climatempo), em qualquer frame da animação. */
+        if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug) && dr.type === 'cptec') {
+          void tryStorageThen(() => {
+            const pngUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType as any, true);
+            if (!pngUrl) {
+              markFailed();
+              return;
+            }
+            processWithWorker(pngUrl, 'cptec', exactTs12, markFailed);
+          });
           return;
         }
 
@@ -2201,11 +2190,11 @@ export default function AoVivoPage() {
           if (dr.type === 'argentina') {
             const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
             const argUrl = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
-            processWithWorker(argUrl, 'argentina', argTs, markFailed);
+            void tryStorageThen(() => processWithWorker(argUrl, 'argentina', argTs, markFailed));
           } else if (dr.type === 'cptec' && getRedemetArea(slug)) {
-            void tryRedemet();
+            void tryStorageThen(() => void tryRedemetAfterStorage());
           } else {
-            void tryStorage();
+            void tryStorageThen(() => markFailed());
           }
           return;
         }
@@ -2213,22 +2202,31 @@ export default function AoVivoPage() {
         if (dr.type === 'argentina') {
           const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
           const argUrl = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
-          processWithWorker(argUrl, 'argentina', argTs, markFailed);
+          void tryStorageThen(() => processWithWorker(argUrl, 'argentina', argTs, markFailed));
           return;
         }
 
         if (dr.station.slug === 'chapeco') {
           const radarId = productType === 'velocidade' ? dr.station.velocityId || dr.station.id : dr.station.id;
-          processWithWorker(`/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${exactTs12}`, 'cptec', exactTs12, tryRedemet);
+          void tryStorageThen(() =>
+            processWithWorker(
+              `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${exactTs12}`,
+              'cptec',
+              exactTs12,
+              () => void tryRedemetAfterStorage()
+            )
+          );
           return;
         }
 
         if (dr.station.org === 'funceme') {
-          processWithWorker(
-            `/api/funceme/image?radar=${encodeURIComponent(dr.station.id)}&produto=${productType}&timestamp=${exactTs12}`,
-            'funceme',
-            exactTs12,
-            tryStorage
+          void tryStorageThen(() =>
+            processWithWorker(
+              `/api/funceme/image?radar=${encodeURIComponent(dr.station.id)}&produto=${productType}&timestamp=${exactTs12}`,
+              'funceme',
+              exactTs12,
+              markFailed
+            )
           );
           return;
         }
@@ -2237,22 +2235,20 @@ export default function AoVivoPage() {
           const ns = getNearestRadarTimestamp(timestamp, dr.station);
           const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
           const sipUrl = buildSipamHdPngUrl(dr.station.sipamSlug, ns, sipProd);
-          processWithWorker(sipUrl, 'cptec', ns, tryRedemet);
+          void tryStorageThen(() => processWithWorker(sipUrl, 'cptec', ns, () => void tryRedemetAfterStorage()));
           return;
         }
 
         if (radarSourceMode !== 'hd') {
           const cptecUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType as any, true);
-          processWithWorker(cptecUrl, 'cptec', exactTs12, tryRedemet);
+          void tryStorageThen(() => processWithWorker(cptecUrl, 'cptec', exactTs12, () => void tryRedemetAfterStorage()));
         } else {
-          void tryRedemet();
+          void tryStorageThen(() => void tryRedemetAfterStorage());
         }
       });
     },
     [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef]
   );
-
-  const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
   /** Central de Renderização de Radares (Motor de Alta Performance - Mapa 1) */
   useEffect(() => {
@@ -2268,11 +2264,10 @@ export default function AoVivoPage() {
       product,
       radarsToShow.length > 0 ? radarsToShow : [],
       effectiveRadarTimestamp,
-      useFallbackForOverlays,
       radarOpacity,
       overlayGenerationRef.current,
     );
-  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
+  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
 
   /** Overlays Mapas Secundários (Doppler, VIL, Waldvogel - WebGL) */
   useEffect(() => {
@@ -2294,12 +2289,11 @@ export default function AoVivoPage() {
         product as 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
         radars,
         effectiveRadarTimestamp,
-        useFallbackForOverlays,
         radarOpacity,
         overlayGenerationRef.current
       );
     });
-  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
+  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
 
   /** Editor de Posição de Radar (Desativado temporariamente para estabilização WebGL) */
   useEffect(() => {
