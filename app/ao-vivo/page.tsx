@@ -50,7 +50,7 @@ import { groupRadarsByLocation } from '@/lib/radarGrouping';
 import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
 import { filterRadarImageFromUrl, filterClimatempoRadarImage, filterDopplerSuperRes } from '@/lib/radarImageFilter';
-import { cacheRadarImage } from '@/lib/radarCacheClient';
+import { fetchRadarApiCached } from '@/lib/radarApiCache';
 import { preloadRadarAnimationFrames, type RadarProductPreload } from '@/lib/radarAnimationPreload';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
@@ -2061,6 +2061,7 @@ export default function AoVivoPage() {
       productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
       radars: DisplayRadar[],
       timestamp: string,
+      isPast: boolean,
       opacity: number,
       currentGen: number
     ) => {
@@ -2201,11 +2202,10 @@ export default function AoVivoPage() {
         /** Storage primeiro (cache rápido); só então fontes públicas / Redemet. */
         const tryStorageThen = async (next: () => void) => {
           try {
-            const maxDiff = (sliderMinutesAgo > 0 || isHistorical) ? 15 : 120;
+            const maxDiff = isPast ? 15 : 120;
             
             if (slug === 'ipmet-bauru') {
-              const res = await fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(exactTs12)}&maxDiff=${maxDiff}`);
-              const data = await res.json().catch(() => null);
+              const data = await fetchRadarApiCached(`/api/ipmet-storage-url?ts12=${encodeURIComponent(exactTs12)}&maxDiff=${maxDiff}`);
               if (data?.url) {
                 processWithWorker(data.url, 'storage', exactTs12, markFailed);
                 return;
@@ -2218,11 +2218,10 @@ export default function AoVivoPage() {
               if (dr.station.sipamSlug) idsToCheck.add(dr.station.sipamSlug);
             }
 
-            for (const radarId of idsToCheck) {
-              const res = await fetch(
+            for (const radarId of Array.from(idsToCheck)) {
+              const data = await fetchRadarApiCached(
                 `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}&maxDiff=${maxDiff}`
               );
-              const data = await res.json().catch(() => null);
               if (data?.url) {
                 processWithWorker(data.url, 'storage', exactTs12, markFailed);
                 return;
@@ -2255,8 +2254,7 @@ export default function AoVivoPage() {
           const tsRed = getNearestRadarTimestamp(timestamp, st);
           try {
             const histParam = isHistorical ? '&historical=true' : '';
-            const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}${histParam}`);
-            const data = await res.json().catch(() => null);
+            const data = await fetchRadarApiCached(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}${histParam}`);
             if (data?.url) processWithWorker(data.url, 'redemet', tsRed, markFailed);
             else markFailed();
           } catch {
@@ -2267,7 +2265,7 @@ export default function AoVivoPage() {
         /** USP / IPMET / Climatempo POA: sempre Storage → depois URL com timestamp (Cloud Function / Climatempo), em qualquer frame da animação. */
         if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug) && dr.type === 'cptec') {
           void tryStorageThen(() => {
-            if (sliderMinutesAgo > 0 || isHistorical) {
+            if (isPast) {
               markFailed();
               return;
             }
@@ -2315,14 +2313,18 @@ export default function AoVivoPage() {
         }
 
         if (dr.station.org === 'funceme') {
-          void tryStorageThen(() =>
+          void tryStorageThen(() => {
+            if (isPast) {
+              markFailed();
+              return;
+            }
             processWithWorker(
               `/api/funceme/image?radar=${encodeURIComponent(dr.station.id)}&produto=${productType}&timestamp=${exactTs12}`,
               'funceme',
               exactTs12,
               markFailed
-            )
-          );
+            );
+          });
           return;
         }
 
@@ -2330,7 +2332,13 @@ export default function AoVivoPage() {
           const ns = getNearestRadarTimestamp(timestamp, dr.station);
           const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
           const sipUrl = buildSipamHdPngUrl(dr.station.sipamSlug, ns, sipProd);
-          void tryStorageThen(() => processWithWorker(sipUrl, 'cptec', ns, () => void tryRedemetAfterStorage()));
+          void tryStorageThen(() => {
+            if (isPast) {
+              markFailed();
+              return;
+            }
+            processWithWorker(sipUrl, 'cptec', ns, () => void tryRedemetAfterStorage());
+          });
           return;
         }
 
@@ -2353,16 +2361,19 @@ export default function AoVivoPage() {
       ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
       : displayRadars;
     
+    const isPast = sliderMinutesAgo > 0 || !!historicalTimestampOverride;
+
     overlayGenerationRef.current += 1;
     addRadarOverlaysMapLibre(
       mapInstanceRef.current,
       product,
       radarsToShow.length > 0 ? radarsToShow : [],
       effectiveRadarTimestamp,
+      isPast,
       radarOpacity,
       overlayGenerationRef.current,
     );
-  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
+  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs, sliderMinutesAgo, historicalTimestampOverride]);
 
   /** Overlays Mapas Secundários (Doppler, VIL, Waldvogel - WebGL) */
   useEffect(() => {
@@ -2379,16 +2390,19 @@ export default function AoVivoPage() {
         ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
         : displayRadars;
 
+      const isPast = sliderMinutesAgo > 0 || !!historicalTimestampOverride;
+
       addRadarOverlaysMapLibre(
         map,
         product as 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
         radars,
         effectiveRadarTimestamp,
+        isPast,
         radarOpacity,
         overlayGenerationRef.current
       );
     });
-  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
+  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs, sliderMinutesAgo, historicalTimestampOverride]);
 
   /** Editor de Posição de Radar (Desativado temporariamente para estabilização WebGL) */
   useEffect(() => {

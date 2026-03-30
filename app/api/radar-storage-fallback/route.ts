@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (pngFiles.length === 0) {
-      return NextResponse.json({ url: null, reason: 'no_files_found' });
+      return NextResponse.json({ url: null, reason: 'no_files_found' }, { headers: { 'Cache-Control': 'public, max-age=300' } });
     }
 
     // Encontra o mais próximo do timestamp solicitado
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!bestFile || minDiff > allowedMaxDiff) {
-      return NextResponse.json({ url: null, reason: 'no_close_match' });
+      return NextResponse.json({ url: null, reason: 'no_close_match' }, { headers: { 'Cache-Control': 'public, max-age=300' } });
     }
 
     const basename = bestFile.split('/').pop()?.replace(suffix, '') ?? '';

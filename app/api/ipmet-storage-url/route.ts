@@ -137,5 +137,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ url: null });
+  return NextResponse.json({ url: null }, { headers: { 'Cache-Control': 'public, max-age=300' } });
 }

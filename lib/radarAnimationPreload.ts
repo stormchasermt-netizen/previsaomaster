@@ -122,7 +122,7 @@ export async function collectRadarPreloadUrls(
     if (u && !urls.includes(u)) urls.push(u);
   };
 
-  const storageUrls = await fetchRadarStorageUrls(dr, exactTs12, productType, signal);
+  const storageUrls = await fetchRadarStorageUrls(dr, exactTs12, productType, signal, isPast);
   storageUrls.forEach((u) => pushIf(u));
 
   if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug) && dr.type === 'cptec') {
@@ -299,7 +299,7 @@ export async function preloadRadarAnimationFrames(opts: PreloadAnimationOptions)
     const nominal = getNominalTimestampForAnimationFrameStatic(m, historicalTimestampOverride);
     for (const dr of displayRadars) {
       for (const product of products) {
-        const urls = await collectRadarPreloadUrls(dr, nominal, product, radarSourceMode, signal);
+        const urls = await collectRadarPreloadUrls(dr, nominal, product, radarSourceMode, signal, isPast);
         for (const u of urls) {
           if (!seen.has(u)) {
             seen.add(u);

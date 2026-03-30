@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json(result, {
-      headers: { 'Cache-Control': result.url ? 'public, max-age=86400' : 'no-cache' },
+      headers: { 'Cache-Control': result.url ? 'public, max-age=86400' : 'public, max-age=300' },
     });
   } catch (err: unknown) {
     return NextResponse.json(
