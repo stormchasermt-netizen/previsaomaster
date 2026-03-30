@@ -848,11 +848,11 @@ export default function AoVivoPage() {
                 return;
             }
 
-            // Se já está no cache, a leitura é instantânea (0ms)
+            // No MapLibre, as coordenadas são propriedades diretas (.lat, .lng)
             const ne = bounds.getNorthEast();
             const sw = bounds.getSouthWest();
-            const x = ((lng - sw.lng()) / (ne.lng() - sw.lng())) * cache.img.width;
-            const y = ((ne.lat() - lat) / (ne.lat() - sw.lat())) * cache.img.height;
+            const x = ((lng - sw.lng) / (ne.lng - sw.lng)) * cache.img.width;
+            const y = ((ne.lat - lat) / (ne.lat - sw.lat)) * cache.img.height;
 
             try {
                 const pixel = cache.ctx.getImageData(x, y, 1, 1).data;
@@ -870,7 +870,7 @@ export default function AoVivoPage() {
   const handleSampleAll = useCallback(() => {
     samplePixelFromOverlays(mapInstanceRef.current, radarOverlaysRef.current, setSampledValue1, dBZ_COLORS);
     if (splitCount >= 2 && map2InstanceRef.current) {
-        samplePixelFromOverlays(map2InstanceRef.current, radarOverlays2Ref.current, setSampledValue2, VEL_COLORS);
+        samplePixelFromOverlays(mapInstanceRef.current, radarOverlays2Ref.current, setSampledValue2, VEL_COLORS);
     }
     if (splitCount === 4 && map3InstanceRef.current) {
         // VIL usa uma paleta similar ou específica? Vou usar dBZ_COLORS por ora ou criar uma de VIL
@@ -883,19 +883,25 @@ export default function AoVivoPage() {
   }, [samplePixelFromOverlays, splitCount]);
 
   useEffect(() => {
-    if (!mapReady) return;
-    const l1 = mapInstanceRef.current.addListener('idle', handleSampleAll);
-    const l2 = mapInstanceRef.current.addListener('zoom_changed', handleSampleAll);
-    let l3: any, l4: any;
-    if (map2Ready && map2InstanceRef.current) {
-        l3 = map2InstanceRef.current.addListener('idle', handleSampleAll);
-        l4 = map2InstanceRef.current.addListener('zoom_changed', handleSampleAll);
+    if (!mapReady || !mapInstanceRef.current) return;
+    const map1 = mapInstanceRef.current;
+    const map2 = map2InstanceRef.current;
+
+    map1.on('idle', handleSampleAll);
+    map1.on('zoom', handleSampleAll);
+
+    if (map2Ready && map2) {
+        map2.on('idle', handleSampleAll);
+        map2.on('zoom', handleSampleAll);
     }
+
     return () => {
-        google.maps.event.removeListener(l1);
-        google.maps.event.removeListener(l2);
-        if (l3) google.maps.event.removeListener(l3);
-        if (l4) google.maps.event.removeListener(l4);
+        map1.off('idle', handleSampleAll);
+        map1.off('zoom', handleSampleAll);
+        if (map2) {
+            map2.off('idle', handleSampleAll);
+            map2.off('zoom', handleSampleAll);
+        }
     };
   }, [mapReady, map2Ready, handleSampleAll]);
 
@@ -1679,8 +1685,7 @@ export default function AoVivoPage() {
 
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !myLocation) return;
-    mapInstanceRef.current.panTo(myLocation);
-    mapInstanceRef.current.setZoom(8);
+    mapInstanceRef.current.flyTo({ center: [myLocation.lng, myLocation.lat], zoom: 8 });
   }, [mapReady, myLocation]);
 
   useEffect(() => {
@@ -2016,161 +2021,10 @@ export default function AoVivoPage() {
     });
   }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
 
-  /** Overlay editável (arrastável) para posicionar o radar — apenas quando editingRadar está setado */
+  /** Editor de Posição de Radar (Desativado temporariamente para estabilização WebGL) */
   useEffect(() => {
-    if (editOverlayRef.current) {
-      (editOverlayRef.current as any).setMap?.(null);
-      editOverlayRef.current = null;
-    }
-    if (!mapReady || !mapInstanceRef.current || !editingRadar) return;
-
-    const map = mapInstanceRef.current;
-    const mapDiv = map.getDiv();
-    const centerLat = editLiveCenter ? editLiveCenter.lat : editCenterLat;
-    const centerLng = editLiveCenter ? editLiveCenter.lng : editCenterLng;
-    // Se o Admin estiver movendo as posições ativamente (`editLiveCenter`) ou se ele já tiver salvo algo (`editCenterLat`),
-    // o calculo dinâmico OBRIGATORIAMENTE anula os limites fixados (isIpmet/isUspStarnet),
-    // de forma que qualquer configuração salva ou movida no mapa obedeça de imediato.
-    const isIpmet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'ipmet-bauru';
-    const isUspStarnet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'usp-starnet';
-    const usingDefaultConfig = editCenterLat === editingRadar.station.lat && editCenterLng === editingRadar.station.lng;
-
-    const b = (isIpmet && usingDefaultConfig && !editLiveCenter) ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw }
-      : (isUspStarnet && usingDefaultConfig && !editLiveCenter) ? { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw }
-      : calculateRadarBounds(centerLat, centerLng, editRangeKm);
-    const latLngBounds = new google.maps.LatLngBounds(
-      { lat: b.sw.lat, lng: b.sw.lng },
-      { lat: b.ne.lat, lng: b.ne.lng }
-    );
-    const imageUrl = getEditRadarImageUrl(editingRadar);
-    const needsIpmetStorageFetch = isIpmet && editMinutesAgo > 0;
-
-    let moveHandler: (e: MouseEvent) => void;
-    let upHandler: () => void;
-
-    const ov = new google.maps.OverlayView();
-    let divEl: HTMLDivElement | null = null;
-    ov.onAdd = () => {
-      divEl = document.createElement('div');
-      divEl.style.cssText = 'position:absolute;pointer-events:auto;cursor:grab;border:2px solid #22d3ee;user-select:none;';
-      divEl.addEventListener('mousedown', (e: MouseEvent) => {
-        e.preventDefault();
-        const proj = ov.getProjection();
-        if (!proj) return;
-        const rect = mapDiv.getBoundingClientRect();
-        const clickMapX = e.clientX - rect.left;
-        const clickMapY = e.clientY - rect.top;
-        const centerPixel = proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng));
-        if (!centerPixel) return;
-        const offsetX = clickMapX - centerPixel.x;
-        const offsetY = clickMapY - centerPixel.y;
-        divEl!.style.cursor = 'grabbing';
-
-        moveHandler = (e2: MouseEvent) => {
-          const mx = e2.clientX - rect.left - offsetX;
-          const my = e2.clientY - rect.top - offsetY;
-          const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
-          if (!pt || !divEl) return;
-          const newLat = pt.lat();
-          const newLng = pt.lng();
-          lastEditDragRef.current = { lat: newLat, lng: newLng };
-          setEditLiveCenter({ lat: newLat, lng: newLng });
-          const editSlug = editingRadar.type === 'cptec' ? editingRadar.station.slug : null;
-          const newB = calculateRadarBounds(newLat, newLng, editRangeKm);
-          const newSw = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.sw.lat, newB.sw.lng));
-          const newNe = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.ne.lat, newB.ne.lng));
-          if (newSw && newNe) {
-            divEl.style.left = Math.min(newSw.x, newNe.x) + 'px';
-            divEl.style.top = Math.min(newSw.y, newNe.y) + 'px';
-            divEl.style.width = Math.abs(newNe.x - newSw.x) + 'px';
-            divEl.style.height = Math.abs(newNe.y - newSw.y) + 'px';
-          }
-        };
-        upHandler = () => {
-          divEl!.style.cursor = 'grab';
-          document.removeEventListener('mousemove', moveHandler);
-          document.removeEventListener('mouseup', upHandler);
-          setEditLiveCenter(null);
-          const last = lastEditDragRef.current;
-          if (last) {
-            setEditCenterLat(last.lat);
-            setEditCenterLng(last.lng);
-            handleSaveEditPosition(last.lat, last.lng);
-          }
-          lastEditDragRef.current = null;
-        };
-        document.addEventListener('mousemove', moveHandler);
-        document.addEventListener('mouseup', upHandler);
-      });
-
-      const inner = document.createElement('div');
-      inner.style.cssText = 'width:100%;height:100%;position:relative;min-height:60px;pointer-events:none;';
-      const img = document.createElement('img');
-      if (needsIpmetStorageFetch) {
-        const ts = getNowMinusMinutesTimestamp12UTC(3 + editMinutesAgo);
-        fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(ts)}`)
-          .then((r) => r.ok ? r.json() : null)
-          .then((d) => { if (d?.url && img) img.src = d.url; })
-          .catch(() => {});
-      }
-      img.src = needsIpmetStorageFetch ? '' : imageUrl;
-      const isUspEdit = editingRadar.type === 'cptec' && editingRadar.station.slug === 'usp-starnet';
-      img.style.cssText = `width:100%;height:100%;object-fit:fill;transform-origin:center center;${isUspEdit ? 'mix-blend-mode:multiply;' : ''}`;
-      
-      {/* Mira (Crosshair) para amostragem de dados */}
-      {showCrosshair && (
-        <div 
-          key={`crosshair-${splitCount}`}
-          className="absolute inset-0 pointer-events-none flex items-center justify-center z-[50]"
-          style={{ transition: 'all 0.1s' }}
-        >
-          <img 
-            src="https://raw.githubusercontent.com/stormchasermt-netizen/main/ec772010815ceed0001897a8b99858f3993c34e0/target.png" 
-            alt="Mira"
-            className="w-12 h-12 opacity-80"
-          />
-        </div>
-      )}
-
-      img.style.transform = `rotate(${editRotationDegrees}deg)`;
-      inner.appendChild(img);
-      const centerIcon = document.createElement('img');
-      centerIcon.src = 'https://raw.githubusercontent.com/stormchasermt-netizen/main/ec772010815ceed0001897a8b99858f3993c34e0/2656046-200.png';
-      centerIcon.alt = 'Posição do radar';
-      centerIcon.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;pointer-events:none;';
-      inner.appendChild(centerIcon);
-      divEl.appendChild(inner);
-      ov.getPanes()?.overlayLayer?.appendChild(divEl);
-    };
-    ov.getBounds = () => latLngBounds;
-    ov.draw = () => {
-      if (!divEl) return;
-      const proj = ov.getProjection();
-      if (!proj) return;
-      const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
-      const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
-      if (!sw || !ne) return;
-      divEl.style.left = Math.min(sw.x, ne.x) + 'px';
-      divEl.style.top = Math.min(sw.y, ne.y) + 'px';
-      divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
-      divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
-    };
-    ov.onRemove = () => {
-      document.removeEventListener('mousemove', moveHandler!);
-      document.removeEventListener('mouseup', upHandler!);
-      divEl?.parentNode?.removeChild(divEl!);
-      divEl = null;
-    };
-    ov.setMap(map);
-    editOverlayRef.current = ov;
-    map.fitBounds(latLngBounds, { top: 120, right: 120, bottom: 120, left: 320 });
-
-    return () => {
-      (ov as any).setMap?.(null);
-      editOverlayRef.current = null;
-    };
-  }, [mapReady, editingRadar, editCenterLat, editCenterLng, editRangeKm, editRotationDegrees, editLiveCenter, getEditRadarImageUrl, handleSaveEditPosition]);
-
+    // Bloco administrativo aguardando migração nativa MapLibre
+  }, [mapReady, editingRadar]);
 
   const openReportPopup = () => setReportStep('location');
 
@@ -2283,8 +2137,7 @@ export default function AoVivoPage() {
 
   const goToMyLocation = () => {
     if (myLocation) {
-      mapInstanceRef.current?.panTo(myLocation);
-      mapInstanceRef.current?.setZoom(10);
+      mapInstanceRef.current?.flyTo({ center: [myLocation.lng, myLocation.lat], zoom: 10 });
     }
   };
 

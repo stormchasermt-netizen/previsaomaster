@@ -8,7 +8,8 @@ export async function incrementRadarViews(radarSlugId: string): Promise<void> {
   try {
     await setDoc(doc(db, COLLECTION, radarSlugId), { views: increment(1) }, { merge: true });
   } catch (err) {
-    console.error('Error incrementing radar views:', err);
+    // Silenciar erros de permissão para não quebrar a UI
+    return;
   }
 }
 
@@ -22,7 +23,7 @@ export async function fetchAllRadarViews(): Promise<Record<string, number>> {
     });
     return views;
   } catch (err) {
-    console.error('Error fetching radar views:', err);
+    // Erro de permissão silencioso para não travar a UI
     return {};
   }
 }
