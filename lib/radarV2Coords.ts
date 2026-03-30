@@ -167,4 +167,15 @@ export const RADAR_V2_COORDS: Record<string, { lat: number; lng: number; bounds:
     lng: -44.23476,
     bounds: { north: -0.353362, south: -4.837192, east: -41.98612, west: -46.4834 }
   },
+  // Aliases de conveniência
+  'funceme-fortaleza': {
+    lat: -3.7944,
+    lng: -38.5575,
+    bounds: { north: -0.205189, south: -7.378549, east: -34.94578, west: -42.1691 }
+  },
+  'funceme-quixeramobim': {
+    lat: -5.06917,
+    lng: -39.2669,
+    bounds: { north: -1.47747, south: -8.6533, east: -35.6439, west: -42.8899 }
+  },
 };
