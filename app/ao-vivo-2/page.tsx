@@ -410,6 +410,7 @@ export default function AoVivoPage() {
   const [sampledValue2, setSampledValue2] = useState<number | null>(null);
   const [sampledValue3, setSampledValue3] = useState<number | null>(null);
   const [sampledValue4, setSampledValue4] = useState<number | null>(null);
+  const [showCrosshair, setShowCrosshair] = useState(false);
 
   const [radarViewsRecord, setRadarViewsRecord] = useState<Record<string, number>>({});
   const [calendarMode, setCalendarMode] = useState<'days' | 'months' | 'years'>('days');
@@ -801,7 +802,10 @@ export default function AoVivoPage() {
   }, [samplePixelFromOverlays, splitCount]);
 
   useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current) return;
+    if (!mapReady || !mapInstanceRef.current || !showCrosshair) {
+       setSampledValue1(null);
+       return;
+    }
     const l1 = mapInstanceRef.current.addListener('idle', handleSampleAll);
     const l2 = mapInstanceRef.current.addListener('zoom_changed', handleSampleAll);
     let l3: any, l4: any;
@@ -815,7 +819,7 @@ export default function AoVivoPage() {
         if (l3) google.maps.event.removeListener(l3);
         if (l4) google.maps.event.removeListener(l4);
     };
-  }, [mapReady, map2Ready, handleSampleAll]);
+  }, [mapReady, map2Ready, handleSampleAll, showCrosshair]);
 
   // Atualizar valores quando os overlays mudarem (animação)
   useEffect(() => {
@@ -1094,18 +1098,38 @@ export default function AoVivoPage() {
           configSlug = `${dr.station.slug}-redemet`;
         }
         
-        // PRIORIDADE 1: Configurações Salvas no Firebase (Admin)
+        // PRIORIDADE 1: Configurações Salvas no Firebase com Custom Bounds manuais
         const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
         if (cfg?.customBounds) {
           return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
         }
+
+        // PRIORIDADE 2: Bounds Nativos do CPTEC (A MAIS IMPORTANTE!)
+        // Se a latitude no Firebase for a MESMA da estação original, significa que o Admin só salvou opacidade/rotação.
+        const isDefaultPosition = !cfg || (cfg.lat === dr.station.lat && cfg.lng === dr.station.lng);
+
+        if (isDefaultPosition) {
+           if (dr.station.bounds) {
+              return { 
+                north: dr.station.bounds.maxLat, 
+                south: dr.station.bounds.minLat, 
+                east: dr.station.bounds.maxLon, 
+                west: dr.station.bounds.minLon 
+              };
+           }
+           const b = getRadarImageBounds(dr.station);
+           return { north: b.north, south: b.south, east: b.east, west: b.west };
+        }
+
+        // PRIORIDADE 3: O Admin moveu o radar de lugar (Fallback Matemático)
         if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
           const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
+          // Agora esse cálculo vai usar o Cosseno corrigido no lib/cptecRadarStations.ts
           const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
           return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
         }
 
-        // PRIORIDADE 2: Fallbacks Hardcoded por Estação
+        // Fallbacks Legados
         const isIpmet = dr.station.slug === 'ipmet-bauru';
         const isUspStarnet = dr.station.slug === 'usp-starnet';
         if (isIpmet) {
@@ -1125,7 +1149,6 @@ export default function AoVivoPage() {
           return { north: sb.north, south: sb.south, east: sb.east, west: sb.west };
         }
         
-        // PRIORIDADE 3: Bounds calculados nativamente do CPTEC base
         const b = getRadarImageBounds(dr.station);
         return { north: b.north, south: b.south, east: b.east, west: b.west };
       }
@@ -1529,6 +1552,13 @@ export default function AoVivoPage() {
 
   /** Segundo mapa (Doppler) para split=2 ou 4 */
   useEffect(() => {
+    if ((splitCount !== 2 && splitCount !== 4) || !map2Ready || !map2InstanceRef.current || !showCrosshair) {
+       setSampledValue2(null);
+       return;
+    }
+  }, [splitCount, map2Ready, showCrosshair]);
+
+  useEffect(() => {
     if ((splitCount !== 2 && splitCount !== 4) || !mapReady || !mapInstanceRef.current) {
       if (map2InstanceRef.current) { map2InstanceRef.current = null; setMap2Ready(false); }
       return;
@@ -1581,6 +1611,13 @@ export default function AoVivoPage() {
   }, [mapReady, myLocation]);
 
   /** Mapas extras para split=4: cria/destrói conforme splitCount */
+  useEffect(() => {
+    if (splitCount !== 4 || !map3Ready || !map3InstanceRef.current || !showCrosshair) {
+       setSampledValue3(null);
+       return;
+    }
+  }, [splitCount, map3Ready, showCrosshair]);
+
   useEffect(() => {
     if (splitCount !== 4 || !mapReady || !mapInstanceRef.current) {
       if (map3InstanceRef.current) { map3InstanceRef.current = null; setMap3Ready(false); }
@@ -2484,6 +2521,19 @@ export default function AoVivoPage() {
       img.style.cssText = `width:100%;height:100%;object-fit:fill;transform-origin:center center;${isUspEdit ? 'mix-blend-mode:multiply;' : ''}`;
       img.style.transform = `rotate(${editRotationDegrees}deg)`;
       inner.appendChild(img);
+      {showCrosshair && (
+        <div 
+          key={`crosshair-${splitCount}`}
+          className="absolute inset-0 pointer-events-none flex items-center justify-center z-[50]"
+          style={{ transition: 'all 0.1s' }}
+        >
+          <img 
+            src="https://raw.githubusercontent.com/stormchasermt-netizen/main/ec772010815ceed0001897a8b99858f3993c34e0/target.png" 
+            alt="Mira"
+            className="w-12 h-12 opacity-80"
+          />
+        </div>
+      )}
       const centerIcon = document.createElement('img');
       centerIcon.src = 'https://raw.githubusercontent.com/stormchasermt-netizen/main/ec772010815ceed0001897a8b99858f3993c34e0/2656046-200.png';
       centerIcon.alt = 'Posição do radar';
@@ -3017,7 +3067,32 @@ export default function AoVivoPage() {
                   className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500 hover:accent-cyan-400 transition-all"
               />
             </div>
-              {/* Toggle Limites Municipais */}
+              {/* Toggle Mira (Crosshair) */}
+            <div className="flex items-center justify-between p-3 bg-slate-800/40 rounded-lg hover:bg-slate-800/60 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/20 rounded-md">
+                  <Crosshair className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-100">Mira de Precisão</p>
+                  <p className="text-xs text-slate-400">Dados reais sob o cursor</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCrosshair(!showCrosshair)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                    showCrosshair ? 'bg-blue-600' : 'bg-slate-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      showCrosshair ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Toggle Limites Municipais */}
               <div>
                 <label className="flex items-center gap-3 py-2 cursor-pointer group">
                   <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${showMunicipios ? 'bg-amber-500 border-amber-500' : 'border-slate-500 group-hover:border-amber-500/50'}`}>
