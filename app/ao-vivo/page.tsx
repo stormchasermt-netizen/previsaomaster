@@ -121,7 +121,8 @@ async function probeRadarImageExists(
   ts12: string,
   productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
   slugParam: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  isHistorical: boolean = false
 ): Promise<boolean> {
   const st = await fetch(
     `/api/radar-storage-fallback?radarId=${encodeURIComponent(slugParam)}&ts12=${encodeURIComponent(ts12)}&productType=${productType}`,
@@ -132,6 +133,15 @@ async function probeRadarImageExists(
     if (j?.url) return true;
   }
   if (dr.type === 'cptec') {
+    if (isHistorical) {
+      const area = getRedemetArea((dr.station as CptecRadarStation).slug);
+      if (area) {
+        const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(ts12)}&historical=true`, { cache: 'no-store', signal });
+        const data = await res.json().catch(() => ({}));
+        if (data?.url) return true;
+      }
+      return false; // se é histórico e não tá no storage nem redemet, falha.
+    }
     const url = buildNowcastingPngUrl(dr.station, ts12, productType, true);
     const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
     const data = await res.json().catch(() => ({}));
@@ -334,7 +344,7 @@ async function filterValidSliderMinutesAgo(
           const searchMin = minutesAgo + windowOffset;
           const ts12 = subtractMinutesFromTimestamp12UTC(referenceTs12, searchMin);
           try {
-            if (await probeRadarImageExists(dr, ts12, productType, slugParam, signal)) return true;
+            if (await probeRadarImageExists(dr, ts12, productType, slugParam, signal, isHistorical)) return true;
           } catch {
             /* próximo offset */
           }
@@ -1885,7 +1895,7 @@ export default function AoVivoPage() {
     allRadars.forEach((dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
       const isDisplayed = displayRadars.some(r => (r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`) === radarKey);
-      const hasData = isDisplayed && !failedRadars.has(radarKey);
+      const hasData = !failedRadars.has(radarKey);
       const pos = getRadarCenter(dr);
 
       // CORREÇÃO: Largura e Altura OBRIGATÓRIAS na tag raiz para o Mapbox/MapLibre centralizar perfeitamente.
@@ -1902,8 +1912,8 @@ export default function AoVivoPage() {
         `;
       } else {
         el.innerHTML = `
-          <div class="relative flex items-center justify-center w-full h-full opacity-40 transition-transform hover:scale-110 grayscale">
-            <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar Off" class="w-7 h-7 object-contain" />
+          <div class="relative flex items-center justify-center w-full h-full opacity-50 transition-transform hover:scale-110 grayscale">
+            <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar Off" class="w-8 h-8 object-contain" />
           </div>
         `;
       }
@@ -1953,6 +1963,18 @@ export default function AoVivoPage() {
       opacity: number,
       currentGen: number
     ) => {
+      // Esconder overlays de radares que não estão na lista atual
+      const activeKeys = new Set(radars.map(r => r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`));
+      const style = map.getStyle();
+      if (style && style.layers) {
+        style.layers.forEach((layer: any) => {
+          const match = layer.id.match(/^layer-(.+)-[01]$/);
+          if (match && !activeKeys.has(match[1])) {
+            map.setPaintProperty(layer.id, 'raster-opacity', 0);
+          }
+        });
+      }
+
       radars.forEach((dr) => {
         pendingRadarRequestsRef.current++;
         let finished = false;
@@ -2000,18 +2022,22 @@ export default function AoVivoPage() {
               id: layerId,
               type: 'raster',
               source: sourceId,
-              paint: { 'raster-opacity': 0, 'raster-fade-duration': 350 },
+              paint: {
+                'raster-opacity': 0,
+                'raster-fade-duration': 0,
+                'raster-opacity-transition': { duration: 350, delay: 0 }
+              },
             });
           }
 
-          requestAnimationFrame(() => {
+          setTimeout(() => {
             if (map.getLayer(layerId)) {
               map.setPaintProperty(layerId, 'raster-opacity', opacity);
             }
             if (map.getLayer(oldLayerId)) {
               map.setPaintProperty(oldLayerId, 'raster-opacity', 0);
             }
-          });
+          }, 50);
 
           setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: finalTs }));
           setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: source as any }));
@@ -2080,7 +2106,8 @@ export default function AoVivoPage() {
           }
           const tsRed = getNearestRadarTimestamp(timestamp, st);
           try {
-            const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`);
+            const histParam = isHistorical ? '&historical=true' : '';
+            const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}${histParam}`);
             const data = await res.json().catch(() => null);
             if (data?.url) processWithWorker(data.url, 'redemet', tsRed, tryStorage);
             else void tryStorage();
@@ -2100,7 +2127,7 @@ export default function AoVivoPage() {
         );
         const isHistorical = Date.now() - targetDate.getTime() > 48 * 60 * 60 * 1000;
 
-        if (isHistorical || ['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug)) {
+        if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug)) {
           if (useFallback && !isHistorical) {
             if (slug === 'usp-starnet')
               processWithWorker(
@@ -2118,6 +2145,19 @@ export default function AoVivoPage() {
                 exactTs12,
                 tryStorage
               );
+          } else {
+            void tryStorage();
+          }
+          return;
+        }
+
+        if (isHistorical) {
+          if (dr.type === 'argentina') {
+            const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
+            const argUrl = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
+            processWithWorker(argUrl, 'argentina', argTs, markFailed);
+          } else if (dr.type === 'cptec' && getRedemetArea(slug)) {
+            void tryRedemet();
           } else {
             void tryStorage();
           }
