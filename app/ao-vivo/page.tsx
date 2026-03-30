@@ -400,6 +400,13 @@ export default function AoVivoPage() {
   const [sliderMinutesAgo, setSliderMinutesAgo] = useState(0);
   /** Modo único: só horários com imagem (slider discreto). null = mosaico ou não carregado. */
   const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
+  /** Imagens anteriores: data/hora selecionada. null = modo ao vivo. */
+  const [historicalTimestampOverride, setHistoricalTimestampOverride] = useState<string | null>(null);
+  const [historicalDate, setHistoricalDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [historicalTime, setHistoricalTime] = useState('12:00');
   const [sampledValue1, setSampledValue1] = useState<number | null>(null);
   const [sampledValue2, setSampledValue2] = useState<number | null>(null);
   const [sampledValue3, setSampledValue3] = useState<number | null>(null);
@@ -416,17 +423,13 @@ export default function AoVivoPage() {
 
   /** Máximo de minutos atrás: live = meia-noite até agora */
   const maxSliderMinutesAgo = useMemo(() => {
-    const now = new Date();
-    const utcDateStr = now.toISOString().slice(0, 10);
-    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const utcIsNextDay = utcDateStr > localDateStr;
-    if (utcIsNextDay) {
-      return 1440;
+    // Se estiver usando a busca por data/hora passada (calendário), permite 24h
+    if (historicalTimestampOverride) {
+      return 1440; 
     }
-    const startOfDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
-    return Math.max(60, Math.floor((now.getTime() - startOfDayUTC.getTime()) / 60_000));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [radarTimestamp]);
+    // No modo AO VIVO (Mosaico ou Individual), trava em no MÁXIMO 60 minutos (1 hora)
+    return 60; 
+  }, [historicalTimestampOverride]);
 
   // Controle de Animação
   const [isPlaying, setIsPlaying] = useState(false);
@@ -441,6 +444,20 @@ export default function AoVivoPage() {
   }, []);
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Procura o índice do valor mais próximo disponível no array de tempos válidos
+  const getClosestValidIndex = useCallback((target: number, validArr: number[]) => {
+    let closestIdx = 0;
+    let minDiff = Infinity;
+    validArr.forEach((val, idx) => {
+      const diff = Math.abs(val - target);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = idx;
+      }
+    });
+    return closestIdx;
+  }, []);
+
   // Lógica de Animação Automática (Play/Pause)
   useEffect(() => {
     if (isPlaying) {
@@ -448,21 +465,19 @@ export default function AoVivoPage() {
         playIntervalRef.current = setInterval(() => {
           setSliderMinutesAgo((prev) => {
             if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
-              // Modo único: usa timestamps validados
-              const currentIndex = validSliderMinutesAgo.indexOf(prev);
-              if (currentIndex < 0) return validSliderMinutesAgo[0]; 
+              const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
               const nextIndex = currentIndex + 1;
               if (nextIndex >= validSliderMinutesAgo.length) {
                 return validSliderMinutesAgo[0]; // Reset loop
               }
               return validSliderMinutesAgo[nextIndex];
             } else {
-              // Modo mosaico: usa step fixo de 5 min
               const next = prev - 5;
-              return next < 0 ? maxSliderMinutesAgo : next;
+              if (next < 0) return maxSliderMinutesAgo;
+              return next;
             }
           });
-        }, 800 / animationSpeedMultiplier); // 800ms / multiplier por frame
+        }, 800 / animationSpeedMultiplier);
       }
     } else {
       if (playIntervalRef.current) {
@@ -476,33 +491,31 @@ export default function AoVivoPage() {
         playIntervalRef.current = null;
       }
     };
-  }, [isPlaying, validSliderMinutesAgo, maxSliderMinutesAgo, animationSpeedMultiplier]);
+  }, [isPlaying, validSliderMinutesAgo, maxSliderMinutesAgo, animationSpeedMultiplier, getClosestValidIndex]);
 
   const handleSkipBack = useCallback(() => {
     if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
       setSliderMinutesAgo((prev) => {
-        const currentIndex = validSliderMinutesAgo.indexOf(prev);
+        const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
         if (currentIndex <= 0) return validSliderMinutesAgo[0];
         return validSliderMinutesAgo[currentIndex - 1]; 
       });
     } else {
-      // Mosaico/split: step fixo de 5 min (voltar = aumenta minutesAgo)
       setSliderMinutesAgo((prev) => Math.min(maxSliderMinutesAgo, prev + 5));
     }
-  }, [validSliderMinutesAgo, maxSliderMinutesAgo]);
+  }, [validSliderMinutesAgo, maxSliderMinutesAgo, getClosestValidIndex]);
 
   const handleSkipForward = useCallback(() => {
     if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
       setSliderMinutesAgo((prev) => {
-        const currentIndex = validSliderMinutesAgo.indexOf(prev);
+        const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
         if (currentIndex >= validSliderMinutesAgo.length - 1) return validSliderMinutesAgo[validSliderMinutesAgo.length - 1];
         return validSliderMinutesAgo[currentIndex + 1]; 
       });
     } else {
-      // Mosaico/split: step fixo de 5 min (avançar = diminui minutesAgo)
       setSliderMinutesAgo((prev) => Math.max(0, prev - 5));
     }
-  }, [validSliderMinutesAgo, maxSliderMinutesAgo]);
+  }, [validSliderMinutesAgo, maxSliderMinutesAgo, getClosestValidIndex]);
 
   const [sliderValidVerifying, setSliderValidVerifying] = useState(false);
   /** Localização obrigatória para ao-vivo (presença em tempo real e posicionamento no mapa) */
@@ -557,14 +570,7 @@ export default function AoVivoPage() {
   const [showPrevotsDialog, setShowPrevotsDialog] = useState(false);
   const [selectedPrevotsLinks, setSelectedPrevotsLinks] = useState<{ xUrl?: string; instagramUrl?: string; date: string } | null>(null);
 
-  /** Imagens anteriores: data/hora selecionada. null = modo ao vivo. */
-  const [historicalTimestampOverride, setHistoricalTimestampOverride] = useState<string | null>(null);
   const [showHistoricalPicker, setShowHistoricalPicker] = useState(false);
-  const [historicalDate, setHistoricalDate] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
-  const [historicalTime, setHistoricalTime] = useState('12:00');
 
   /** Modo edição de radar: posicionar, rotacionar, raio. null = não editando. */
   const [editingRadar, setEditingRadar] = useState<DisplayRadar | null>(null);
@@ -764,7 +770,8 @@ export default function AoVivoPage() {
                     const canvas = document.createElement('canvas');
                     canvas.width = img.width;
                     canvas.height = img.height;
-                    const ctx = canvas.getContext('2d', { willReadFrequently: true }); // OTIMIZAÇÃO AQUI
+                    //willReadFrequently flag melhora absurdamente a performance de amostragem
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true }); 
                     if (!ctx) return;
                     ctx.drawImage(img, 0, 0);
                     cachedImageDataMap.current.set(url, { img, canvas, ctx });
@@ -2312,289 +2319,79 @@ export default function AoVivoPage() {
         { lat: bounds.south, lng: bounds.west },
         { lat: bounds.north, lng: bounds.east }
       );
+      
       const ov = new google.maps.OverlayView();
       let divEl: HTMLDivElement | null = null;
+      let isCancelled = false;
+      let tryIndex = 0;
+
+      const applyNoiseFilter = async (src: string): Promise<string> => {
+        const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
+        if (productType === 'reflectividade' && !reflectivityFilterEnabled) return src;
+        
+        if (productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec') {
+          const loadedEntry = urlsToTry[tryIndex - 1];
+          const refTs12 = loadedEntry?.ts12 ?? nominalTs;
+          const refUrl = buildNowcastingPngUrl(dr.station as CptecRadarStation, refTs12, 'reflectividade');
+          const [refProxy] = getRadarUrlsWithFallback(refUrl);
+          const res = await filterDopplerSuperRes(src, refProxy).catch(() => src);
+          return res ?? src;
+        }
+        const res = await (isClimatempo 
+          ? filterClimatempoRadarImage(src, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig) 
+          : filterRadarImageFromUrl(src, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig)).catch(() => src);
+        return res ?? src;
+      };
+
       ov.onAdd = () => {
         divEl = document.createElement('div');
-        divEl.style.cssText = 'position:absolute;pointer-events:none;overflow:hidden;display:none;';
-        const img = document.createElement('img');
-        img.className = 'pixelated-layer';
-        const isUsp = dr.type === 'cptec' && dr.station.slug === 'usp-starnet';
-        img.style.cssText = `width:100%;height:100%;opacity:${effectiveOpacity};object-fit:fill;transform-origin:center center;transition:opacity 0.3s ease;${isUsp ? 'mix-blend-mode:multiply;' : ''}`;
-        if (rotationDeg !== 0) img.style.transform = `rotate(${rotationDeg}deg)`;
-        let noiseFiltered = false;
-        /** Evita flicker: mostra o overlay apenas após carregar e processar filtros */
-        let isFullyProcessed = false;
+        divEl.style.cssText = 'position:absolute;pointer-events:none;overflow:hidden;opacity:0;transition:opacity 0.2s ease-in;';
+        const imgEl = document.createElement('img');
+        imgEl.className = 'pixelated-layer';
+        imgEl.style.cssText = `width:100%;height:100%;object-fit:fill;`;
+        
         const markProcessed = () => {
-          if (isFullyProcessed) return;
-          isFullyProcessed = true;
-          if (divEl) divEl.style.display = '';
-
-          // Lógica de Double Buffering: Remove os antigos APENAS quando o NOVO aparecer
-          if (oldOverlays.length > 0) {
-            setTimeout(() => {
-              oldOverlays.forEach(ov => {
-                try { ov.setMap(null); } catch (e) {}
+            if (divEl) {
+              requestAnimationFrame(() => {
+                if (divEl) divEl.style.opacity = String(effectiveOpacity);
               });
-              // Limpar a array local de antigos para não repetir
-              oldOverlays.length = 0;
-            }, 100);
-          }
-        };
-
-        const applyNoiseFilter = () => {
-          if (noiseFiltered) return;
-          noiseFiltered = true;
-          const currentSrc = img.src;
-          const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
-
-          // Se o filtro de refletividade está desativado E é reflectividade, pula o filtro
-          if (productType === 'reflectividade' && !reflectivityFilterEnabled) {
-            markProcessed();
-            return;
-          }
-
-          // Super Res: pipeline especial para Doppler (velocidade)
-          if (productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec') {
-            // Busca a URL de reflectividade (ppicz) do mesmo radar/timestamp para usar como máscara
-            const loadedEntry = urlsToTry[tryIndex - 1];
-            const refTs12 = loadedEntry?.ts12 ?? nominalTs;
-            const refUrl = buildNowcastingPngUrl(dr.station as CptecRadarStation, refTs12, 'reflectividade');
-            const [refProxy] = getRadarUrlsWithFallback(refUrl);
-            
-            filterDopplerSuperRes(currentSrc, refProxy).then((filteredSrc) => {
-              if (filteredSrc && img.src === currentSrc) {
-                img.onload = null;
-                img.onerror = null;
-                img.src = filteredSrc;
-              }
-              markProcessed();
-            }).catch(() => { markProcessed(); });
-            return;
-          }
-
-          const filterAction = isClimatempo 
-            ? filterClimatempoRadarImage(currentSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig) 
-            : filterRadarImageFromUrl(currentSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig);
-
-          filterAction.then((filteredSrc) => {
-            if (filteredSrc && img.src === currentSrc) {
-              img.onload = null;
-              img.onerror = null;
-              img.src = filteredSrc;
             }
-            markProcessed();
-          }).catch(() => { markProcessed(); });
+              if (oldOverlays.length > 0) {
+                setTimeout(() => {
+                  oldOverlays.forEach(o => { try { (o as any).setMap(null); } catch(e){} });
+                  oldOverlays.length = 0;
+                }, 250);
+              }
         };
-        let tryIndex = 0;
-        let redemetAttempted = false;
-        const markFailed = () => {
-          setFailedRadars((prev) => new Set(prev).add(radarKey));
-          setRadarEffectiveSource((prev) => {
-            const next = { ...prev };
-            delete next[radarKey];
-            return next;
-          });
-          if (divEl) divEl.style.display = 'none';
-        };
-        const showOverlay = () => { if (divEl) divEl.style.display = ''; };
-        const onRedemetLoad = (ts12Val: string) => {
-          recentNowcastingSuccessRef.current = Date.now();
-          setNowcastingOffline(false);
-          setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: ts12Val }));
-          setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'redemet' }));
-          setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-          markProcessed();
-        };
-        let ipmetStorageAttempted = false;
-        let sipamAttempted = false;
+
         const tryNext = () => {
+          if (isCancelled) return;
           if (tryIndex < urlsToTry.length) {
-            img.src = urlsToTry[tryIndex].url;
-            tryIndex += 1;
-            return;
-          }
-          // SIPAM HD: tentar frames da API SIPAM (antes de storage/redemet)
-          if (!sipamAttempted && sipamFramesPromise) {
-            sipamAttempted = true;
-            sipamFramesPromise.then(sipamUrls => {
-              if (!sipamUrls || sipamUrls.length === 0) {
-                // SIPAM falhou → continuar para ipmet/redemet/storage
-                tryNext();
-                return;
+            const entry = urlsToTry[tryIndex++];
+            const trialImg = new Image();
+            trialImg.crossOrigin = "anonymous";
+            trialImg.onerror = tryNext;
+            trialImg.onload = async () => {
+              recentNowcastingSuccessRef.current = Date.now();
+              setNowcastingOffline(false);
+              const filteredSrc = await applyNoiseFilter(trialImg.src);
+              if (filteredSrc) {
+                imgEl.src = filteredSrc;
               }
-              let sipamIdx = 0;
-              const trySipamNext = () => {
-                if (sipamIdx >= sipamUrls.length) {
-                  // Todos SIPAM falharam → continuar cadeia
-                  tryNext();
-                  return;
-                }
-                const entry = sipamUrls[sipamIdx];
-                sipamIdx++;
-                img.onerror = () => trySipamNext();
-                img.onload = () => {
-                  recentNowcastingSuccessRef.current = Date.now();
-                  setNowcastingOffline(false);
-                  setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: entry.ts12 }));
-                  setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
-                  setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-                  // Salvar SIPAM HD no Storage
-                  const sipamCacheSlug = dr.type === 'cptec' ? `${dr.station.slug}-sipamhd` : `argentina_${dr.station.id}`;
-                  cacheRadarImage(img.src, sipamCacheSlug, entry.ts12, productType as any);
-                  applyNoiseFilter();
-                  if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
-                    markProcessed();
-                  }
-                };
-                img.src = entry.url;
-              };
-              trySipamNext();
-            });
+              if (rotationDeg !== 0) imgEl.style.transform = `rotate(${rotationDeg}deg)`;
+              markProcessed();
+            };
+            trialImg.src = entry.url;
             return;
           }
-          if (!ipmetStorageAttempted && ipmetStoragePromise) {
-            ipmetStorageAttempted = true;
-            ipmetStoragePromise.then((storageUrl) => {
-              if (!storageUrl) { markFailed(); return; }
-              img.onerror = () => markFailed();
-              img.onload = () => {
-                recentNowcastingSuccessRef.current = Date.now();
-                setNowcastingOffline(false);
-                applyNoiseFilter();
-                setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: timestamp }));
-                setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
-                setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-                if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
-                   markProcessed();
-                }
-              };
-              img.src = storageUrl;
-            });
-            return;
-          }
-          if (!redemetAttempted && redemetFindPromise) {
-            redemetAttempted = true;
-            redemetFindPromise.then(redemetUrl => {
-              if (!redemetUrl) {
-                // Redemet também falhou → tentar Storage
-                if (storageFallbackPromise) {
-                  storageFallbackPromise.then(storageUrl => {
-                    if (!storageUrl) { 
-                      if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
-                      markFailed(); return; 
-                    }
-                    if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
-                    img.onerror = () => markFailed();
-                    img.onload = () => {
-                      applyNoiseFilter();
-                      setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: timestamp }));
-                      setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
-                      setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-                      markProcessed();
-                    };
-                    img.src = storageUrl;
-                  });
-                } else {
-                  markFailed();
-                }
-                return;
-              }
-              img.onerror = () => markFailed();
-              img.onload = () => { applyNoiseFilter(); onRedemetLoad(timestamp); };
-              img.src = getProxiedRadarUrl(redemetUrl);
-            });
-            return;
-          }
-          // Último recurso: Storage (sem Redemet disponível)
-          if (storageFallbackPromise) {
-            storageFallbackPromise.then(storageUrl => {
-              if (!storageUrl) { 
-                if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
-                markFailed(); return; 
-              }
-              if (Date.now() - recentNowcastingSuccessRef.current > 10 * 60 * 1000) setNowcastingOffline(true);
-              img.onerror = () => markFailed();
-              img.onload = () => {
-                applyNoiseFilter();
-                setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: timestamp }));
-                setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: 'cptec' }));
-                setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-                markProcessed();
-              };
-              img.src = storageUrl;
-            });
-            return;
-          }
-          markFailed();
+          // Fallbacks adicionais de Storage aqui se necessário...
         };
-        img.onerror = tryNext;
-        img.onload = () => {
-          const isDataUrl = img.src.startsWith('data:');
-          const isStorageUrl = img.src.includes('firebasestorage');
-          if (!isDataUrl && !isStorageUrl) {
-            recentNowcastingSuccessRef.current = Date.now();
-            setNowcastingOffline(false);
-          }
-          if (isDataUrl) {
-            markProcessed();
-            return;
-          }
-          applyNoiseFilter();
-          const loaded = urlsToTry[tryIndex - 1];
-          const effectiveTs12 = loaded?.ts12 ?? timestamp;
-          setRadarEffectiveTimestamps((prev) => ({
-            ...prev,
-            [radarKey]: effectiveTs12,
-          }));
-          if (loaded?.source) {
-            setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: loaded.source }));
-          }
 
-          let slug = dr.type === 'cptec' ? dr.station.slug : `argentina_${dr.station.id}`;
-          let finalConfigSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
-          if (loaded?.source === 'redemet') {
-            slug = `${slug}-redemet`;
-            finalConfigSlug = `${finalConfigSlug}-redemet`;
-          }
-
-          const finalCfg = radarConfigs.find((c) => c.id === finalConfigSlug || c.stationSlug === finalConfigSlug);
-          const finalBounds = finalCfg?.customBounds 
-            ? { north: finalCfg.customBounds.north, south: finalCfg.customBounds.south, east: finalCfg.customBounds.east, west: finalCfg.customBounds.west } 
-            : getBoundsForDisplayRadar(dr);
-
-          if ((dr.type === 'cptec' && loaded?.source === 'redemet' && finalCfg) || finalCfg?.customBounds) {
-             latLngBounds = new google.maps.LatLngBounds(
-               { lat: finalBounds.south, lng: finalBounds.west },
-               { lat: finalBounds.north, lng: finalBounds.east }
-             );
-             if (ov) {
-               ov.getBounds = () => latLngBounds;
-               if (divEl) ov.draw();
-             }
-             const finalRotationDeg = finalCfg.rotationDegrees ?? 0;
-             const finalEffectiveOpacity = finalCfg.opacity ?? opacity;
-             img.style.opacity = String(finalEffectiveOpacity);
-             img.style.transform = finalRotationDeg !== 0 ? `rotate(${finalRotationDeg}deg)` : '';
-          }
-
-          // Fire-and-forget: salvar imagem no Storage para cache
-          cacheRadarImage(img.src, slug, effectiveTs12, productType as any);
-          setFailedRadars((prev) => {
-            const next = new Set(prev);
-            next.delete(radarKey);
-            return next;
-          });
-          // Se não for Doppler ou Super Res não estiver ativo, aparece logo (o filtro Noise se aplica depois mas o flash é menor)
-          // Mas para ser 100% flicker-free:
-          if (!(productType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec')) {
-             markProcessed();
-          }
-        };
-        divEl.appendChild(img);
+        divEl.appendChild(imgEl);
         ov.getPanes()?.overlayLayer?.appendChild(divEl);
         tryNext();
       };
+
       ov.getBounds = () => latLngBounds;
       ov.draw = () => {
         if (!divEl) return;
@@ -2603,14 +2400,10 @@ export default function AoVivoPage() {
         const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
         const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
         if (!sw || !ne) return;
-        const w = Math.abs(ne.x - sw.x);
-        const h = Math.abs(ne.y - sw.y);
-        const left = Math.min(sw.x, ne.x);
-        const top = Math.min(sw.y, ne.y);
-        divEl.style.left = left + 'px';
-        divEl.style.top = top + 'px';
-        divEl.style.width = w + 'px';
-        divEl.style.height = h + 'px';
+        divEl.style.left = Math.min(sw.x, ne.x) + 'px';
+        divEl.style.top = Math.min(sw.y, ne.y) + 'px';
+        divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
+        divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
       };
       ov.onRemove = () => { divEl?.parentNode?.removeChild(divEl); divEl = null; };
       ov.setMap(map);
@@ -2621,7 +2414,6 @@ export default function AoVivoPage() {
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
   useEffect(() => {
-    // 1. NÃO APAGUE OS OVERLAYS AQUI! Salve-os em uma variável temporária.
     const oldOverlays = [...radarOverlaysRef.current];
     radarOverlaysRef.current = [];
     
@@ -2643,7 +2435,7 @@ export default function AoVivoPage() {
     addRadarOverlays(
       mapInstanceRef.current,
       radarOverlaysRef.current,
-      oldOverlays, // <--- PASSE OS ANTIGOS AQUI
+      oldOverlays,
       product,
       radarsToShow.length > 0 ? radarsToShow : [],
       effectiveRadarTimestamp,
@@ -4311,13 +4103,25 @@ export default function AoVivoPage() {
                 <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={() => {
+                  if (!isPlaying) {
+                    if (sliderMinutesAgo === 0) {
+                      if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
+                        setSliderMinutesAgo(validSliderMinutesAgo[0]);
+                      } else {
+                        setSliderMinutesAgo(60);
+                      }
+                    }
+                  }
+                  setIsPlaying(!isPlaying);
+                }}
+                disabled={sliderValidVerifying}
                 title={isPlaying ? "Pausar" : "Iniciar animação"}
                 className={`p-3 sm:p-4 rounded-full border-2 transition-all hover:scale-110 shadow-[0_0_15px_rgba(6,182,212,0.3)] backdrop-blur-md ${
                   isPlaying 
                     ? 'bg-amber-500/90 border-amber-400/80 text-black hover:bg-amber-400' 
                     : 'bg-cyan-600 border-cyan-400 text-white hover:bg-cyan-500'
-                }`}
+                } ${sliderValidVerifying ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-1" />}
               </button>

@@ -69,7 +69,7 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
   const cr = data.cropConfig as Record<string, number> | undefined;
 
   const rawRange = typeof data.rangeKm === 'number' ? data.rangeKm : 250;
-  const isRedemetHd = docId === 'santiago-redemet' || docId === 'morroigreja-redemet';
+  const isRedemetHd = docId.endsWith('-redemet');
   const rangeKm = isRedemetHd && (rawRange === 200 || rawRange === 250) ? 400 : rawRange;
 
   return {

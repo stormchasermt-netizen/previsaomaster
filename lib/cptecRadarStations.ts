@@ -64,8 +64,8 @@ export interface CptecRadarStation {
   lng: number;
   /** Alcance em km (250 DECEA/Santiago, 450 Chapecó vigilância, 240 IPMET) */
   rangeKm: number;
-  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam, funceme, argentina */
-  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme' | 'argentina';
+  /** Organização/origem: decea, sdcsc, inea, cemaden, sipam, funceme, argentina, redemet */
+  org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme' | 'argentina' | 'redemet';
   /** Slug SIPAM para radares HD (usado nas URLs siger.sipam.gov.br). Ex: 'sbbv' */
   sipamSlug?: string;
   /** Servidor s0, s1, s2, s3 */
@@ -134,6 +134,10 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12467389', slug: 'salvador', name: 'Salvador', lat: -12.9025, lng: -38.3266, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12467390', vilId: 'R12462186', waldvogelId: 'R12464608', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -40.61376, minLat: -15.13402, maxLon: -36.00421, maxLat: -10.64474 } },
   { id: 'R12257381', slug: 'petrolina', name: 'Petrolina', lat: -9.3670, lng: -40.5730, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12257382', vilId: 'R12252178', waldvogelId: 'R12254494', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.83816, minLat: -11.6014, maxLon: -38.2844, maxLat: -7.11203 } },
 
+  // Radares Exclusivos REDEMET (DECEA)
+  { id: 'R102', slug: 'vilhena', name: 'Vilhena (REDEMET)', lat: -12.74, lng: -60.14, rangeKm: 400, org: 'redemet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R104', slug: 'rio-branco', name: 'Rio Branco (REDEMET)', lat: -9.97, lng: -67.82, rangeKm: 400, org: 'redemet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+
   // SIPAM - Norte/Centro-Oeste (Super Res = CPTEC/Nowcasting, HD = SIPAM via /api/sipam/image)
   { id: 'R12797767', slug: 'portovelho', name: 'Porto Velho', lat: -8.7075, lng: -63.8892, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12797370', vilId: 'R12792393', waldvogelId: 'R12794665', sipamSlug: 'sbpv', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -66.1714, minLat: -10.95185, maxLon: -61.60706, maxLat: -6.46331 } },
   { id: 'R12767583', slug: 'cruzeirodosul', name: 'Cruzeiro do Sul', lat: -7.5884, lng: -72.7650, rangeKm: 500, org: 'sipam', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12767363', vilId: 'R12762566', waldvogelId: 'R12764641', sipamSlug: 'sbcz', updateIntervalMinutes: 12, updateIntervalOffsetMinutes: 0, bounds: { minLon: -75.0391, minLat: -9.83224, maxLon: -70.49108, maxLat: -5.34457 } },
@@ -150,7 +154,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   // FUNCEME
   { id: 'R13851142', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.7944, lng: -38.5575, rangeKm: 480, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13851143', vilId: 'R13851137', waldvogelId: 'R13851141', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.1691, minLat: -7.37854, maxLon: -34.94578, maxLat: -0.20518 } },
   { id: 'R13967017', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 400, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13967018', vilId: 'R13967012', waldvogelId: 'R13967016', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.8899, minLat: -8.6533, maxLon: -35.6439, maxLat: -1.47747 } },
-  { id: 'RMT0100DS', slug: 'funceme-ceara', name: 'Ceará Mosaico (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 600, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 },
+  { id: 'RMT0100DS', slug: 'funceme-ceara', name: 'Ceará Mosaico (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 600, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.6806, minLat: -12.4827, maxLon: -35.8536, maxLat: -1.6557 } },
 
   // Fontes especiais (WMS/proxy)
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 36, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },

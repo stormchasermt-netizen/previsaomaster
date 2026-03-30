@@ -406,6 +406,14 @@ export default function AoVivoPage() {
   const [sliderMinutesAgo, setSliderMinutesAgo] = useState(0);
   /** Modo único: só horários com imagem (slider discreto). null = mosaico ou não carregado. */
   const [validSliderMinutesAgo, setValidSliderMinutesAgo] = useState<number[] | null>(null);
+
+  /** Imagens anteriores: data/hora selecionada. null = modo ao vivo. */
+  const [historicalTimestampOverride, setHistoricalTimestampOverride] = useState<string | null>(null);
+  const [historicalDate, setHistoricalDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [historicalTime, setHistoricalTime] = useState('12:00');
   const [sampledValue1, setSampledValue1] = useState<number | null>(null);
   const [sampledValue2, setSampledValue2] = useState<number | null>(null);
   const [sampledValue3, setSampledValue3] = useState<number | null>(null);
@@ -420,13 +428,29 @@ export default function AoVivoPage() {
   }, []);
 
   /** Máximo de minutos atrás: limitado a 1 hora (60 minutos) conforme solicitado. */
-  const maxSliderMinutesAgo = 60;
+  const maxSliderMinutesAgo = useMemo(() => {
+    if (historicalTimestampOverride) return 1440;
+    return 60;
+  }, [historicalTimestampOverride]);
 
   // Controle de Animação
   const [isPlaying, setIsPlaying] = useState(false);
   const [animationSpeedMultiplier, setAnimationSpeedMultiplier] = useState(1);
   /** Duração da animação em minutos (60 / 240 / 1440) */
   const [animationDuration, setAnimationDuration] = useState<60 | 240 | 1440>(60);
+
+  const getClosestValidIndex = useCallback((target: number, validArr: number[]) => {
+    let closestIdx = 0;
+    let minDiff = Infinity;
+    validArr.forEach((val, idx) => {
+      const diff = Math.abs(val - target);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIdx = idx;
+      }
+    });
+    return closestIdx;
+  }, []);
 
   const toggleAnimationSpeed = useCallback(() => {
     setAnimationSpeedMultiplier((prev) => {
@@ -444,26 +468,17 @@ export default function AoVivoPage() {
         playIntervalRef.current = setInterval(() => {
           setSliderMinutesAgo((prev) => {
             if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
-              // Modo único: usa timestamps validados, mas limita à duração da animação (ex: 60 min)
-              const allowedFrames = validSliderMinutesAgo.filter(m => m <= animationDuration);
-              if (allowedFrames.length === 0) return 0;
-
-              const currentIndex = allowedFrames.indexOf(prev);
-              // Se o frame atual não estiver nos permitidos (ex: estava em 120 e mudou pra 60), volta pro mais antigo permitido
-              if (currentIndex < 0) return Math.max(...allowedFrames); 
-              
+              const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
               const nextIndex = currentIndex + 1;
-              if (nextIndex >= allowedFrames.length) {
-                return Math.min(...allowedFrames); // Reset loop (mais recente, geralmente 0)
-              }
-              return allowedFrames[nextIndex];
+              if (nextIndex >= validSliderMinutesAgo.length) return validSliderMinutesAgo[0];
+              return validSliderMinutesAgo[nextIndex];
             } else {
-              // Modo mosaico: usa step fixo de 5 min, limitado à animationDuration
               const next = prev - 5;
-              return next < 0 ? animationDuration : next;
+              if (next < 0) return maxSliderMinutesAgo;
+              return next;
             }
           });
-        }, (radarMode === 'mosaico' ? 1100 : 800) / animationSpeedMultiplier);
+        }, 800 / animationSpeedMultiplier);
       }
     } else {
       if (playIntervalRef.current) {
@@ -477,7 +492,7 @@ export default function AoVivoPage() {
         playIntervalRef.current = null;
       }
     };
-  }, [isPlaying, validSliderMinutesAgo, animationDuration, animationSpeedMultiplier, radarMode]);
+  }, [isPlaying, validSliderMinutesAgo, maxSliderMinutesAgo, animationSpeedMultiplier, getClosestValidIndex]);
 
   useEffect(() => {
     setRadarTimestamp(getNowMinusMinutesTimestamp12UTC(3));
@@ -486,28 +501,26 @@ export default function AoVivoPage() {
   const handleSkipBack = useCallback(() => {
     if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
       setSliderMinutesAgo((prev) => {
-        const currentIndex = validSliderMinutesAgo.indexOf(prev);
+        const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
         if (currentIndex <= 0) return validSliderMinutesAgo[0];
         return validSliderMinutesAgo[currentIndex - 1]; 
       });
     } else {
-      // Mosaico/split: step fixo de 5 min (voltar = aumenta minutesAgo)
       setSliderMinutesAgo((prev) => Math.min(maxSliderMinutesAgo, prev + 5));
     }
-  }, [validSliderMinutesAgo, maxSliderMinutesAgo]);
+  }, [validSliderMinutesAgo, maxSliderMinutesAgo, getClosestValidIndex]);
 
   const handleSkipForward = useCallback(() => {
     if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
       setSliderMinutesAgo((prev) => {
-        const currentIndex = validSliderMinutesAgo.indexOf(prev);
+        const currentIndex = getClosestValidIndex(prev, validSliderMinutesAgo);
         if (currentIndex >= validSliderMinutesAgo.length - 1) return validSliderMinutesAgo[validSliderMinutesAgo.length - 1];
         return validSliderMinutesAgo[currentIndex + 1]; 
       });
     } else {
-      // Mosaico/split: step fixo de 5 min (avançar = diminui minutesAgo)
       setSliderMinutesAgo((prev) => Math.max(0, prev - 5));
     }
-  }, [validSliderMinutesAgo, maxSliderMinutesAgo]);
+  }, [validSliderMinutesAgo, maxSliderMinutesAgo, getClosestValidIndex]);
 
   const [sliderValidVerifying, setSliderValidVerifying] = useState(false);
   /** Localização obrigatória para ao-vivo (presença em tempo real e posicionamento no mapa) */
@@ -558,14 +571,7 @@ export default function AoVivoPage() {
   const [showPrevotsDialog, setShowPrevotsDialog] = useState(false);
   const [selectedPrevotsLinks, setSelectedPrevotsLinks] = useState<{ xUrl?: string; instagramUrl?: string; date: string } | null>(null);
 
-  /** Imagens anteriores: data/hora selecionada. null = modo ao vivo. */
-  const [historicalTimestampOverride, setHistoricalTimestampOverride] = useState<string | null>(null);
   const [showHistoricalPicker, setShowHistoricalPicker] = useState(false);
-  const [historicalDate, setHistoricalDate] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
-  const [historicalTime, setHistoricalTime] = useState('12:00');
 
   /** Modo edição de radar: posicionar, rotacionar, raio. null = não editando. */
   const [editingRadar, setEditingRadar] = useState<DisplayRadar | null>(null);
@@ -2036,7 +2042,7 @@ export default function AoVivoPage() {
   /** Cria overlays de radar para um determinado mapa e tipo de produto. */
   const addRadarOverlays = useCallback((
     map: any,
-    overlaysArrRef: React.MutableRefObject<any[]>,
+    overlaysRef: React.MutableRefObject<any[]>,
     productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
     radars: DisplayRadar[],
     timestamp: string,
@@ -2045,18 +2051,11 @@ export default function AoVivoPage() {
     requestToken: number,
   ) => {
     const nominalTs = useFallback ? getNowMinusMinutesTimestamp12UTC(1) : timestamp;
-    const nominalDate = new Date(Date.UTC(
-      parseInt(nominalTs.slice(0, 4), 10),
-      parseInt(nominalTs.slice(4, 6), 10) - 1,
-      parseInt(nominalTs.slice(6, 8), 10),
-      parseInt(nominalTs.slice(8, 10), 10),
-      parseInt(nominalTs.slice(10, 12), 10)
-    ));
-
-    const pendingOverlays: any[] = [];
-    const radarPromises: Promise<void>[] = [];
+    const oldOverlays = [...overlaysRef.current];
+    overlaysRef.current = [];
 
     radars.forEach((dr) => {
+      if (requestToken !== latestRequestTokenRef.current) return;
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
       let configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
       if (dr.type === 'cptec' && hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
@@ -2066,277 +2065,130 @@ export default function AoVivoPage() {
       const rotationDeg = cfg?.rotationDegrees ?? 0;
       const effectiveOpacity = cfg?.opacity ?? opacity;
       
-      type UrlEntry = { url: string; ts12: string; source: 'cptec' | 'redemet' };
-      let urlsToTry: UrlEntry[] = [];
-      let redemetFindPromise: Promise<string | null> | null = null;
-      let ipmetStoragePromise: Promise<string | null> | null = null;
-      let storageFallbackPromise: Promise<string | null> | null = null;
-      let sipamFramesPromise: Promise<UrlEntry[] | null> | null = null;
-
-      if (productType === 'reflectividade' && dr.type === 'cptec' && dr.station.slug !== 'ipmet-bauru' && dr.station.slug !== 'usp-starnet' && dr.station.slug !== 'climatempo-poa') {
-        const fbTs12 = useFallback ? getNowMinusMinutesTimestamp12UTC(3) : timestamp;
-        storageFallbackPromise = fetch(`/api/radar-storage-fallback?radarId=${encodeURIComponent(dr.station.slug)}&ts12=${encodeURIComponent(fbTs12)}`)
-          .then(r => r.ok ? r.json() : null)
-          .then(d => d?.url ?? null)
-          .catch(() => null);
-      }
-
-      if (dr.type === 'cptec' && dr.station.slug === 'santiago' && santiagoRedemetUrl) {
-         urlsToTry.push({ url: santiagoRedemetUrl, ts12: nominalTs, source: 'redemet' });
-      }
-      if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
-        if (useFallback) {
-          urlsToTry = [{ url: GET_RADAR_IPMET_URL + `?t=${Date.now()}`, ts12: nominalTs, source: 'cptec' }];
-        } else {
-          ipmetStoragePromise = fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(timestamp)}`)
-            .then((r) => r.ok ? r.json() : null)
-            .then((d) => d?.url ?? null)
-            .catch(() => null);
-        }
-      } else if (dr.type === 'cptec' && dr.station.slug === 'usp-starnet') {
-        urlsToTry = [{ url: GET_RADAR_USP_URL + `?t=${Date.now()}`, ts12: nominalTs, source: 'cptec' }];
-      } else if (dr.type === 'cptec') {
-        const isHdMode = radarSourceMode === 'hd';
-        const hasSipam = !!dr.station.sipamSlug;
-        const hasRedemet = hasRedemetFallback(dr.station.slug);
-        
-        // Separação estrita: Super HD usa CPTEC. HD usa Redemet/Sipam.
-        const useCptecUrls = !isHdMode; 
-        
-        if (useFallback) {
-          if (useCptecUrls) {
-            const seenTs = new Set<string>();
-            for (let back = 0; back <= 60; back += 6) {
-              const baseTs = back === 0 ? nominalTs : subtractMinutesFromTimestamp12UTC(nominalTs, back);
-              const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
-              if (seenTs.has(ts12)) continue;
-              seenTs.add(ts12);
-              urlsToTry.push({ url: buildNowcastingPngUrl(dr.station, ts12, productType, true), ts12, source: 'cptec' });
-              const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
-              if (proxyUrl.includes('radar-proxy')) urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
-            }
-          }
-          if (isHdMode && hasSipam) {
-            sipamFramesPromise = fetch(`/api/sipam/frames?radar=${encodeURIComponent(dr.station.sipamSlug!)}`, { cache: 'no-store' })
-              .then(r => r.ok ? r.json() : { frames: [] })
-              .then(data => {
-                const frames: { ts12: string; sipamTs: string }[] = data.frames || [];
-                if (frames.length === 0) return null;
-                const recentFrames = frames.slice(-3).reverse();
-                const produto = productType === 'velocidade' ? 'rate' : 'dbz';
-                return recentFrames.map(f => ({
-                  url: `/api/sipam/image?radar=${dr.station.sipamSlug}&produto=${produto}&timestamp=${f.sipamTs}`,
-                  ts12: f.ts12,
-                  source: 'cptec' as const, // Mantemos cptec como marcador visual de fonte nativa
-                }));
-              }).catch(() => null);
-          }
-          if (isHdMode && hasRedemet && productType === 'reflectividade') {
-            const area = getRedemetArea(dr.station.slug)!;
-            const ts12ForRedemet = getNearestRadarTimestamp(nominalTs, dr.station);
-            redemetFindPromise = fetch(`/api/radar-redemet-find?area=${area}&ts12=${ts12ForRedemet}&historical=false`)
-              .then(r => r.ok ? r.json() : null)
-              .then(d => d?.url ?? null)
-              .catch(() => null);
-          }
-        } else {
-          // Histórico CPTEC (sempre permitido no slider histórico, independente do modo live)
-          const seenTs = new Set<string>();
-          for (let back = 0; back <= 60; back += 6) {
-            const baseTs = back === 0 ? timestamp : subtractMinutesFromTimestamp12UTC(timestamp, back);
-            const ts12 = getNearestRadarTimestamp(baseTs, dr.station);
-            if (seenTs.has(ts12)) continue;
-            seenTs.add(ts12);
-            urlsToTry.push({ url: buildNowcastingPngUrl(dr.station, ts12, productType, true), ts12, source: 'cptec' });
-            const proxyUrl = buildNowcastingPngUrl(dr.station, ts12, productType, false);
-            if (proxyUrl.includes('radar-proxy')) urlsToTry.push({ url: proxyUrl, ts12, source: 'cptec' });
-          }
-        }
+      let urlsToTry: { url: string; ts12: string; source?: string }[] = [];
+      if (dr.type === 'cptec') {
+        const directUrl = buildNowcastingPngUrl(dr.station, nominalTs, productType);
+        const [proxy] = getRadarUrlsWithFallback(directUrl);
+        urlsToTry.push({ url: proxy, ts12: nominalTs, source: 'cptec' });
       } else {
-        // Argentina (Sempre usa CPTEC/Nowcasting como base de processamento)
-        const interval = dr.station.updateIntervalMinutes ?? 10;
-        const seenTs = new Set<string>();
-        for (let back = 0; back <= 60; back += interval) {
-          const d = useFallback ? new Date(Date.now() - back * 60 * 1000) : new Date(nominalDate.getTime() - back * 60 * 1000);
-          const tsArg = getArgentinaRadarTimestamp(d, dr.station);
-          if (seenTs.has(tsArg)) continue;
-          seenTs.add(tsArg);
-          const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType as any);
-          const [proxyUrl, directUrl] = getRadarUrlsWithFallback(rawUrl);
-          urlsToTry.push({ url: proxyUrl, ts12: tsArg, source: 'cptec' });
-          urlsToTry.push({ url: directUrl, ts12: tsArg, source: 'cptec' });
-        }
+        const tsArg = getArgentinaRadarTimestamp(new Date(), dr.station);
+        const rawUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType as any);
+        const [proxy] = getRadarUrlsWithFallback(rawUrl);
+        urlsToTry.push({ url: proxy, ts12: tsArg });
       }
 
-      let bounds = getBoundsForDisplayRadar(dr);
-      const latLngBounds = new google.maps.LatLngBounds(
+      let bounds = cfg?.customBounds 
+        ? { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west } 
+        : getBoundsForDisplayRadar(dr);
+
+      let latLngBounds = new google.maps.LatLngBounds(
         { lat: bounds.south, lng: bounds.west },
         { lat: bounds.north, lng: bounds.east }
       );
 
-      let resolveLoad: () => void;
-      const loadPromise = new Promise<void>((res) => { resolveLoad = res; });
-      radarPromises.push(loadPromise);
-
-      let currentOverlay: google.maps.GroundOverlay | null = null;
-
-      const markProcessed = (success: boolean) => {
-        if (success && currentOverlay) {
-          (currentOverlay as any).loadedSuccessfully = true;
-        }
-        resolveLoad();
-      };
-
-      const applyFiltersAndShow = (imgSrc: string) => {
+      const applyNoiseFilter = async (src: string): Promise<string> => {
         const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
-        
-        // Se não houver filtro, usa a imagem original direto no GroundOverlay
-        if (productType === 'reflectividade' && !reflectivityFilterEnabled) {
-          currentOverlay = new google.maps.GroundOverlay(imgSrc, latLngBounds, {
-            opacity: effectiveOpacity,
-            clickable: false
-          });
-          currentOverlay.setMap(map);
-          pendingOverlays.push(currentOverlay);
-          markProcessed(true);
-          return;
-        }
-
-        // Se houver filtro, processa no Canvas e gera DataURL para o GroundOverlay
+        if (productType === 'reflectividade' && !reflectivityFilterEnabled) return src;
         const filterAction = isClimatempo 
-          ? filterClimatempoRadarImage(imgSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig) 
-          : filterRadarImageFromUrl(imgSrc, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig);
-
-        filterAction.then((filteredSrc) => {
-          const finalSrc = filteredSrc || imgSrc;
-          currentOverlay = new google.maps.GroundOverlay(finalSrc, latLngBounds, {
-            opacity: effectiveOpacity,
-            clickable: false
-          });
-          currentOverlay.setMap(map);
-          pendingOverlays.push(currentOverlay);
-          markProcessed(true);
-        }).catch(() => {
-          markProcessed(false);
-        });
+          ? filterClimatempoRadarImage(src, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig) 
+          : filterRadarImageFromUrl(src, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig);
+        return (await filterAction.catch(() => src)) || src;
       };
 
+      const ov = new google.maps.OverlayView();
+      let divEl: HTMLDivElement | null = null;
+      let isCancelled = false;
       let tryIndex = 0;
-      const tryNext = () => {
-        if (tryIndex < urlsToTry.length) {
-          const targetUrl = urlsToTry[tryIndex].url;
-          const targetTs12 = urlsToTry[tryIndex].ts12;
-          const targetSource = urlsToTry[tryIndex].source;
-          tryIndex += 1;
 
-          const testImg = new Image();
-          testImg.crossOrigin = "anonymous";
-          testImg.onload = () => {
-            if (testImg.width < 10) { tryNext(); return; }
-            setRadarEffectiveTimestamps((p) => ({ ...p, [radarKey]: targetTs12 }));
-            if (targetSource) setRadarEffectiveSource((p) => ({ ...p, [radarKey]: targetSource }));
-            setFailedRadars((p) => { const next = new Set(p); next.delete(radarKey); return next; });
-            cacheRadarImage(targetUrl, dr.type === 'cptec' ? dr.station.slug : `argentina_${dr.station.id}`, targetTs12, productType as any);
-            applyFiltersAndShow(targetUrl);
-          };
-          testImg.onerror = tryNext;
-          testImg.src = targetUrl;
-        } else if (sipamFramesPromise) {
-          sipamFramesPromise.then(sipamUrls => {
-            sipamFramesPromise = null;
-            if (sipamUrls && sipamUrls.length > 0) { urlsToTry = [...urlsToTry, ...sipamUrls]; tryNext(); }
-            else { tryNext(); }
-          });
-        } else if (redemetFindPromise) {
-          redemetFindPromise.then(url => {
-            redemetFindPromise = null;
-            if (url) { urlsToTry.push({ url, ts12: timestamp, source: 'redemet' }); tryNext(); }
-            else { tryNext(); }
-          });
-        } else if (ipmetStoragePromise) {
-          ipmetStoragePromise.then(url => {
-            ipmetStoragePromise = null;
-            if (url) { urlsToTry.push({ url, ts12: timestamp, source: 'cptec' }); tryNext(); }
-            else { tryNext(); }
-          });
-        } else if (storageFallbackPromise) {
-          storageFallbackPromise.then(url => {
-            storageFallbackPromise = null;
-            if (url) { urlsToTry.push({ url, ts12: timestamp, source: 'cptec' }); tryNext(); }
-            else { tryNext(); }
-          });
-        } else {
-          setFailedRadars(p => new Set(p).add(radarKey));
-          markProcessed(false);
-        }
+      ov.onAdd = () => {
+        if (requestToken !== latestRequestTokenRef.current) { ov.setMap(null); return; }
+        divEl = document.createElement('div');
+        divEl.style.cssText = 'position:absolute;pointer-events:none;overflow:hidden;opacity:0;transition:opacity 0.2s ease-in;';
+        const imgEl = document.createElement('img');
+        imgEl.className = 'pixelated-layer';
+        imgEl.style.cssText = 'width:100%;height:100%;object-fit:fill;';
+
+        const markProcessed = () => {
+          if (divEl && requestToken === latestRequestTokenRef.current) {
+            requestAnimationFrame(() => {
+              if (divEl) divEl.style.opacity = String(effectiveOpacity);
+            });
+            if (oldOverlays.length > 0) {
+              setTimeout(() => {
+                oldOverlays.forEach(o => { try { o.setMap(null); } catch(e){} });
+                oldOverlays.length = 0;
+              }, 250);
+            }
+          }
+        };
+
+        const tryNext = () => {
+          if (isCancelled || requestToken !== latestRequestTokenRef.current) return;
+          if (tryIndex < urlsToTry.length) {
+            const entry = urlsToTry[tryIndex++];
+            const trialImg = new Image();
+            trialImg.crossOrigin = "anonymous";
+            trialImg.onerror = tryNext;
+            trialImg.onload = async () => {
+              const filteredSrc = await applyNoiseFilter(trialImg.src);
+              if (filteredSrc && divEl) {
+                imgEl.src = filteredSrc;
+              }
+              if (rotationDeg !== 0) imgEl.style.transform = `rotate(${rotationDeg}deg)`;
+              markProcessed();
+            };
+            trialImg.src = entry.url;
+          }
+        };
+        divEl.appendChild(imgEl);
+        ov.getPanes()?.overlayLayer?.appendChild(divEl);
+        tryNext();
       };
 
-      tryNext();
+      ov.getBounds = () => latLngBounds;
+      ov.draw = () => {
+        if (!divEl) return;
+        const proj = ov.getProjection();
+        if (!proj) return;
+        const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
+        const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
+        if (!sw || !ne) return;
+        divEl.style.left = Math.min(sw.x, ne.x) + 'px';
+        divEl.style.top = Math.min(sw.y, ne.y) + 'px';
+        divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
+        divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
+      };
+      ov.onRemove = () => { divEl?.parentNode?.removeChild(divEl); divEl = null; isCancelled = true; };
+      ov.setMap(map);
+      overlaysRef.current.push(ov);
     });
-
-    Promise.all(radarPromises).then(() => {
-      if (requestToken === latestRequestTokenRef.current) {
-        const oldOverlays = [...overlaysArrRef.current];
-        
-        // Sincroniza a exibição: mostra todos os novos frames carregados COM SUCESSO
-        // (Isso já foi feito via setMap(map) no applyFiltersAndShow, mas aqui garantimos a ordem)
-
-        // Limpa os antigos de forma "atômica" agora que os novos estão no mapa
-        // Damos um delay mínimo de 50ms para o browser renderizar os novos GroundOverlays 
-        // e evitar o flash branco.
-        setTimeout(() => {
-            oldOverlays.forEach(old => {
-                old.setMap(null);
-            });
-        }, 60);
-
-        overlaysArrRef.current = pendingOverlays;
-      } else {
-        pendingOverlays.forEach(ov => ov.setMap(null));
-      }
-    });
-
   }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode, superResEnabled, reflectivityFilterEnabled]);
-
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
-  /** Overlays de radar no mapa principal. */
+  /** Overlays Mapa 1 */
   useEffect(() => {
-    setFailedRadars(new Set());
-    setRadarEffectiveTimestamps({});
-    setRadarEffectiveSource({});
-    // Não remover overlays aqui: addRadarOverlays só substitui quando o novo lote terminou de carregar
-    // (evita mapa em branco / flash entre frames na animação do mosaico).
     if (!mapReady || !mapInstanceRef.current) return;
     if (displayRadars.length === 0) {
       activeFrameOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
       activeFrameOverlaysRef.current = [];
       return;
     }
-    
-    // Na janela 1, usamos sempre Reflectividade se estiver em split, ou o produto selecionado se único
     const product = (splitCount >= 2) ? 'reflectividade' : radarProductType;
-    
     const radarsToShow = editingRadar
       ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
       : displayRadars;
-    if (radarsToShow.length === 0 && !editingRadar) {
-      activeFrameOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
-      activeFrameOverlaysRef.current = [];
-      return;
-    }
-
+    
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(
       mapInstanceRef.current,
       activeFrameOverlaysRef,
       product,
-      radarsToShow.length > 0 ? radarsToShow : [],
+      radarsToShow,
       effectiveRadarTimestamp,
       useFallbackForOverlays,
       radarOpacity,
-      token,
+      token
     );
     return () => {
       activeFrameOverlaysRef.current.forEach((ov) => (ov as any)?.setMap?.(null));
@@ -2351,7 +2203,6 @@ export default function AoVivoPage() {
       activeFrameOverlays2Ref.current = [];
       return;
     }
-    
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(
       map2InstanceRef.current,
@@ -2376,7 +2227,6 @@ export default function AoVivoPage() {
       activeFrameOverlays3Ref.current = [];
       return;
     }
-    
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(
       map3InstanceRef.current,
@@ -2401,7 +2251,6 @@ export default function AoVivoPage() {
       activeFrameOverlays4Ref.current = [];
       return;
     }
-    
     const token = ++latestRequestTokenRef.current;
     addRadarOverlays(
       map4InstanceRef.current,
@@ -2431,9 +2280,6 @@ export default function AoVivoPage() {
     const mapDiv = map.getDiv();
     const centerLat = editLiveCenter ? editLiveCenter.lat : editCenterLat;
     const centerLng = editLiveCenter ? editLiveCenter.lng : editCenterLng;
-    // Se o Admin estiver movendo as posições ativamente (`editLiveCenter`) ou se ele já tiver salvo algo (`editCenterLat`),
-    // o calculo dinâmico OBRIGATORIAMENTE anula os limites fixados (isIpmet/isUspStarnet),
-    // de forma que qualquer configuração salva ou movida no mapa obedeça de imediato.
     const isIpmet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'ipmet-bauru';
     const isUspStarnet = editingRadar.type === 'cptec' && editingRadar.station.slug === 'usp-starnet';
     const usingDefaultConfig = editCenterLat === editingRadar.station.lat && editCenterLng === editingRadar.station.lng;
@@ -2478,7 +2324,6 @@ export default function AoVivoPage() {
           const newLng = pt.lng();
           lastEditDragRef.current = { lat: newLat, lng: newLng };
           setEditLiveCenter({ lat: newLat, lng: newLng });
-          const editSlug = editingRadar.type === 'cptec' ? editingRadar.station.slug : null;
           const newB = calculateRadarBounds(newLat, newLng, editRangeKm);
           const newSw = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.sw.lat, newB.sw.lng));
           const newNe = proj.fromLatLngToDivPixel(new google.maps.LatLng(newB.ne.lat, newB.ne.lng));
@@ -2486,7 +2331,7 @@ export default function AoVivoPage() {
             divEl.style.left = Math.min(newSw.x, newNe.x) + 'px';
             divEl.style.top = Math.min(newSw.y, newNe.y) + 'px';
             divEl.style.width = Math.abs(newNe.x - newSw.x) + 'px';
-            divEl.style.height = Math.abs(newNe.y - newSw.y) + 'px';
+            divEl.style.height = Math.abs(newNe.x - newSw.x) + 'px';
           }
         };
         upHandler = () => {
