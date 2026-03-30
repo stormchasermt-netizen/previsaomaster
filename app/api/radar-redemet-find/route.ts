@@ -30,6 +30,26 @@ function extractSessionCookie(headers: Headers): string {
 }
 
 /**
+ * Busca a imagem no Firebase Storage primeiro (se historical=true), 
+ * se não encontrar ou for ao vivo, bate no DECEA.
+ */
+async function findViaStorage(area: string, ts12: string): Promise<{ url: string | null; debug?: any }> {
+  try {
+    const res = await fetch(
+      `https://previsaomaster--studio-4398873450-7cc8f.us-central1.hosted.app/api/radar-storage-fallback?radarId=${area}&ts12=${ts12}&productType=reflectividade`,
+      { signal: AbortSignal.timeout(5000), cache: 'no-store' }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.url) return { url: data.url, debug: { source: 'firebase_storage' } };
+    }
+  } catch (err) {
+    // Falha silenciosa no storage, vai pro fallback
+  }
+  return { url: null };
+}
+
+/**
  * 1. GET na página de radares para obter cookie PHPSESSID
  * 2. POST no plota_radar.php com o cookie e Referer correto
  * 3. Extrai URL da imagem do radar solicitado
@@ -114,13 +134,24 @@ async function findViaPlotaRadar(area: string, ts12: string): Promise<{ url: str
 export async function GET(req: NextRequest) {
   const area = req.nextUrl.searchParams.get('area');
   const ts12 = req.nextUrl.searchParams.get('ts12');
+  const isHistorical = req.nextUrl.searchParams.get('historical') === 'true';
 
   if (!area || !ts12 || ts12.length !== 12) {
     return NextResponse.json({ error: 'Missing or invalid params (area, ts12)' }, { status: 400 });
   }
 
   try {
-    const result = await findViaPlotaRadar(area, ts12);
+    let result: { url: string | null; debug?: any } = { url: null };
+    
+    // Se for histórico, testa o Storage do Firebase primeiro.
+    if (isHistorical) {
+       result = await findViaStorage(area, ts12);
+    }
+    
+    // Se não for histórico ou não achou no storage, tenta a página real da Redemet.
+    if (!result.url) {
+      result = await findViaPlotaRadar(area, ts12);
+    }
 
     return NextResponse.json(result, {
       headers: { 'Cache-Control': result.url ? 'public, max-age=86400' : 'no-cache' },
