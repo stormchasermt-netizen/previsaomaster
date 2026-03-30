@@ -55,6 +55,9 @@ import { Room, RoomEvent, Track } from 'livekit-client';
 import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
 import { fetchAllRadarViews, incrementRadarViews } from '@/lib/radarViewsStore';
 
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+
 type DisplayRadar = { type: 'cptec'; station: CptecRadarStation } | { type: 'argentina'; station: ArgentinaRadarStation };
 
 type BaseMapId = 'dark' | 'light' | 'white' | 'midnight' | 'clean_dark' | 'satellite' | 'hybrid' | 'roadmap' | 'terrain';
@@ -425,11 +428,20 @@ export default function AoVivoPage() {
   const [sampledValue4, setSampledValue4] = useState<number | null>(null);
   const [showCrosshair, setShowCrosshair] = useState(false);
   const cachedImageDataMap = useRef(new Map<string, { img: HTMLImageElement, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }>());
+  
+  // Instância única do Worker para todos os radares
+  const radarWorkerRef = useRef<Worker | null>(null);
+  useEffect(() => {
+    radarWorkerRef.current = new Worker(new URL('../../workers/radarFilter.worker.ts', import.meta.url));
+    return () => radarWorkerRef.current?.terminate();
+  }, []);
 
   const [radarViewsRecord, setRadarViewsRecord] = useState<Record<string, number>>({});
   const [calendarMode, setCalendarMode] = useState<'days' | 'months' | 'years'>('days');
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     fetchAllRadarViews().then(setRadarViewsRecord).catch(console.error);
   }, []);
 
@@ -1591,33 +1603,18 @@ export default function AoVivoPage() {
     const initMap = async () => {
       if (!mapRef.current) return;
       if (typeof window === 'undefined') return;
-      const g = (window as any).google;
-      if (!g?.maps) {
-        retryTimer = setTimeout(initMap, 150);
-        return;
-      }
-      try {
-        const { Map } = await g.maps.importLibrary('maps');
-        if (!isMounted || !mapRef.current) return;
-        const center = myLocation || BRAZIL_CENTER;
-        const map = new Map(mapRef.current, {
-          center,
-          zoom: myLocation ? 8 : 4,
-          mapId: 'radar_map_1',
-          mapTypeId: 'roadmap',
-          styles: MAP_STYLE_DARK,
-          disableDefaultUI: false,
-          zoomControl: isDesktop,
-          mapTypeControl: false,
-          fullscreenControl: isDesktop,
-          streetViewControl: isDesktop,
-          rotateControl: isDesktop,
-        });
-        mapInstanceRef.current = map;
+      const map = new maplibregl.Map({
+        container: mapRef.current!,
+        style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+        center: [-51.925, -14.235], // [lng, lat]
+        zoom: 4,
+        attributionControl: false
+      });
+      mapInstanceRef.current = map;
+
+      map.on('load', () => {
         setMapReady(true);
-      } catch (err) {
-        console.error('AoVivo init map error', err);
-      }
+      });
     };
     initMap();
     return () => {
@@ -1640,18 +1637,16 @@ export default function AoVivoPage() {
     const main = mapInstanceRef.current;
     
     const initMap2 = async () => {
-      const { Map } = await g.maps.importLibrary('maps');
-      if (map2Ref.current && !map2InstanceRef.current) {
-        const m2 = new Map(map2Ref.current, {
-          center: main.getCenter()?.toJSON?.() ?? { lat: -14, lng: -52 },
-          zoom: main.getZoom() ?? 8,
-          mapId: 'radar_map_2',
-          mapTypeId: main.getMapTypeId(),
-          styles: main.get('styles') ?? MAP_STYLE_DARK,
-          disableDefaultUI: true, zoomControl: false, mapTypeControl: false, fullscreenControl: false, streetViewControl: false, rotateControl: false,
+      if (map2Ref.current && !map2InstanceRef.current && mapInstanceRef.current) {
+        const m2 = new maplibregl.Map({
+          container: map2Ref.current!,
+          style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+          center: mapInstanceRef.current.getCenter(),
+          zoom: mapInstanceRef.current.getZoom(),
+          attributionControl: false
         });
         map2InstanceRef.current = m2;
-        setMap2Ready(true);
+        m2.on('load', () => setMap2Ready(true));
       }
     };
     initMap2();
@@ -1708,28 +1703,27 @@ export default function AoVivoPage() {
     const main = mapInstanceRef.current;
     
     const initExtraMaps = async () => {
-      const { Map } = await g.maps.importLibrary('maps');
-      if (map3Ref.current && !map3InstanceRef.current) {
-        const m3 = new Map(map3Ref.current, {
-          center: main.getCenter()?.toJSON?.() ?? { lat: -14, lng: -52 },
-          zoom: main.getZoom() ?? 8,
-          mapTypeId: main.getMapTypeId(),
-          styles: main.get('styles') ?? MAP_STYLE_DARK,
-          disableDefaultUI: true, zoomControl: false, mapTypeControl: false, fullscreenControl: false, streetViewControl: false, rotateControl: false,
+      if (map3Ref.current && !map3InstanceRef.current && mapInstanceRef.current) {
+        const m3 = new maplibregl.Map({
+          container: map3Ref.current!,
+          style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+          center: mapInstanceRef.current.getCenter(),
+          zoom: mapInstanceRef.current.getZoom(),
+          attributionControl: false
         });
         map3InstanceRef.current = m3;
-        setMap3Ready(true);
+        m3.on('load', () => setMap3Ready(true));
       }
-      if (map4Ref.current && !map4InstanceRef.current) {
-        const m4 = new Map(map4Ref.current, {
-          center: main.getCenter()?.toJSON?.() ?? { lat: -14, lng: -52 },
-          zoom: main.getZoom() ?? 8,
-          mapTypeId: main.getMapTypeId(),
-          styles: main.get('styles') ?? MAP_STYLE_DARK,
-          disableDefaultUI: true, zoomControl: false, mapTypeControl: false, fullscreenControl: false, streetViewControl: false, rotateControl: false,
+      if (map4Ref.current && !map4InstanceRef.current && mapInstanceRef.current) {
+        const m4 = new maplibregl.Map({
+          container: map4Ref.current!,
+          style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+          center: mapInstanceRef.current.getCenter(),
+          zoom: mapInstanceRef.current.getZoom(),
+          attributionControl: false
         });
         map4InstanceRef.current = m4;
-        setMap4Ready(true);
+        m4.on('load', () => setMap4Ready(true));
       }
     };
     initExtraMaps();
@@ -1741,230 +1735,80 @@ export default function AoVivoPage() {
 
   /** Sincronização multi-mapa (1, 2, 3, 4) */
   useEffect(() => {
-    const maps = [
-      mapInstanceRef.current,
-      map2InstanceRef.current,
-      map3InstanceRef.current,
-      map4InstanceRef.current
-    ].filter(Boolean);
+    const maps = [mapInstanceRef.current, map2InstanceRef.current, map3InstanceRef.current, map4InstanceRef.current].filter(Boolean);
     if (maps.length < 2) return;
-
     const syncAll = (sourceMap: any) => {
       if (syncingRef.current) return;
       syncingRef.current = true;
-      const c = sourceMap.getCenter();
-      const z = sourceMap.getZoom();
-      maps.forEach(m => {
-        if (m === sourceMap) return;
-        if (c) m.setCenter(c);
-        if (z != null) m.setZoom(z);
-      });
+      const center = sourceMap.getCenter();
+      const zoom = sourceMap.getZoom();
+      maps.forEach(m => { if (m !== sourceMap) { m.setCenter(center); m.setZoom(zoom); } });
       syncingRef.current = false;
     };
-
-    const listeners: any[] = [];
-    maps.forEach(m => {
-      listeners.push(m.addListener('center_changed', () => syncAll(m)));
-      listeners.push(m.addListener('zoom_changed', () => syncAll(m)));
-    });
-
-    return () => {
-      listeners.forEach(l => google.maps.event.removeListener(l));
-    };
+    maps.forEach(m => m.on('move', () => syncAll(m)));
+    return () => maps.forEach(m => { try { m.off('move'); } catch(e){} });
   }, [mapReady, map2Ready, map3Ready, map4Ready]);
 
-  /** Sincronizar estilo de mapa em todos os mapas secundários */
+  /** Marcadores de Usuários Online (WebGL) */
   useEffect(() => {
-    const maps = [map2InstanceRef.current, map3InstanceRef.current, map4InstanceRef.current].filter(Boolean);
-    maps.forEach(m => {
-      if (baseMapId === 'dark') {
-        m.setMapTypeId('roadmap');
-        m.setOptions({ styles: MAP_STYLE_DARK });
-      } else if (baseMapId === 'light') {
-        m.setMapTypeId('roadmap');
-        m.setOptions({ styles: [] });
-      } else {
-        m.setMapTypeId(baseMapId);
-        m.setOptions({ styles: [] });
-      }
-    });
-  }, [map2Ready, map3Ready, map4Ready, baseMapId]);
-
-  useEffect(() => {
-    onlineUserMarkersRef.current.forEach((m) => m.setMap(null));
+    onlineUserMarkersRef.current.forEach((m) => m.remove());
     onlineUserMarkersRef.current = [];
-    if (!mapInstanceRef.current || !google?.maps?.OverlayView) return;
+    if (!mapInstanceRef.current || !mapReady) return;
     const map = mapInstanceRef.current;
-    let usersToShow = onlineUsers.filter((u) => u.locationShared && u.lat != null && u.lng != null);
-    if (user && myLocation && !usersToShow.some((u) => u.uid === user.uid)) {
-      usersToShow = [
-        { uid: user.uid, displayName: user.displayName || 'Você', photoURL: user.photoURL, locationShared: true, lat: myLocation.lat, lng: myLocation.lng, lastSeen: null, isLiveStreaming: isStreamingRef.current, liveRoomName: liveRoomNameRef.current },
-        ...usersToShow,
-      ];
-    }
-    usersToShow.forEach((u) => {
+    onlineUsers.forEach((u) => {
       if (!u.locationShared || !u.lat || !u.lng) return;
-      const isMe = u.uid === user?.uid;
-      const initial = (u.displayName?.[0] ?? '?').toUpperCase();
-      const color = isMe ? '#0ea5e9' : '#38bdf8';
-      const isLive = !!u.isLiveStreaming;
-      const size = isMe ? 40 : 32;
-      const height = 40;
-
-      const displayName = u.displayName;
-      class UserMarkerOverlay extends google.maps.OverlayView {
-        div: HTMLDivElement | null = null;
-        constructor(
-          private position: { lat: number; lng: number },
-          private opts: { color: string; size: number; height: number; initial: string; isMe: boolean; isLive: boolean; photoURL: string | null },
-          private onClick: () => void
-        ) {
-          super();
+      const el = document.createElement('div');
+      el.className = 'w-8 h-8 rounded-full border-2 border-white shadow-lg overflow-hidden bg-sky-500 cursor-pointer transition-transform hover:scale-110';
+      el.style.backgroundImage = `url(${u.photoURL || 'https://starlight-temp.s3.amazonaws.com/user-placeholder.png'})`;
+      el.style.backgroundSize = 'cover';
+      const marker = new maplibregl.Marker(el).setLngLat([u.lng, u.lat]).addTo(map);
+      marker.getElement().addEventListener('click', () => {
+        if (u.isLiveStreaming && u.uid !== user?.uid && u.liveRoomName) {
+          setLiveViewerUser(u); setLiveViewerOpen(true);
+        } else {
+          map.flyTo({ center: [u.lng!, u.lat!], zoom: 12 });
         }
-        onAdd() {
-          const { color, size, height, initial, isMe, isLive, photoURL } = this.opts;
-          const div = document.createElement('div');
-          div.style.cssText = `position:absolute;cursor:pointer;transform:translate(-50%,-100%);pointer-events:auto;z-index:${isMe ? 999 : isLive ? 200 : 100}`;
-          div.title = displayName + (isLive ? ' (ao vivo)' : '');
-          div.innerHTML = `
-            <div style="position:relative;width:${size}px;height:${height}px;display:flex;align-items:flex-end;justify-content:center">
-              <div style="position:relative;width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4);background:${color}">
-                ${photoURL
-                  ? `<img src="${photoURL.replace(/"/g, '&quot;')}" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';var s=this.nextElementSibling;if(s)s.style.display='flex'"/>
-                  <span style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:white">${initial}</span>`
-                  : isMe
-                    ? `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white"></span></span>`
-                    : `<span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:white">${initial}</span>`
-                }
-                ${isLive ? `<span style="position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#ef4444;border:1.5px solid white"></span>` : ''}
-              </div>
-              <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:10px solid ${color}"></div>
-            </div>`;
-          div.addEventListener('click', () => this.onClick());
-          this.getPanes()!.overlayMouseTarget.appendChild(div);
-          this.div = div;
-        }
-        draw() {
-          if (!this.div) return;
-          const projection = this.getProjection();
-          if (!projection) return;
-          const point = projection.fromLatLngToDivPixel(new google.maps.LatLng(this.position.lat, this.position.lng));
-          if (point && this.div) {
-            this.div.style.left = point.x + 'px';
-            this.div.style.top = point.y + 'px';
-          }
-        }
-        onRemove() {
-          if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
-          this.div = null;
-        }
-      }
-
-      const overlay = new UserMarkerOverlay(
-        { lat: u.lat!, lng: u.lng! },
-        { color, size, height, initial, isMe, isLive, photoURL: u.photoURL ?? null },
-        () => {
-          if (u.isLiveStreaming && u.uid !== user?.uid && u.liveRoomName) {
-            setLiveViewerUser(u);
-            setLiveViewerOpen(true);
-          } else if (u.lat && u.lng && mapInstanceRef.current) {
-            mapInstanceRef.current.panTo({ lat: u.lat!, lng: u.lng! });
-            mapInstanceRef.current.setZoom(12);
-          }
-        }
-      );
-      overlay.setMap(map);
-      onlineUserMarkersRef.current.push(overlay);
-    });
-    return () => {
-      onlineUserMarkersRef.current.forEach((m) => m.setMap(null));
-      onlineUserMarkersRef.current = [];
-    };
-  }, [onlineUsers, user?.uid, myLocation, mapReady, isStreaming]);
-
-  const prevotsForecastToShow = prevotsForecasts.find((f) => f.date === prevotsForecastDate);
-
-  useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current || !showCrosshair) {
-       setSampledValue1(null);
-       return;
-    }
-  }, [mapReady, showCrosshair]);
-
-  useEffect(() => {
-    prevotsPolygonsRef.current.forEach((p) => p.setMap(null));
-    prevotsPolygonsRef.current = [];
-    if (!mapInstanceRef.current || !mapReady || !prevotsOverlayVisible || !prevotsForecastToShow) return;
-    const map = mapInstanceRef.current;
-    (prevotsForecastToShow.polygons ?? [])
-      .filter((p) => p.level !== 0)
-      .sort((a, b) => a.level - b.level)
-      .forEach((poly) => {
-        const ring = poly.coordinates[0];
-        if (!ring || ring.length < 3) return;
-        const path = ring.map(([lng, lat]) => ({ lat, lng }));
-        const color = PREVOTS_LEVEL_COLORS[poly.level as 0 | 1 | 2 | 3 | 4];
-        const gPoly = new google.maps.Polygon({
-          paths: path,
-          strokeColor: color,
-          strokeWeight: 2,
-          strokeOpacity: 0.9,
-          fillColor: color,
-          fillOpacity: 0.35,
-          map,
-          clickable: true,
-        });
-
-        gPoly.addListener('click', () => {
-          setSelectedPrevotsLinks({
-            xUrl: prevotsForecastToShow.xUrl,
-            instagramUrl: prevotsForecastToShow.instagramUrl,
-            date: prevotsForecastToShow.date,
-          });
-          setShowPrevotsDialog(true);
-        });
-
-        prevotsPolygonsRef.current.push(gPoly);
       });
-    return () => {
-      prevotsPolygonsRef.current.forEach((p) => p.setMap(null));
-      prevotsPolygonsRef.current = [];
-    };
-  }, [mapReady, prevotsOverlayVisible, prevotsForecastToShow]);
-
-  /** Overlay de limites municipais (GeoJSON) */
-  useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current) return;
-    const map = mapInstanceRef.current;
-    if (!showMunicipios) {
-      // Remover layer se já existir
-      if (municipiosDataLayerRef.current) {
-        municipiosDataLayerRef.current.setMap(null);
-        municipiosDataLayerRef.current = null;
-      }
-      return;
-    }
-    // Criar novo Data layer e carregar GeoJSON
-    const dataLayer = new google.maps.Data({ map });
-    dataLayer.setStyle({
-      strokeColor: '#9ca3af',
-      strokeWeight: 0.8,
-      strokeOpacity: 0.7,
-      fillOpacity: 0,
-      clickable: false,
+      onlineUserMarkersRef.current.push(marker);
     });
-    municipiosDataLayerRef.current = dataLayer;
-    // Carregar GeoJSON de municípios do Brasil
-    dataLayer.loadGeoJson(
-      'https://raw.githubusercontent.com/tbrugz/geodata-br/refs/heads/master/geojson/geojs-100-mun.json'
-    );
-    return () => {
-      if (municipiosDataLayerRef.current) {
-        municipiosDataLayerRef.current.setMap(null);
-        municipiosDataLayerRef.current = null;
+  }, [mapReady, onlineUsers]);
+
+  /** Alertas Prevots (GeoJSON nativo WebGL) */
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReady) return;
+    const map = mapInstanceRef.current;
+    const layerId = 'prevots-alerts';
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(layerId)) map.removeSource(layerId);
+
+    const forecast = prevotsForecasts.find(f => f.date === prevotsForecastDate);
+    if (!prevotsOverlayVisible || !forecast || !forecast.polygons) return;
+
+    map.addSource(layerId, {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: forecast.polygons.map(p => ({
+          type: 'Feature',
+          properties: { level: p.level },
+          geometry: { type: 'Polygon', coordinates: p.coordinates }
+        }))
       }
-    };
-  }, [mapReady, showMunicipios]);
+    });
+
+    map.addLayer({
+      id: layerId,
+      type: 'fill',
+      source: layerId,
+      paint: {
+        'fill-color': [
+          'match', ['get', 'level'],
+          1, '#ffff00', 2, '#ffa500', 3, '#ff0000', 4, '#ff00ff', '#ffffff'
+        ],
+        'fill-opacity': 0.4
+      }
+    });
+  }, [mapReady, prevotsOverlayVisible, prevotsForecastDate]);
 
   /** Detecta desktop (>= 1024px) para split vertical */
   useEffect(() => {
@@ -1990,138 +1834,62 @@ export default function AoVivoPage() {
     return { lat: dr.station.lat, lng: dr.station.lng };
   }, [radarConfigs]);
 
-  /** Cria ou recria marcadores de radar (não depende de failedRadars para evitar piscar) */
+  /** Ícones de radar no mapa (WebGL) */
   useEffect(() => {
-    radarMarkersRef.current.forEach((m) => m.setMap(null));
+    radarMarkersRef.current.forEach((m) => m.remove());
     radarMarkersRef.current = [];
-    radarKeyToMarkerRef.current.clear();
     if (!mapInstanceRef.current || !mapReady || editingRadar) return;
     const map = mapInstanceRef.current;
-    const g = (window as any).google;
-    if (!g?.maps) return;
 
-    const displayKeys = new Set(displayRadars.map((r) => r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`));
     allRadars.forEach((dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
-      const isDisplayed = displayKeys.has(radarKey);
+      const isDisplayed = displayRadars.some(r => (r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`) === radarKey);
       const hasData = isDisplayed && !failedRadars.has(radarKey);
       const pos = getRadarCenter(dr);
-      const marker = new g.maps.Marker({
-        position: pos,
-        map,
-        icon: {
-          url: hasData ? RADAR_ICON_AVAILABLE : RADAR_ICON_UNAVAILABLE,
-          scaledSize: new g.maps.Size(28, 28),
-          anchor: new g.maps.Point(14, 14),
-        },
-        title: dr.station.name,
-        zIndex: focusedRadarKey === radarKey ? 600 : 400,
-      });
-      marker.addListener('click', () => {
+
+      const el = document.createElement('div');
+      el.className = `w-7 h-7 rounded-full border-2 transition-all cursor-pointer hover:scale-125 ${hasData ? 'border-emerald-400 bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'border-slate-500 bg-slate-800/40'}`;
+      
+      const label = dr.type === 'cptec' ? dr.station.slug : dr.station.name;
+      el.innerHTML = `<div class="w-full h-full flex items-center justify-center text-[8px] font-black text-white">${label.slice(0, 3).toUpperCase()}</div>`;
+
+      const marker = new maplibregl.Marker(el).setLngLat([pos.lng, pos.lat]).addTo(map);
+      marker.getElement().addEventListener('click', () => {
         const isUnfocus = focusedRadarKey === radarKey;
         if (isUnfocus) {
-          setFocusedRadarKey(null);
-          setRadarMode('mosaico');
-          setSelectedIndividualRadars(new Set());
+          setFocusedRadarKey(null); setRadarMode('mosaico'); setSelectedIndividualRadars(new Set());
         } else {
-          setFocusedRadarKey(radarKey);
-          setRadarMode('unico');
-          setSelectedIndividualRadars(new Set([radarKey]));
+          setFocusedRadarKey(radarKey); setRadarMode('unico'); setSelectedIndividualRadars(new Set([radarKey]));
         }
       });
       radarMarkersRef.current.push(marker);
-      radarKeyToMarkerRef.current.set(radarKey, { marker, isDisplayed });
     });
+  }, [mapReady, allRadars, displayRadars, failedRadars, focusedRadarKey, editingRadar, getRadarCenter]);
 
-    return () => {
-      radarMarkersRef.current.forEach((m) => m.setMap(null));
-      radarMarkersRef.current = [];
-      radarKeyToMarkerRef.current.clear();
-    };
-  }, [mapReady, allRadars, displayRadars, radarConfigs, getRadarCenter, editingRadar, focusedRadarKey]);
-
-  /** Atualiza ícones dos marcadores quando failedRadars muda (evita recriar = evita piscar) */
+  /** Relatos de Tempestade (WebGL) */
   useEffect(() => {
-    const g = (window as any).google;
-    if (!g?.maps) return;
-    radarKeyToMarkerRef.current.forEach(({ marker, isDisplayed }, radarKey) => {
-      const hasData = isDisplayed && !failedRadars.has(radarKey);
-      marker.setIcon({
-        url: hasData ? RADAR_ICON_AVAILABLE : RADAR_ICON_UNAVAILABLE,
-        scaledSize: new g.maps.Size(28, 28),
-        anchor: new g.maps.Point(14, 14),
-      });
-    });
-  }, [failedRadars]);
-
-  /** Renderiza marcadores dos relatos no mapa */
-  useEffect(() => {
-    stormReportMarkersRef.current.forEach((m) => m.setMap(null));
+    stormReportMarkersRef.current.forEach((m) => m.remove());
     stormReportMarkersRef.current = [];
-    if (!mapInstanceRef.current || !mapReady || !showReportsOnMap || stormReports.length === 0) return;
+    if (!mapInstanceRef.current || !mapReady || !showReportsOnMap) return;
     const map = mapInstanceRef.current;
-    const g = (window as any).google;
-    if (!g?.maps) return;
-
-    const SYMBOLS: Record<string, any> = {
-      tor: { path: 'M 0 0 L 6 -12 L -6 -12 Z', fillColor: '#ef4444', fillOpacity: 1, strokeColor: 'white', strokeWeight: 1.5, scale: 2 },
-      gra: { path: g.maps.SymbolPath.CIRCLE, fillColor: '#22c55e', fillOpacity: 1, strokeColor: 'white', strokeWeight: 1.5, scale: 5 },
-      ven: { path: 'M -4,-4 4,-4 4,4 -4,4 z', fillColor: '#3b82f6', fillOpacity: 1, strokeColor: 'white', strokeWeight: 1.5, scale: 1 },
-    };
-
-    const buildReportContent = (rep: StormReport, viewCount: number) => {
-      const typeLabel = rep.type === 'tor' ? 'Tornado' : rep.type === 'gra' ? 'Granizo' : 'Vento';
-      let html = `<div style="font-family:sans-serif;max-width:240px;color:#e2e8f0;">
-        <p style="margin:0 0 4px;font-weight:700;font-size:13px;">${typeLabel}</p>`;
-      if (rep.detail) html += `<p style="margin:0 0 4px;font-size:12px;">${rep.type === 'ven' ? 'Velocidade' : 'Tamanho'}: ${rep.detail}</p>`;
-      html += `<p style="margin:0 0 4px;font-size:11px;color:#94a3b8;">por ${rep.displayName}</p>`;
-      html += `<p style="margin:0 0 6px;font-size:10px;color:#64748b;">👁 ${viewCount} ${viewCount === 1 ? 'visualização' : 'visualizações'}</p>`;
-      if (rep.mediaUrl && rep.mediaType === 'link') {
-        html += `<a href="${rep.mediaUrl}" target="_blank" rel="noopener" style="color:#22d3ee;font-size:12px;word-break:break-all;">Link do relato</a>`;
-      } else if (rep.mediaUrl && rep.mediaType === 'file') {
-        if (rep.mediaUrl.match(/\.(mp4|webm|mov)/i)) {
-          html += `<video src="${rep.mediaUrl}" controls style="max-width:100%;border-radius:6px;margin-top:4px;" />`;
-        } else {
-          html += `<div style="min-height:60px;background:#1e293b;border-radius:6px;margin-top:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${rep.mediaUrl}" style="max-width:100%;border-radius:6px;cursor:pointer;" onclick="window.open('${rep.mediaUrl}','_blank')" onerror="this.onerror=null;this.style.display='none'" /></div>`;
-        }
-      }
-      html += `</div>`;
-      return html;
-    };
 
     stormReports.forEach((r) => {
-      const reportId = r.id;
-      if (!reportId) return;
-      const icon = SYMBOLS[r.type] ?? SYMBOLS.ven;
-      const marker = new g.maps.Marker({
-        position: { lat: r.lat, lng: r.lng },
-        map,
-        icon,
-        title: r.type === 'tor' ? 'Tornado' : r.type === 'gra' ? 'Granizo' : 'Vento',
-        zIndex: 500,
-      });
-
-      const iw = new g.maps.InfoWindow({ content: buildReportContent(r, 0) });
-      marker.addListener('click', async () => {
-        stormReportInfoWindowRef.current?.close();
-        iw.open(map, marker);
-        stormReportInfoWindowRef.current = iw;
-        const viewCount = await recordReportView(reportId);
-        iw.setContent(buildReportContent(r, viewCount));
+      const el = document.createElement('div');
+      el.className = `w-6 h-6 rotate-45 border-2 border-white shadow-xl cursor-pointer hover:scale-125 transition-transform ${r.type === 'tor' ? 'bg-red-600' : r.type === 'gra' ? 'bg-emerald-500' : 'bg-blue-500'}`;
+      
+      const marker = new maplibregl.Marker(el).setLngLat([r.lng, r.lat]).addTo(map);
+      marker.getElement().addEventListener('click', () => {
+        const popup = new maplibregl.Popup({ offset: 25 })
+          .setLngLat([r.lng, r.lat])
+          .setHTML(`<div class="p-2 text-slate-800 font-bold">${r.type.toUpperCase()}: ${r.detail || ''}<br/><span class="text-[10px] font-normal">por ${r.displayName}</span></div>`)
+          .addTo(map);
       });
       stormReportMarkersRef.current.push(marker);
     });
+  }, [mapReady, stormReports, showReportsOnMap]);
 
-    return () => {
-      stormReportMarkersRef.current.forEach((m) => m.setMap(null));
-      stormReportMarkersRef.current = [];
-    };
-  }, [stormReports, mapReady, showReportsOnMap]);
-
-  const addRadarOverlays = useCallback((
+  const addRadarOverlaysMapLibre = useCallback((
     map: any,
-    overlaysArr: any[],
-    oldOverlays: any[],
     productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
     radars: DisplayRadar[],
     timestamp: string,
@@ -2129,244 +1897,98 @@ export default function AoVivoPage() {
     opacity: number,
     currentGen: number,
   ) => {
-    const nominalTs = useFallback ? getNowMinusMinutesTimestamp12UTC(1) : timestamp;
-    
-    const processFilters = async (src: string, dr: DisplayRadar, pType: string): Promise<string> => {
-      const isClimatempo = dr.type === 'cptec' && dr.station.slug === 'climatempo-poa';
-      if (pType === 'reflectividade' && !reflectivityFilterEnabled) return src;
-      
-      const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
-      const cfg = radarConfigs.find(c => c.id === configSlug || c.stationSlug === configSlug);
-
-      if (pType === 'velocidade' && (cfg?.superRes || superResEnabled) && dr.type === 'cptec') {
-        const refUrl = buildNowcastingPngUrl(dr.station as CptecRadarStation, timestamp, 'reflectividade');
-        const [refProxy] = getRadarUrlsWithFallback(refUrl);
-        const res = await filterDopplerSuperRes(src, refProxy).catch(() => src);
-        return res ?? src;
-      }
-      const res = await (isClimatempo 
-        ? filterClimatempoRadarImage(src, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig) 
-        : filterRadarImageFromUrl(src, cfg?.chromaKeyDeltaThreshold, cfg?.cropConfig)).catch(() => src);
-      return res ?? src;
-    };
-
     radars.forEach((dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
-      let configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
-      if (dr.type === 'cptec' && hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
-        configSlug = `${dr.station.slug}-redemet`;
-      }
-      const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
-      const rotationDeg = cfg?.rotationDegrees ?? 0;
-      const effectiveOpacity = cfg?.opacity ?? opacity;
-
-      const radarInterval = cfg?.updateIntervalMinutes ?? dr.station.updateIntervalMinutes ?? 10;
-      const exactTs12 = floorTimestampToInterval(nominalTs, radarInterval);
-
-      let primaryUrl = '';
-      if (dr.type === 'cptec') {
-        if (dr.station.slug === 'chapeco') {
-           const radarId = productType === 'velocidade' ? (dr.station.velocityId || dr.station.id) : dr.station.id;
-           primaryUrl = `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${nominalTs}`;
-        } else if (dr.station.slug === 'ipmet-bauru') {
-           primaryUrl = useFallback ? `${GET_RADAR_IPMET_URL}?t=${Date.now()}` : `/api/ipmet-storage-url?ts12=${exactTs12}`;
-        } else if (dr.station.slug === 'usp-starnet') {
-           primaryUrl = `${GET_RADAR_USP_URL}?t=${Date.now()}`;
-        } else {
-           primaryUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType, true); 
-        }
-      } else {
-         const argNominalDate = new Date(Date.UTC(
-            parseInt(exactTs12.slice(0, 4), 10), parseInt(exactTs12.slice(4, 6), 10) - 1, parseInt(exactTs12.slice(6, 8), 10),
-            parseInt(exactTs12.slice(8, 10), 10), parseInt(exactTs12.slice(10, 12), 10)
-         ));
-         const tsArg = getArgentinaRadarTimestamp(argNominalDate, dr.station);
-         primaryUrl = buildArgentinaRadarPngUrl(dr.station, tsArg, productType as any);
-      }
-
-      let bounds = cfg?.customBounds 
-        ? { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west } 
-        : getBoundsForDisplayRadar(dr);
-
-      let latLngBounds = new google.maps.LatLngBounds(
-        { lat: bounds.south, lng: bounds.west },
-        { lat: bounds.north, lng: bounds.east }
-      );
+      const slugParam = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
       
-      const ov = new google.maps.OverlayView();
-      let divEl: HTMLDivElement | null = null;
-
-      ov.onAdd = () => {
-        divEl = document.createElement('div');
-        divEl.style.cssText = 'position:absolute;pointer-events:none;overflow:hidden;';
-        
-        const img = document.createElement('img');
-        img.className = 'pixelated-layer';
-        img.style.cssText = `width:100%;height:100%;opacity:0;transition:opacity 0.2s ease-in;object-fit:fill;transform-origin:center center;`;
-        if (rotationDeg !== 0) img.style.transform = `rotate(${rotationDeg}deg)`;
-
-        const markFailed = () => {
-          setFailedRadars((prev) => new Set(prev).add(radarKey));
-          if (divEl) divEl.style.display = 'none';
-        };
-
-        img.onload = async () => {
-           if (currentGen !== overlayGenerationRef.current) {
-               ov.setMap(null);
-               return; 
-           }
-
-           recentNowcastingSuccessRef.current = Date.now();
-           setNowcastingOffline(false);
-
-           const filteredSrc = await processFilters(img.src, dr, productType);
-           if (filteredSrc && filteredSrc !== img.src) {
-               img.src = filteredSrc;
-           }
-
-           requestAnimationFrame(() => {
-               if (img) img.style.opacity = String(effectiveOpacity);
-           });
-
-           setFailedRadars((prev) => { const next = new Set(prev); next.delete(radarKey); return next; });
-           setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: exactTs12 }));
-
-           if (oldOverlays.length > 0) {
-               setTimeout(() => {
-                   oldOverlays.forEach(oldOv => {
-                       if (oldOv !== ov) {
-                           try { (oldOv as any).setMap(null); } catch(e){}
-                       }
-                   });
-                   oldOverlays.length = 0;
-               }, 250);
-           }
-        };
-
-        img.onerror = () => {
-           if (dr.type === 'cptec' && productType === 'reflectividade') {
-               const area = getRedemetArea(dr.station.slug);
-               if (area) {
-                   fetch(`/api/radar-redemet-find?area=${area}&ts12=${exactTs12}`)
-                     .then(r => r.ok ? r.json() : null)
-                     .then(d => {
-                        if (d?.url) {
-                            setRadarEffectiveSource(prev => ({...prev, [radarKey]: 'redemet'}));
-                            img.src = getProxiedRadarUrl(d.url); 
-                        } else { markFailed(); }
-                     }).catch(markFailed);
-               } else { markFailed(); }
-           } else { markFailed(); }
-        };
-
-        img.src = primaryUrl;
-        divEl.appendChild(img);
-        ov.getPanes()?.overlayLayer?.appendChild(divEl);
-      };
-
-      ov.getBounds = () => latLngBounds;
-      ov.draw = () => {
-        if (!divEl) return;
-        const proj = ov.getProjection();
-        if (!proj) return;
-        const sw = proj.fromLatLngToDivPixel(latLngBounds.getSouthWest());
-        const ne = proj.fromLatLngToDivPixel(latLngBounds.getNorthEast());
-        if (!sw || !ne) return;
-        divEl.style.left = Math.min(sw.x, ne.x) + 'px';
-        divEl.style.top = Math.min(sw.y, ne.y) + 'px';
-        divEl.style.width = Math.abs(ne.x - sw.x) + 'px';
-        divEl.style.height = Math.abs(ne.y - sw.y) + 'px';
-      };
+      const apiUrl = `/api/radar-frame?slug=${slugParam}&ts12=${timestamp}&product=${productType}&isLive=${useFallback}&sourceMode=${radarSourceMode}`;
       
-      ov.onRemove = () => { divEl?.parentNode?.removeChild(divEl!); divEl = null; };
-      ov.setMap(map);
-      overlaysArr.push(ov);
+      fetch(apiUrl)
+        .then(r => r.ok ? r.json() : null)
+        .then(async (data) => {
+          if (!data?.url || currentGen !== overlayGenerationRef.current) return;
+
+          if (radarWorkerRef.current) {
+            radarWorkerRef.current.onmessage = (msg) => {
+              if (msg.data.url) {
+                renderWebGLRadar(msg.data.url, data);
+              }
+            };
+            radarWorkerRef.current.postMessage({
+              imageUrl: data.url,
+              type: dr.type === 'cptec' ? dr.station.slug : 'argentina',
+              product: productType
+            });
+          } else {
+            renderWebGLRadar(data.url, data);
+          }
+
+          function renderWebGLRadar(imageUrl: string, meta: any) {
+            const sourceId = `source-${radarKey}`;
+            const layerId = `layer-${radarKey}`;
+
+            const bounds = getBoundsForDisplayRadar(dr);
+            const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
+              [bounds.west, bounds.north],
+              [bounds.east, bounds.north],
+              [bounds.east, bounds.south],
+              [bounds.west, bounds.south]
+            ];
+
+            const existingSource = map.getSource(sourceId) as any;
+            if (existingSource) {
+              existingSource.updateImage({ url: imageUrl, coordinates });
+            } else {
+              map.addSource(sourceId, {
+                type: 'image',
+                url: imageUrl,
+                coordinates
+              });
+              map.addLayer({
+                id: layerId,
+                type: 'raster',
+                source: sourceId,
+                paint: {
+                  'raster-opacity': opacity,
+                  'raster-fade-duration': 300
+                }
+              });
+            }
+            
+            setRadarEffectiveTimestamps(prev => ({ ...prev, [radarKey]: meta.ts12 }));
+            setRadarEffectiveSource(prev => ({ ...prev, [radarKey]: meta.source }));
+            setFailedRadars(prev => { const next = new Set(prev); next.delete(radarKey); return next; });
+          }
+        })
+        .catch(() => {
+          setFailedRadars(prev => new Set(prev).add(radarKey));
+        });
     });
-  }, [getBoundsForDisplayRadar, radarConfigs, radarSourceMode, superResEnabled, reflectivityFilterEnabled, overlayGenerationRef]);
+  }, [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef, radarWorkerRef]);
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
+  /** Central de Renderização de Radares (Motor de Alta Performance - Mapa 1) */
   useEffect(() => {
-    const oldOverlays = [...radarOverlaysRef.current];
-    radarOverlaysRef.current = [];
-    
-    if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) {
-      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
-      return;
-    }
-    
+    if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) return;
     const product = (splitCount >= 2) ? 'reflectividade' : radarProductType;
     const radarsToShow = editingRadar
       ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
       : displayRadars;
     
-    if (radarsToShow.length === 0 && !editingRadar) {
-      oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
-      return;
-    }
-
     overlayGenerationRef.current += 1;
-    const currentGen = overlayGenerationRef.current;
-
-    addRadarOverlays(
+    addRadarOverlaysMapLibre(
       mapInstanceRef.current,
-      radarOverlaysRef.current,
-      oldOverlays,
       product,
       radarsToShow.length > 0 ? radarsToShow : [],
       effectiveRadarTimestamp,
       useFallbackForOverlays,
       radarOpacity,
-      currentGen,
+      overlayGenerationRef.current,
     );
-  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, addRadarOverlays, editingRadar, radarConfigs]);
+  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, useFallbackForOverlays, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
 
-  /** Overlays Mapa 1 (Sincronização de Estilo) */
-  useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current) return;
-    applyBaseMapStyle(mapInstanceRef.current);
-  }, [mapReady, baseMapId, applyBaseMapStyle]);
-
-  /** Sincronizar estilo de mapa em todos os mapas secundários */
-  useEffect(() => {
-    const maps = [map2InstanceRef.current, map3InstanceRef.current, map4InstanceRef.current].filter(Boolean);
-    maps.forEach(m => applyBaseMapStyle(m));
-  }, [map2Ready, map3Ready, map4Ready, baseMapId, applyBaseMapStyle]);
-
-  useEffect(() => {
-    if (isPlaying) {
-      setSliderMinutesAgo(uiSliderMinutesAgo);
-      return;
-    }
-    const timer = setTimeout(() => {
-      setSliderMinutesAgo(uiSliderMinutesAgo);
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [uiSliderMinutesAgo, isPlaying]);
-
-  useEffect(() => {
-    if (!isPlaying || !validSliderMinutesAgo || validSliderMinutesAgo.length === 0) return;
-    const currentIndex = getClosestValidIndex(sliderMinutesAgo, validSliderMinutesAgo);
-    const nextIndex = currentIndex + 1 < validSliderMinutesAgo.length ? currentIndex + 1 : 0;
-    const nextMinutesAgo = validSliderMinutesAgo[nextIndex];
-    displayRadars.forEach(dr => {
-       const radarId = dr.type === 'cptec' ? dr.station.slug : dr.station.id;
-       const cfg = radarConfigs.find(c => c.stationSlug === radarId || c.id === radarId);
-       const radarInterval = cfg?.updateIntervalMinutes ?? dr.station.updateIntervalMinutes ?? 10;
-       const nextBaseTs = getNowMinusMinutesTimestamp12UTC(3 + nextMinutesAgo);
-       const exactNextTs12 = floorTimestampToInterval(nextBaseTs, radarInterval);
-       let nextUrl = '';
-       if (dr.type === 'cptec') {
-          nextUrl = buildNowcastingPngUrl(dr.station, exactNextTs12, radarProductType, true);
-       }
-       if (nextUrl) {
-           const preloader = new Image();
-           preloader.src = nextUrl;
-       }
-    });
-  }, [sliderMinutesAgo, isPlaying, validSliderMinutesAgo, displayRadars, radarProductType, getClosestValidIndex, radarConfigs]);
-
-  /** Overlays Mapas Secundários (Doppler, VIL, Waldvogel) */
+  /** Overlays Mapas Secundários (Doppler, VIL, Waldvogel - WebGL) */
   useEffect(() => {
     const configs: { ref: React.MutableRefObject<any[]>, map: any, ready: boolean, product: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' }[] = [
       { ref: radarOverlays2Ref, map: map2InstanceRef.current, ready: map2Ready, product: 'velocidade' },
@@ -2375,32 +1997,24 @@ export default function AoVivoPage() {
     ];
 
     configs.forEach(({ ref, map, ready, product }) => {
-      const oldOverlays = [...ref.current];
-      ref.current = [];
-      if (!ready || !map || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) {
-        oldOverlays.forEach((ov) => (ov as any)?.setMap?.(null));
-        return;
-      }
+      if (!ready || !map || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) return;
 
       overlayGenerationRef.current += 1;
-      const currentGen = overlayGenerationRef.current;
       const radars = editingRadar
         ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
         : displayRadars;
 
-      addRadarOverlays(
+      addRadarOverlaysMapLibre(
         map,
-        ref.current,
-        oldOverlays,
         product as 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
         radars,
         effectiveRadarTimestamp,
         useFallbackForOverlays,
         radarOpacity,
-        currentGen
+        overlayGenerationRef.current
       );
     });
-  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlays, editingRadar, radarConfigs]);
+  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, useFallbackForOverlays, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs]);
 
   /** Overlay editável (arrastável) para posicionar o radar — apenas quando editingRadar está setado */
   useEffect(() => {
@@ -2563,20 +2177,23 @@ export default function AoVivoPage() {
   const startPickMapLocation = useCallback(() => {
     setReportStep('pick-map');
     if (!mapInstanceRef.current) return;
-    const g = (window as any).google;
-    if (!g?.maps) return;
-    if (mapClickListenerRef.current) g.maps.event.removeListener(mapClickListenerRef.current);
-    mapClickListenerRef.current = mapInstanceRef.current.addListener('click', (e: any) => {
-      const lat = e.latLng?.lat?.();
-      const lng = e.latLng?.lng?.();
+    
+    const clickHandler = (e: any) => {
+      const { lat, lng } = e.lngLat;
       if (lat != null && lng != null) {
         setReportLat(parseFloat(lat.toFixed(5)));
         setReportLng(parseFloat(lng.toFixed(5)));
         setReportStep('form');
-        g.maps.event.removeListener(mapClickListenerRef.current);
+        mapInstanceRef.current?.off('click', clickHandler);
         mapClickListenerRef.current = null;
       }
-    });
+    };
+
+    if (mapClickListenerRef.current) {
+      mapInstanceRef.current.off('click', mapClickListenerRef.current);
+    }
+    mapInstanceRef.current.on('click', clickHandler);
+    mapClickListenerRef.current = clickHandler;
   }, []);
 
   const searchCityForReport = useCallback(async () => {
@@ -2649,9 +2266,8 @@ export default function AoVivoPage() {
     setReportMediaFile(null);
     setReportMediaLink('');
     setReportCitySearch('');
-    const g = (window as any).google;
-    if (mapClickListenerRef.current && g?.maps) {
-      g.maps.event.removeListener(mapClickListenerRef.current);
+    if (mapClickListenerRef.current && mapInstanceRef.current) {
+      mapInstanceRef.current.off('click', mapClickListenerRef.current);
       mapClickListenerRef.current = null;
     }
   }, []);
@@ -2662,8 +2278,7 @@ export default function AoVivoPage() {
   };
 
   const goToBrazil = () => {
-    mapInstanceRef.current?.panTo(BRAZIL_CENTER);
-    mapInstanceRef.current?.setZoom(4);
+    mapInstanceRef.current?.flyTo({ center: BRAZIL_CENTER, zoom: 4 });
   };
 
   const goToMyLocation = () => {
@@ -2673,6 +2288,9 @@ export default function AoVivoPage() {
     }
   };
 
+
+  /** Trava de Hidratação para Performance (WebGL) */
+  if (!isMounted) return null;
 
   if (!user) {
     return (
@@ -3834,8 +3452,15 @@ export default function AoVivoPage() {
                       ? (maxSliderMinutesAgo >= 1440 ? '-24h' : '00:00')
                       : sliderMinutesAgo >= 60 ? `-${Math.floor(sliderMinutesAgo / 60)}h` : `-${sliderMinutesAgo}m`}
                 </span>
-                <div className="flex-1 flex flex-col gap-0 relative">
-                  <div className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-800 overflow-hidden pointer-events-none">
+                <div className="flex-1 flex flex-col gap-0 relative group/slider">
+                  {/* Ticks de Cronologia (Padrão Ouro) */}
+                  <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 px-1 flex justify-between items-center pointer-events-none opacity-40 group-hover/slider:opacity-70 transition-opacity">
+                    {validSliderMinutesAgo && validSliderMinutesAgo.map((_, idx) => (
+                      <div key={idx} className="w-[2px] h-[2px] rounded-full bg-cyan-500 shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+                    ))}
+                  </div>
+
+                  <div className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-800/50 overflow-hidden pointer-events-none">
                     <div 
                       className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-300 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.8)] transition-all duration-150"
                       style={{ width: validSliderMinutesAgo && validSliderMinutesAgo.length > 1
