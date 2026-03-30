@@ -350,21 +350,10 @@ async function filterValidSliderMinutesAgo(
 }
 
 /** Ícone radar disponível: verde forte com símbolo de antena (modelo imagem 1). */
-const RADAR_ICON_AVAILABLE = 'data:image/svg+xml,' + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">' +
-  '<circle cx="16" cy="16" r="14" fill="#22c55e" stroke="#15803d" stroke-width="1.5"/>' +
-  '<path d="M16 8 L16 24 M10 14 L22 18 L10 22 Z" fill="white" stroke="white" stroke-width="0.8" stroke-linejoin="round"/>' +
-  '</svg>'
-);
+const RADAR_ICON_AVAILABLE = 'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/7e352d326e59aa65efc40ce2979d5a078a393dc4/radar-icon-svg-download-png-8993769.webp';
 
 /** Ícone radar indisponível: verde apagado com barra diagonal (sem imagem no horário). */
-const RADAR_ICON_UNAVAILABLE = 'data:image/svg+xml,' + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">' +
-  '<circle cx="16" cy="16" r="14" fill="#166534" fill-opacity="0.6" stroke="#14532d" stroke-width="1" stroke-opacity="0.7"/>' +
-  '<path d="M16 9 L16 23 M11 14 L21 18 L11 22 Z" fill="white" fill-opacity="0.5" stroke="white" stroke-opacity="0.5" stroke-width="0.6"/>' +
-  '<line x1="8" y1="8" x2="24" y2="24" stroke="#ef4444" stroke-width="2" stroke-linecap="round" opacity="0.9"/>' +
-  '</svg>'
-);
+const RADAR_ICON_UNAVAILABLE = 'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/7e352d326e59aa65efc40ce2979d5a078a393dc4/radar-icon-svg-download-png-8993769.webp';
 
 const dBZ_COLORS = [
   { hex: '#8B8589', val: -30 },
@@ -1884,30 +1873,18 @@ export default function AoVivoPage() {
       const el = document.createElement('div');
       el.className = 'w-8 h-8 cursor-pointer';
 
-      // Design Moderno: Antena brilhante pulsante ou desligada (estilo Neon Glow)
+      // Design Moderno: Imagem SVG customizada com efeito claro ou escuro
       if (hasData) {
         el.innerHTML = `
           <div class="relative flex items-center justify-center w-full h-full transition-transform hover:scale-125">
-            <div class="absolute inset-0 rounded-full bg-cyan-500/30 animate-ping" style="animation-duration: 2.5s;"></div>
-            <div class="relative z-10 w-6 h-6 bg-[#0A0E17] border-[1.5px] border-cyan-400 rounded-full flex items-center justify-center shadow-[0_0_12px_rgba(34,211,238,0.7)]">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 text-cyan-300">
-                <path d="M12 12v.01" />
-                <path d="M19.071 4.929a10 10 0 0 1 0 14.142" />
-                <path d="M4.929 4.929a10 10 0 0 0 0 14.142" />
-              </svg>
-            </div>
+            <div class="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping" style="animation-duration: 2.5s;"></div>
+            <img src="${RADAR_ICON_AVAILABLE}" alt="Radar On" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
           </div>
         `;
       } else {
         el.innerHTML = `
-          <div class="relative flex items-center justify-center w-full h-full opacity-60 transition-transform hover:scale-125">
-            <div class="relative z-10 w-6 h-6 bg-[#0A0E17] border-[1.5px] border-slate-600 rounded-full flex items-center justify-center shadow-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 text-slate-500">
-                <line x1="4" y1="4" x2="20" y2="20" />
-                <path d="M12 12v.01" />
-                <path d="M19.071 4.929a10 10 0 0 1 0 14.142" />
-              </svg>
-            </div>
+          <div class="relative flex items-center justify-center w-full h-full opacity-40 transition-transform hover:scale-110 grayscale">
+            <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar Off" class="w-7 h-7 object-contain" />
           </div>
         `;
       }
