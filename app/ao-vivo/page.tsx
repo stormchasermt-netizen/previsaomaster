@@ -60,25 +60,36 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 type DisplayRadar = { type: 'cptec'; station: CptecRadarStation } | { type: 'argentina'; station: ArgentinaRadarStation };
 
-type BaseMapId = 'dark' | 'light' | 'white' | 'midnight' | 'clean_dark' | 'satellite' | 'hybrid' | 'roadmap' | 'terrain';
+type BaseMapId = 'satellite' | 'streets' | 'topo' | 'toner';
 
-const BASE_MAP_OPTIONS: { id: BaseMapId; label: string; previewType: 'static' | 'placeholder'; staticMapType?: 'satellite' | 'hybrid' | 'roadmap' | 'terrain'; placeholderBg?: string }[] = [
-  { id: 'dark', label: 'Escuro Padrão', previewType: 'placeholder', placeholderBg: '#1e293b' },
-  { id: 'clean_dark', label: 'Cinza Clean', previewType: 'placeholder', placeholderBg: '#1e293b' },
-  { id: 'midnight', label: 'Azul Radar', previewType: 'placeholder', placeholderBg: '#0f172a' },
-  { id: 'white', label: 'Branco Minimal', previewType: 'placeholder', placeholderBg: '#ffffff' },
-  { id: 'light', label: 'Claro (Com ruas)', previewType: 'placeholder', placeholderBg: '#e2e8f0' },
-  { id: 'satellite', label: 'Satélite', previewType: 'static', staticMapType: 'satellite' },
-  { id: 'hybrid', label: 'Satélite + Rótulos', previewType: 'static', staticMapType: 'hybrid' },
-  { id: 'roadmap', label: 'Padrão (ruas)', previewType: 'static', staticMapType: 'roadmap' },
-  { id: 'terrain', label: 'Terreno (Relevo)', previewType: 'static', staticMapType: 'terrain' },
+const MAPTILER_KEY = 'WyOGmI7ufyBLH3G7aX9o';
+
+const BASE_MAP_OPTIONS: { id: BaseMapId; label: string; styleUrl: string; previewUrl: string }[] = [
+  { 
+    id: 'satellite', 
+    label: 'Satélite', 
+    styleUrl: `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/hybrid-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
+  { 
+    id: 'streets', 
+    label: 'Ruas', 
+    styleUrl: `https://api.maptiler.com/maps/streets-v4/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/streets-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
+  { 
+    id: 'topo', 
+    label: 'Relevos', 
+    styleUrl: `https://api.maptiler.com/maps/topo-v4/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/topo-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
+  { 
+    id: 'toner', 
+    label: 'Branco', 
+    styleUrl: `https://api.maptiler.com/maps/toner-v2/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/toner-v2/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
 ];
-
-function getStaticMapPreviewUrl(maptype: string): string {
-  const key = typeof process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY === 'string' ? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY : '';
-  if (!key || key.startsWith('COLE_SUA')) return '';
-  return `https://maps.googleapis.com/maps/api/staticmap?center=-14,-52&zoom=4&size=180x120&maptype=${maptype}&key=${key}`;
-}
 
 /** Revolução WebGL - Dashboard purificado */
 
@@ -433,7 +444,7 @@ export default function AoVivoPage() {
   const [radarOpacity, setRadarOpacity] = useState(0.75);
   const [showOnlinePanel, setShowOnlinePanel] = useState(false);
   const [showBaseMapGallery, setShowBaseMapGallery] = useState(false);
-  const [baseMapId, setBaseMapId] = useState<BaseMapId>('dark');
+  const [baseMapId, setBaseMapId] = useState<BaseMapId>('satellite');
   const [onlineUsers, setOnlineUsers] = useState<PresenceData[]>([]);
   const [radarConfigs, setRadarConfigs] = useState<RadarConfig[]>([]);
   /** Timestamp nominal em UTC: ~3 min atrás (CPTEC usa UTC nas imagens), atualizado a cada 30 s */
@@ -509,18 +520,8 @@ export default function AoVivoPage() {
   // Função auxiliar para aplicar o estilo correto a qualquer instância de mapa
   const applyBaseMapStyle = useCallback((mapInstance: any) => {
     if (!mapInstance) return;
-    
-    let styleUrl = `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    
-    if (baseMapId === 'satellite' || baseMapId === 'hybrid') {
-      styleUrl = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    } else if (baseMapId === 'terrain' || baseMapId === 'light') {
-      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    } else if (baseMapId === 'white') {
-      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    }
-
-    mapInstance.setStyle(styleUrl);
+    const selectedMap = BASE_MAP_OPTIONS.find((opt) => opt.id === baseMapId) || BASE_MAP_OPTIONS[0];
+    mapInstance.setStyle(selectedMap.styleUrl);
   }, [baseMapId]);
 
   // Procura o índice do valor mais próximo disponível no array de tempos válidos
@@ -1640,7 +1641,7 @@ export default function AoVivoPage() {
       if (typeof window === 'undefined') return;
       const map = new maplibregl.Map({
         container: mapRef.current!,
-        style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
+        style: BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl,
         center: [-51.925, -14.235], // [lng, lat]
         zoom: 4,
         attributionControl: false
@@ -1675,7 +1676,7 @@ export default function AoVivoPage() {
       if (map2Ref.current && !map2InstanceRef.current && mapInstanceRef.current) {
         const m2 = new maplibregl.Map({
           container: map2Ref.current!,
-          style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
+          style: BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl,
           center: mapInstanceRef.current.getCenter(),
           zoom: mapInstanceRef.current.getZoom(),
           attributionControl: false
@@ -1701,14 +1702,7 @@ export default function AoVivoPage() {
     if (!mapInstanceRef.current || !mapReady) return;
     const map = mapInstanceRef.current;
     
-    let styleUrl = `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    if (baseMapId === 'satellite' || baseMapId === 'hybrid') {
-      styleUrl = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    } else if (baseMapId === 'terrain') {
-      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    } else if (baseMapId === 'light') {
-      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
-    }
+    const styleUrl = BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl;
 
     map.setStyle(styleUrl);
     
@@ -1745,7 +1739,7 @@ export default function AoVivoPage() {
       if (map3Ref.current && !map3InstanceRef.current && mapInstanceRef.current) {
         const m3 = new maplibregl.Map({
           container: map3Ref.current!,
-          style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
+          style: BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl,
           center: mapInstanceRef.current.getCenter(),
           zoom: mapInstanceRef.current.getZoom(),
           attributionControl: false
@@ -1756,7 +1750,7 @@ export default function AoVivoPage() {
       if (map4Ref.current && !map4InstanceRef.current && mapInstanceRef.current) {
         const m4 = new maplibregl.Map({
           container: map4Ref.current!,
-          style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
+          style: BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl,
           center: mapInstanceRef.current.getCenter(),
           zoom: mapInstanceRef.current.getZoom(),
           attributionControl: false
@@ -3459,10 +3453,10 @@ export default function AoVivoPage() {
                       className={`rounded-xl overflow-hidden border-2 text-left transition-all duration-200 hover:scale-[1.03] ${baseMapId === opt.id ? 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'border-white/5 hover:border-white/20'}`}
                     >
                       <div className="aspect-[3/2] relative bg-black/40">
-                        {opt.previewType === 'static' && opt.staticMapType && getStaticMapPreviewUrl(opt.staticMapType) ? (
-                          <img src={getStaticMapPreviewUrl(opt.staticMapType)} alt="" className="w-full h-full object-cover opacity-80" />
+                        {opt.previewUrl ? (
+                          <img src={opt.previewUrl} alt="" className="w-full h-full object-cover opacity-80" />
                         ) : (
-                          <div className="w-full h-full opacity-50" style={{ backgroundColor: opt.placeholderBg }} />
+                          <div className="w-full h-full opacity-50 bg-[#1e293b]" />
                         )}
                         {baseMapId === opt.id && (
                           <div className="absolute top-1 right-1 rounded-full bg-cyan-400 p-0.5"><Check className="w-3 h-3 text-black" /></div>
