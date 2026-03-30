@@ -138,7 +138,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.1078, lng: -49.4719, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12544956', vilId: 'R12544955', waldvogelId: 'R12544489', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -52.0632, minLat: -30.3648, maxLon: -46.8704, maxLat: -25.8599 } },
 
   { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet Mosaico (PP/Bauru)', lat: -22.116, lng: -51.385, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 },
-  { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
+  { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0, bounds: { minLon: -58.0, minLat: -34.0, maxLon: -49.0, maxLat: -27.0 } },
 
   // DECEA - Sudeste/Centro-Oeste
   { id: 'R12537563', slug: 'saoroque', name: 'São Roque', lat: -23.5988, lng: -47.0977, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12537536', vilId: 'R12537542', waldvogelId: 'R12534843', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -49.6153, minLat: -25.8356, maxLon: -44.6369, maxLat: -21.3348 } },

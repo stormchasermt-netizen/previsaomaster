@@ -45,7 +45,11 @@ function filterClimatempoPixels(data: Uint8ClampedArray): void {
 // ... (Outras funções auxiliares de Super Res portadas conforme necessário)
 
 self.onmessage = async (e: MessageEvent) => {
-  const { imageUrl, type, product, chromaDelta, cropConfig } = e.data;
+  const { id, imageUrl, type, product, chromaDelta, cropConfig } = e.data || {};
+  // Crachá obrigatório: sem id o main thread não consegue rotear a resposta ao radar correto.
+  if (!id || typeof id !== 'string') {
+    return;
+  }
 
   try {
     const res = await fetch(imageUrl);
@@ -55,7 +59,7 @@ self.onmessage = async (e: MessageEvent) => {
 
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canto get context');
+    if (!ctx) throw new Error('Cannot get context');
 
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
@@ -94,8 +98,9 @@ self.onmessage = async (e: MessageEvent) => {
     const finalBlob = await canvas.convertToBlob({ type: 'image/png' });
     const finalUrl = URL.createObjectURL(finalBlob);
 
-    self.postMessage({ url: finalUrl });
+    // 2. Devolve a imagem limpa E O ID para o mapa saber de quem é!
+    self.postMessage({ id, url: finalUrl });
   } catch (err) {
-    self.postMessage({ error: 'Worker processing failed' });
+    self.postMessage({ id, error: 'Worker processing failed' });
   }
 };

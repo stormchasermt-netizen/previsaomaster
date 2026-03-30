@@ -431,9 +431,26 @@ export default function AoVivoPage() {
   
   // Instância única do Worker para todos os radares
   const radarWorkerRef = useRef<Worker | null>(null);
+  /** Crachá (reqId) → callback da resposta; evita trocar imagens entre estações quando o Worker responde fora de ordem. */
+  const radarWorkerCallbacksRef = useRef(
+    new Map<string, (r: { url?: string; error?: string }) => void>()
+  );
   useEffect(() => {
-    radarWorkerRef.current = new Worker(new URL('../../workers/radarFilter.worker.ts', import.meta.url));
-    return () => radarWorkerRef.current?.terminate();
+    const w = new Worker(new URL('../../workers/radarFilter.worker.ts', import.meta.url));
+    radarWorkerRef.current = w;
+    w.onmessage = (msg: MessageEvent<{ id?: string; url?: string; error?: string }>) => {
+      const { id, url, error } = msg.data || {};
+      if (!id) return;
+      const fn = radarWorkerCallbacksRef.current.get(id);
+      if (!fn) return;
+      radarWorkerCallbacksRef.current.delete(id);
+      fn({ url, error });
+    };
+    return () => {
+      radarWorkerCallbacksRef.current.clear();
+      w.terminate();
+      radarWorkerRef.current = null;
+    };
   }, []);
 
   const [radarViewsRecord, setRadarViewsRecord] = useState<Record<string, number>>({});
@@ -1993,24 +2010,34 @@ export default function AoVivoPage() {
           setFailedRadars(prev => { const next = new Set(prev); next.delete(radarKey); return next; });
         };
 
-        // Manda pro Worker processar o Chroma Key e depois injeta no mapa
-        if (radarWorkerRef.current) {
-          radarWorkerRef.current.onmessage = (msg) => {
-            if (msg.data.url) renderWebGLRadar(msg.data.url, data);
-          };
+        // Worker: um reqId por tarefa; resposta roteada pelo id (sem sobrescrever onmessage por radar).
+        if (radarWorkerRef.current && data?.url) {
+          const genAtPost = currentGen;
+          const reqId = `g${genAtPost}-${radarKey}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+          radarWorkerCallbacksRef.current.set(reqId, (result) => {
+            if (genAtPost !== overlayGenerationRef.current) return;
+            if (result.error) {
+              setFailedRadars((prev) => new Set(prev).add(radarKey));
+              return;
+            }
+            if (result.url) renderWebGLRadar(result.url, data);
+          });
           radarWorkerRef.current.postMessage({
+            id: reqId,
             imageUrl: data.url,
             type: dr.type === 'cptec' ? dr.station.slug : 'argentina',
-            product: productType
+            product: productType,
           });
-        } else {
+        } else if (data?.url) {
           renderWebGLRadar(data.url, data);
+        } else {
+          setFailedRadars((prev) => new Set(prev).add(radarKey));
         }
       } catch (e) {
         setFailedRadars(prev => new Set(prev).add(radarKey));
       }
     });
-  }, [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef, radarWorkerRef]);
+  }, [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef, radarWorkerRef, radarWorkerCallbacksRef]);
 
   const useFallbackForOverlays = !historicalTimestampOverride && sliderMinutesAgo === 0;
 
