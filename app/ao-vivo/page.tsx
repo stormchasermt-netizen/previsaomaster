@@ -80,7 +80,7 @@ function getStaticMapPreviewUrl(maptype: string): string {
   return `https://maps.googleapis.com/maps/api/staticmap?center=-14,-52&zoom=4&size=180x120&maptype=${maptype}&key=${key}`;
 }
 
-declare const google: any;
+/** Revolução WebGL - Dashboard purificado */
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -474,33 +474,17 @@ export default function AoVivoPage() {
   const applyBaseMapStyle = useCallback((mapInstance: any) => {
     if (!mapInstance) return;
     
-    switch (baseMapId) {
-      case 'white':
-        mapInstance.setMapTypeId('roadmap');
-        mapInstance.setOptions({ styles: MAP_STYLE_WHITE });
-        break;
-      case 'midnight':
-        mapInstance.setMapTypeId('roadmap');
-        mapInstance.setOptions({ styles: MAP_STYLE_MIDNIGHT });
-        break;
-      case 'clean_dark':
-        mapInstance.setMapTypeId('roadmap');
-        mapInstance.setOptions({ styles: MAP_STYLE_CLEAN_DARK });
-        break;
-      case 'dark':
-        mapInstance.setMapTypeId('roadmap');
-        mapInstance.setOptions({ styles: MAP_STYLE_DARK });
-        break;
-      case 'light':
-        mapInstance.setMapTypeId('roadmap');
-        mapInstance.setOptions({ styles: [] }); // Limpa estilos, usa o padrão colorido do Google
-        break;
-      default:
-        // satellite, hybrid, roadmap, terrain
-        mapInstance.setMapTypeId(baseMapId);
-        mapInstance.setOptions({ styles: [] });
-        break;
+    let styleUrl = `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
+    
+    if (baseMapId === 'satellite' || baseMapId === 'hybrid') {
+      styleUrl = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
+    } else if (baseMapId === 'terrain' || baseMapId === 'light') {
+      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
+    } else if (baseMapId === 'white') {
+      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
     }
+
+    mapInstance.setStyle(styleUrl);
   }, [baseMapId]);
 
   // Procura o índice do valor mais próximo disponível no array de tempos válidos
@@ -807,8 +791,8 @@ export default function AoVivoPage() {
       return;
     }
     const center = map.getCenter();
-    const lat = center.lat();
-    const lng = center.lng();
+    const lat = center.lat;
+    const lng = center.lng;
 
     for (let i = overlays.length - 1; i >= 0; i--) {
         const overlay = overlays[i];
@@ -1602,6 +1586,9 @@ export default function AoVivoPage() {
   /** Inicializa mapa quando localização é concedida ou quando usuário está excluído da requisição */
   const locationExcluded = user ? LOCATION_REQUEST_EXCLUDED_UIDS.includes(user.uid) : false;
   const canShowMap = locationPermission === 'granted' || locationExcluded;
+
+  if (!isMounted) return null;
+
   useEffect(() => {
     if (!canShowMap) return;
     let isMounted = true;
@@ -1611,7 +1598,7 @@ export default function AoVivoPage() {
       if (typeof window === 'undefined') return;
       const map = new maplibregl.Map({
         container: mapRef.current!,
-        style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+        style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
         center: [-51.925, -14.235], // [lng, lat]
         zoom: 4,
         attributionControl: false
@@ -1646,7 +1633,7 @@ export default function AoVivoPage() {
       if (map2Ref.current && !map2InstanceRef.current && mapInstanceRef.current) {
         const m2 = new maplibregl.Map({
           container: map2Ref.current!,
-          style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+          style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
           center: mapInstanceRef.current.getCenter(),
           zoom: mapInstanceRef.current.getZoom(),
           attributionControl: false
@@ -1671,16 +1658,21 @@ export default function AoVivoPage() {
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReady) return;
     const map = mapInstanceRef.current;
-    if (baseMapId === 'dark') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: MAP_STYLE_DARK });
+    
+    let styleUrl = `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
+    if (baseMapId === 'satellite' || baseMapId === 'hybrid') {
+      styleUrl = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
+    } else if (baseMapId === 'terrain') {
+      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
     } else if (baseMapId === 'light') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: [] });
-    } else {
-      map.setMapTypeId(baseMapId);
-      map.setOptions({ styles: [] });
+      styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=WyOGmI7ufyBLH3G7aX9o`;
     }
+
+    map.setStyle(styleUrl);
+    
+    // Sync style with other split maps
+    const extraMaps = [map2InstanceRef.current, map3InstanceRef.current, map4InstanceRef.current].filter(Boolean);
+    extraMaps.forEach(m => m.setStyle(styleUrl));
   }, [mapReady, baseMapId]);
 
   useEffect(() => {
@@ -1711,7 +1703,7 @@ export default function AoVivoPage() {
       if (map3Ref.current && !map3InstanceRef.current && mapInstanceRef.current) {
         const m3 = new maplibregl.Map({
           container: map3Ref.current!,
-          style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+          style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
           center: mapInstanceRef.current.getCenter(),
           zoom: mapInstanceRef.current.getZoom(),
           attributionControl: false
@@ -1722,7 +1714,7 @@ export default function AoVivoPage() {
       if (map4Ref.current && !map4InstanceRef.current && mapInstanceRef.current) {
         const m4 = new maplibregl.Map({
           container: map4Ref.current!,
-          style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=gRHoVpiFILdZQ5ZZrRzp`,
+          style: `https://api.maptiler.com/maps/toner-v2/style.json?key=WyOGmI7ufyBLH3G7aX9o`,
           center: mapInstanceRef.current.getCenter(),
           zoom: mapInstanceRef.current.getZoom(),
           attributionControl: false
