@@ -135,7 +135,7 @@ async function probeRadarImageExists(
   isHistorical: boolean = false
 ): Promise<boolean> {
   const st = await fetch(
-    `/api/radar-storage-fallback?radarId=${encodeURIComponent(slugParam)}&ts12=${encodeURIComponent(ts12)}&productType=${productType}`,
+    `/api/radar-storage-fallback?radarId=${encodeURIComponent(slugParam)}&ts12=${encodeURIComponent(ts12)}&productType=${productType}&maxDiff=10`,
     { signal, cache: 'no-store' }
   );
   if (st.ok) {
@@ -193,10 +193,6 @@ async function filterValidSliderMinutesAgo(
   const candidates: number[] = [];
   for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
   if (candidates.length === 0) return [0];
-
-  if (dr.type === 'cptec' && dr.station.slug === 'climatempo-poa') {
-    return [0];
-  }
 
   /** IPMET */
   if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru' && !isHistorical) {
@@ -2140,7 +2136,7 @@ export default function AoVivoPage() {
               paint: {
                 'raster-opacity': 0,
                 'raster-fade-duration': 0,
-                'raster-opacity-transition': { duration: 350, delay: 0 }
+                'raster-opacity-transition': { duration: 450, delay: 0 }
               },
             });
           }
@@ -2152,7 +2148,7 @@ export default function AoVivoPage() {
             if (map.getLayer(oldLayerId)) {
               map.setPaintProperty(oldLayerId, 'raster-opacity', 0);
             }
-          }, 50);
+          }, 100);
 
           setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: finalTs }));
           setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: source as any }));
@@ -2205,12 +2201,34 @@ export default function AoVivoPage() {
         /** Storage primeiro (cache rápido); só então fontes públicas / Redemet. */
         const tryStorageThen = async (next: () => void) => {
           try {
-            const res = await fetch(
-              `/api/radar-storage-fallback?radarId=${encodeURIComponent(slug)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}`
-            );
-            const data = await res.json().catch(() => null);
-            if (data?.url) processWithWorker(data.url, 'storage', exactTs12, markFailed);
-            else next();
+            const maxDiff = (sliderMinutesAgo > 0 || isHistorical) ? 15 : 120;
+            
+            if (slug === 'ipmet-bauru') {
+              const res = await fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(exactTs12)}&maxDiff=${maxDiff}`);
+              const data = await res.json().catch(() => null);
+              if (data?.url) {
+                processWithWorker(data.url, 'storage', exactTs12, markFailed);
+                return;
+              }
+            }
+            
+            const idsToCheck = new Set<string>([slug]);
+            if (dr.type === 'cptec') {
+              if (dr.station.org === 'funceme') idsToCheck.add(dr.station.id);
+              if (dr.station.sipamSlug) idsToCheck.add(dr.station.sipamSlug);
+            }
+
+            for (const radarId of idsToCheck) {
+              const res = await fetch(
+                `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}&maxDiff=${maxDiff}`
+              );
+              const data = await res.json().catch(() => null);
+              if (data?.url) {
+                processWithWorker(data.url, 'storage', exactTs12, markFailed);
+                return;
+              }
+            }
+            next();
           } catch {
             next();
           }
@@ -2249,6 +2267,10 @@ export default function AoVivoPage() {
         /** USP / IPMET / Climatempo POA: sempre Storage → depois URL com timestamp (Cloud Function / Climatempo), em qualquer frame da animação. */
         if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug) && dr.type === 'cptec') {
           void tryStorageThen(() => {
+            if (sliderMinutesAgo > 0 || isHistorical) {
+              markFailed();
+              return;
+            }
             const pngUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType as any, true);
             if (!pngUrl) {
               markFailed();

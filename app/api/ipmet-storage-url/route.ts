@@ -52,6 +52,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing or invalid ts12 (YYYYMMDDHHmm)' }, { status: 400 });
   }
 
+  const maxDiffParam = req.nextUrl.searchParams.get('maxDiff');
+  const allowedMaxDiff = maxDiffParam ? parseInt(maxDiffParam, 10) : 15;
+
   const y = ts12.slice(0, 4);
   const m = ts12.slice(4, 6);
   const d = ts12.slice(6, 8);
@@ -90,8 +93,7 @@ export async function GET(req: NextRequest) {
       }
 
       const diff = Math.abs(fileMin - targetMin);
-      // Aceita tolerância máxima de 15 minutos de diferença
-      if (diff < minDiff && diff <= 15) {
+      if (diff < minDiff && diff <= allowedMaxDiff) {
         minDiff = diff;
         bestFile = file;
         bestBasename = base;

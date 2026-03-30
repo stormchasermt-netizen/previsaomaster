@@ -48,8 +48,9 @@ async function fetchRadarStorageUrls(
 
   for (const radarId of radarIds) {
     try {
+      const maxDiff = 15; // Pré-carregamento sempre de animação (preciso)
       const res = await fetch(
-        `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}`,
+        `/api/radar-storage-fallback?radarId=${encodeURIComponent(radarId)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}&maxDiff=${maxDiff}`,
         { signal }
       );
       const data = await res.json().catch(() => null);
@@ -61,7 +62,8 @@ async function fetchRadarStorageUrls(
 
   if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
     try {
-      const res = await fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(exactTs12)}`, { signal });
+      const maxDiff = 15;
+      const res = await fetch(`/api/ipmet-storage-url?ts12=${encodeURIComponent(exactTs12)}&maxDiff=${maxDiff}`, { signal });
       const data = await res.json().catch(() => null);
       if (data?.url) found.add(data.url);
     } catch {

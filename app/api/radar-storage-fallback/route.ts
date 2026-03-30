@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
   const radarId = req.nextUrl.searchParams.get('radarId');
   const ts12 = req.nextUrl.searchParams.get('ts12');
   const productType = req.nextUrl.searchParams.get('productType') || 'reflectividade';
+  const maxDiffParam = req.nextUrl.searchParams.get('maxDiff');
+  const allowedMaxDiff = maxDiffParam ? parseInt(maxDiffParam, 10) : 120;
 
   if (!radarId || !ts12 || ts12.length !== 12) {
     return NextResponse.json({ error: 'Missing or invalid params (radarId, ts12)' }, { status: 400 });
@@ -96,7 +98,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (!bestFile || minDiff > 120) { // max 2 horas de diferença
+    if (!bestFile || minDiff > allowedMaxDiff) {
       return NextResponse.json({ url: null, reason: 'no_close_match' });
     }
 
