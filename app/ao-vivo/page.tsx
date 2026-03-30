@@ -1151,10 +1151,11 @@ export default function AoVivoPage() {
   }, [editingRadar, saveEditConfig, addToast]);
 
   const getBoundsForDisplayRadar = useCallback(
-    (dr: DisplayRadar) => {
+    (dr: DisplayRadar, source?: string) => {
       if (dr.type === 'cptec') {
         let configSlug = dr.station.slug;
-        if (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd') {
+        // Se a fonte for REDEMET, usamos o slug de fallback para pegar o range de 400km
+        if ((source === 'redemet' || (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd')) && radarProductType === 'reflectividade') {
           configSlug = `${dr.station.slug}-redemet`;
         }
         
@@ -1162,6 +1163,12 @@ export default function AoVivoPage() {
         const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
         if (cfg?.customBounds) {
           return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
+        }
+
+        // Se for REDEMET mas não tiver config salva, forçar range de 400km (Padrão Ouro Redemet)
+        if (source === 'redemet') {
+           const b = calculateRadarBounds(dr.station.lat, dr.station.lng, 400);
+           return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
         }
 
         // PRIORIDADE 2: Bounds Nativos do CPTEC (A MAIS IMPORTANTE!)
@@ -1829,7 +1836,7 @@ export default function AoVivoPage() {
     return { lat: dr.station.lat, lng: dr.station.lng };
   }, [radarConfigs]);
 
-  /** Ícones de radar no mapa (WebGL) */
+  /** Ícones de radar no mapa (WebGL) - Estilo Profissional */
   useEffect(() => {
     radarMarkersRef.current.forEach((m) => m.remove());
     radarMarkersRef.current = [];
@@ -1842,11 +1849,37 @@ export default function AoVivoPage() {
       const hasData = isDisplayed && !failedRadars.has(radarKey);
       const pos = getRadarCenter(dr);
 
+      // CORREÇÃO: Largura e Altura OBRIGATÓRIAS na tag raiz para o Mapbox/MapLibre centralizar perfeitamente.
       const el = document.createElement('div');
-      el.className = `w-7 h-7 rounded-full border-2 transition-all cursor-pointer hover:scale-125 ${hasData ? 'border-emerald-400 bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'border-slate-500 bg-slate-800/40'}`;
-      
-      const label = dr.type === 'cptec' ? dr.station.slug : dr.station.name;
-      el.innerHTML = `<div class="w-full h-full flex items-center justify-center text-[8px] font-black text-white">${label.slice(0, 3).toUpperCase()}</div>`;
+      el.className = 'w-8 h-8 cursor-pointer';
+
+      // Design Moderno: Antena brilhante pulsante ou desligada (estilo Neon Glow)
+      if (hasData) {
+        el.innerHTML = `
+          <div class="relative flex items-center justify-center w-full h-full transition-transform hover:scale-125">
+            <div class="absolute inset-0 rounded-full bg-cyan-500/30 animate-ping" style="animation-duration: 2.5s;"></div>
+            <div class="relative z-10 w-6 h-6 bg-[#0A0E17] border-[1.5px] border-cyan-400 rounded-full flex items-center justify-center shadow-[0_0_12px_rgba(34,211,238,0.7)]">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 text-cyan-300">
+                <path d="M12 12v.01" />
+                <path d="M19.071 4.929a10 10 0 0 1 0 14.142" />
+                <path d="M4.929 4.929a10 10 0 0 0 0 14.142" />
+              </svg>
+            </div>
+          </div>
+        `;
+      } else {
+        el.innerHTML = `
+          <div class="relative flex items-center justify-center w-full h-full opacity-60 transition-transform hover:scale-125">
+            <div class="relative z-10 w-6 h-6 bg-[#0A0E17] border-[1.5px] border-slate-600 rounded-full flex items-center justify-center shadow-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 text-slate-500">
+                <line x1="4" y1="4" x2="20" y2="20" />
+                <path d="M12 12v.01" />
+                <path d="M19.071 4.929a10 10 0 0 1 0 14.142" />
+              </svg>
+            </div>
+          </div>
+        `;
+      }
 
       const marker = new maplibregl.Marker(el).setLngLat([pos.lng, pos.lat]).addTo(map);
       marker.getElement().addEventListener('click', () => {
@@ -1892,72 +1925,90 @@ export default function AoVivoPage() {
     opacity: number,
     currentGen: number,
   ) => {
-    radars.forEach((dr) => {
+    radars.forEach(async (dr) => {
       const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
       const slugParam = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
       
       const apiUrl = `/api/radar-frame?slug=${slugParam}&ts12=${timestamp}&product=${productType}&isLive=${useFallback}&sourceMode=${radarSourceMode}`;
       
-      fetch(apiUrl)
-        .then(r => r.ok ? r.json() : null)
-        .then(async (data) => {
-          if (!data?.url || currentGen !== overlayGenerationRef.current) return;
+      try {
+        let res = await fetch(apiUrl);
+        let data = await res.json().catch(()=>null);
 
-          if (radarWorkerRef.current) {
-            radarWorkerRef.current.onmessage = (msg) => {
-              if (msg.data.url) {
-                renderWebGLRadar(msg.data.url, data);
-              }
-            };
-            radarWorkerRef.current.postMessage({
-              imageUrl: data.url,
-              type: dr.type === 'cptec' ? dr.station.slug : 'argentina',
-              product: productType
-            });
-          } else {
-            renderWebGLRadar(data.url, data);
-          }
-
-          function renderWebGLRadar(imageUrl: string, meta: any) {
-            const sourceId = `source-${radarKey}`;
-            const layerId = `layer-${radarKey}`;
-
-            const bounds = getBoundsForDisplayRadar(dr);
-            const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
-              [bounds.west, bounds.north],
-              [bounds.east, bounds.north],
-              [bounds.east, bounds.south],
-              [bounds.west, bounds.south]
-            ];
-
-            const existingSource = map.getSource(sourceId) as any;
-            if (existingSource) {
-              existingSource.updateImage({ url: imageUrl, coordinates });
-            } else {
-              map.addSource(sourceId, {
-                type: 'image',
-                url: imageUrl,
-                coordinates
-              });
-              map.addLayer({
-                id: layerId,
-                type: 'raster',
-                source: sourceId,
-                paint: {
-                  'raster-opacity': opacity,
-                  'raster-fade-duration': 300
+        // 1. FALLBACK REDEMET: Se CPTEC caiu (404) ou HD Mode está ativo
+        if ((!res.ok || radarSourceMode === 'hd') && dr.type === 'cptec' && hasRedemetFallback(dr.station.slug) && productType === 'reflectividade') {
+            const area = getRedemetArea(dr.station.slug);
+            const exactTs12 = getNearestRadarTimestamp(timestamp, dr.station);
+            const redemetRes = await fetch(`/api/radar-redemet-find?area=${area}&ts12=${exactTs12}`);
+            if (redemetRes.ok) {
+                const redemetData = await redemetRes.json().catch(()=>null);
+                if (redemetData?.url) {
+                    data = { url: getProxiedRadarUrl(redemetData.url), source: 'redemet', ts12: exactTs12 };
+                    res = { ok: true } as any;
                 }
-              });
             }
-            
-            setRadarEffectiveTimestamps(prev => ({ ...prev, [radarKey]: meta.ts12 }));
-            setRadarEffectiveSource(prev => ({ ...prev, [radarKey]: meta.source }));
-            setFailedRadars(prev => { const next = new Set(prev); next.delete(radarKey); return next; });
+        }
+
+        // 2. FALLBACK STORAGE: Se até a Redemet falhou (ou não existe Redemet para este radar)
+        if (!res.ok) {
+            const exactTs12 = dr.type === 'cptec' ? getNearestRadarTimestamp(timestamp, dr.station) : timestamp;
+            const storageRes = await fetch(`/api/radar-storage-fallback?radarId=${slugParam}&ts12=${exactTs12}&productType=${productType}`);
+            if (storageRes.ok) {
+                const storageData = await storageRes.json().catch(()=>null);
+                if (storageData?.url) {
+                    data = { url: storageData.url, source: 'storage', ts12: exactTs12 };
+                    res = { ok: true } as any;
+                }
+            }
+        }
+
+        const renderWebGLRadar = (imageUrl: string, meta: any) => {
+          const sourceId = `source-${radarKey}`;
+          const layerId = `layer-${radarKey}`;
+          
+          // Se puxou da REDEMET, o sinalizador 'redemet' incha os limites para 400km automaticamente
+          const bounds = getBoundsForDisplayRadar(dr, meta.source);
+          const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
+            [bounds.west, bounds.north], 
+            [bounds.east, bounds.north], 
+            [bounds.east, bounds.south], 
+            [bounds.west, bounds.south]  
+          ];
+
+          const existingSource = map.getSource(sourceId) as any;
+          if (existingSource) {
+            existingSource.updateImage({ url: imageUrl, coordinates });
+          } else {
+            map.addSource(sourceId, { type: 'image', url: imageUrl, coordinates });
+            map.addLayer({
+              id: layerId,
+              type: 'raster',
+              source: sourceId,
+              paint: { 'raster-opacity': opacity, 'raster-fade-duration': 350 }
+            });
           }
-        })
-        .catch(() => {
-          setFailedRadars(prev => new Set(prev).add(radarKey));
-        });
+          
+          setRadarEffectiveTimestamps(prev => ({ ...prev, [radarKey]: meta.ts12 }));
+          setRadarEffectiveSource(prev => ({ ...prev, [radarKey]: meta.source }));
+          setFailedRadars(prev => { const next = new Set(prev); next.delete(radarKey); return next; });
+        };
+
+        // Manda pro Worker processar o Chroma Key e depois injeta no mapa
+        if (radarWorkerRef.current) {
+          radarWorkerRef.current.onmessage = (msg) => {
+            if (msg.data.url) renderWebGLRadar(msg.data.url, data);
+          };
+          radarWorkerRef.current.postMessage({
+            imageUrl: data.url,
+            type: dr.type === 'cptec' ? dr.station.slug : 'argentina',
+            product: productType
+          });
+        } else {
+          renderWebGLRadar(data.url, data);
+        }
+      } catch (e) {
+        setFailedRadars(prev => new Set(prev).add(radarKey));
+      }
     });
   }, [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef, radarWorkerRef]);
 
