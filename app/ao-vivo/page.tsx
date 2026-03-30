@@ -2051,6 +2051,19 @@ export default function AoVivoPage() {
         const markFailed = () => {
           completeRequest();
           setFailedRadars((prev) => new Set(prev).add(radarKey));
+
+          if (currentGen !== overlayGenerationRef.current) return;
+          const bufferIdx = currentGen % 2;
+          const oldBufferIdx = (currentGen + 1) % 2;
+          const layerId = `layer-${radarKey}-${bufferIdx}`;
+          const oldLayerId = `layer-${radarKey}-${oldBufferIdx}`;
+          
+          if (map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, 'raster-opacity', 0);
+          }
+          if (map.getLayer(oldLayerId)) {
+            map.setPaintProperty(oldLayerId, 'raster-opacity', 0);
+          }
         };
 
         const processWithWorker = (imgUrl: string, source: string, finalTs: string, onFail: () => void) => {
