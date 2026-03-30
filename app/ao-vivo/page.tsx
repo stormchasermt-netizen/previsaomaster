@@ -104,32 +104,71 @@ function getRadarUrlsWithFallback(url: string): [string, string] {
   return [getProxiedRadarUrl(url), url];
 }
 
-/** Filtra minutos atrás para manter apenas os que têm imagem disponível (slider sem repetições, modo único). */
+/** Sonda Storage + CPTEC/Argentina (radar-exists) — sem /api/radar-frame (evita cadeia API no servidor). */
+async function probeRadarImageExists(
+  dr: DisplayRadar,
+  ts12: string,
+  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
+  slugParam: string,
+  signal?: AbortSignal
+): Promise<boolean> {
+  const st = await fetch(
+    `/api/radar-storage-fallback?radarId=${encodeURIComponent(slugParam)}&ts12=${encodeURIComponent(ts12)}&productType=${productType}`,
+    { signal, cache: 'no-store' }
+  );
+  if (st.ok) {
+    const j = await st.json().catch(() => ({}));
+    if (j?.url) return true;
+  }
+  if (dr.type === 'cptec') {
+    const url = buildNowcastingPngUrl(dr.station, ts12, productType, true);
+    const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
+    const data = await res.json().catch(() => ({}));
+    if (data.exists === true) return true;
+  } else {
+    const nominalDate = new Date(
+      Date.UTC(
+        parseInt(ts12.slice(0, 4), 10),
+        parseInt(ts12.slice(4, 6), 10) - 1,
+        parseInt(ts12.slice(6, 8), 10),
+        parseInt(ts12.slice(8, 10), 10),
+        parseInt(ts12.slice(10, 12), 10)
+      )
+    );
+    const argTs = getArgentinaRadarTimestamp(nominalDate, dr.station);
+    const url = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
+    const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
+    const data = await res.json().catch(() => ({}));
+    if (data.exists === true) return true;
+  }
+  return false;
+}
+
+/** Filtra minutos atrás usando hora de referência (ao vivo ou histórico) + Storage / CPTEC. */
 async function filterValidSliderMinutesAgo(
   dr: DisplayRadar,
   productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
   maxMinutes: number,
   radarConfigs: RadarConfig[],
+  referenceTs12: string,
   signal?: AbortSignal
 ): Promise<number[]> {
   const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
   const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
-  
-  // Usa o intervalo configurado do radar (admin/radares) ao invés de step fixo
-  const radarInterval = cfg?.updateIntervalMinutes ?? (dr.type === 'cptec' ? (dr.station.updateIntervalMinutes ?? 5) : 10);
+
+  const radarInterval = cfg?.updateIntervalMinutes ?? (dr.type === 'cptec' ? (dr.station.updateIntervalMinutes ?? 10) : 10);
   const step = Math.max(1, radarInterval);
   const candidates: number[] = [];
   for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
   if (candidates.length === 0) return [0];
 
-  /** Climatempo POA só possui latest (sem histórico) */
   if (dr.type === 'cptec' && dr.station.slug === 'climatempo-poa') {
     return [0];
   }
 
-  /** IPMET: imagens antigas estão no Storage; a mais recente (0) sempre existe no servidor. */
+  /** IPMET */
   if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
-    const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
+    const baseTs12 = referenceTs12;
     const result: number[] = [0];
 
     try {
@@ -174,7 +213,7 @@ async function filterValidSliderMinutesAgo(
 
   /** FUNCEME: busca frames reais da API ao invés de sondar URLs */
   if (dr.type === 'cptec' && dr.station.org === 'funceme') {
-    const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
+    const baseTs12 = referenceTs12;
     const dateStr = `${baseTs12.slice(0, 4)}-${baseTs12.slice(4, 6)}-${baseTs12.slice(6, 8)}`;
     try {
       const res = await fetch(`/api/funceme/frames?radar=${encodeURIComponent(dr.station.id)}&date=${dateStr}`, { cache: 'no-store', signal });
@@ -214,7 +253,7 @@ async function filterValidSliderMinutesAgo(
       const data = await res.json().catch(() => ({ frames: [] }));
       const frames: { ts12: string; datahora: string }[] = data.frames || [];
       if (frames.length === 0) return [0];
-      const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
+      const baseTs12 = referenceTs12;
       const baseY = parseInt(baseTs12.slice(0, 4), 10);
       const baseM = parseInt(baseTs12.slice(4, 6), 10) - 1;
       const baseD = parseInt(baseTs12.slice(6, 8), 10);
@@ -246,7 +285,7 @@ async function filterValidSliderMinutesAgo(
       const data = await res.json().catch(() => ({ frames: [] }));
       const frames: { ts12: string; datahora: string }[] = data.frames || [];
       if (frames.length === 0) return [0];
-      const baseTs12 = getNowMinusMinutesTimestamp12UTC(3);
+      const baseTs12 = referenceTs12;
       const baseY = parseInt(baseTs12.slice(0, 4), 10);
       const baseM = parseInt(baseTs12.slice(4, 6), 10) - 1;
       const baseD = parseInt(baseTs12.slice(6, 8), 10);
@@ -271,31 +310,21 @@ async function filterValidSliderMinutesAgo(
     }
   }
 
-  const BATCH = 12;
+  const slugParam = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+  const BATCH = 6;
   const result: number[] = [];
   for (let i = 0; i < candidates.length; i += BATCH) {
     if (signal?.aborted) return candidates;
     const batch = candidates.slice(i, i + BATCH);
     const checks = await Promise.all(
       batch.map(async (minutesAgo) => {
-        // Regra de busca: se não encontrar no horário padrão, procura nos próximos 10 minutos
         for (let windowOffset = 0; windowOffset < 10; windowOffset++) {
-          let url: string;
           const searchMin = minutesAgo + windowOffset;
-          if (dr.type === 'cptec') {
-            const ts12 = getNowMinusMinutesTimestamp12UTC(3 + searchMin);
-            url = buildNowcastingPngUrl(dr.station, ts12, productType);
-          } else {
-            const d = new Date(Date.now() - (3 + searchMin) * 60_000);
-            const ts = getArgentinaRadarTimestamp(d, dr.station);
-            url = buildArgentinaRadarPngUrl(dr.station, ts, productType as any);
-          }
+          const ts12 = subtractMinutesFromTimestamp12UTC(referenceTs12, searchMin);
           try {
-            const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
-            const data = await res.json().catch(() => ({}));
-            if (data.exists === true) return true;
+            if (await probeRadarImageExists(dr, ts12, productType, slugParam, signal)) return true;
           } catch {
-            // continua para o próximo minuto da janela
+            /* próximo offset */
           }
           if (signal?.aborted) break;
         }
@@ -459,15 +488,8 @@ export default function AoVivoPage() {
     fetchAllRadarViews().then(setRadarViewsRecord).catch(console.error);
   }, []);
 
-  /** Máximo de minutos atrás: live = meia-noite até agora */
-  const maxSliderMinutesAgo = useMemo(() => {
-    // Se estiver usando a busca por data/hora passada (calendário), permite 24h
-    if (historicalTimestampOverride) {
-      return 1440; 
-    }
-    // No modo AO VIVO (Mosaico ou Individual), trava em no MÁXIMO 60 minutos (1 hora)
-    return 60; 
-  }, [historicalTimestampOverride]);
+  /** Máximo de minutos atrás: travado em 60 min (1 h) — mosaico, individual e histórico */
+  const maxSliderMinutesAgo = useMemo(() => 60, [historicalTimestampOverride]);
 
   // Controle de Animação
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1413,7 +1435,7 @@ export default function AoVivoPage() {
       return;
     }
     const dr = displayRadars[0];
-    const maxMin = Math.min(maxSliderMinutesAgo, 120);
+    const maxMin = Math.min(maxSliderMinutesAgo, 60);
     if (maxMin <= 0) {
       setValidSliderMinutesAgo([0]);
       setSliderValidVerifying(false);
@@ -1423,7 +1445,8 @@ export default function AoVivoPage() {
     const ac = new AbortController();
     (async () => {
       const productForTimeline = splitCount === 2 ? 'velocidade' : radarProductType;
-      const valid = await filterValidSliderMinutesAgo(dr, productForTimeline, maxMin, radarConfigs, ac.signal);
+      const baseTs12 = historicalTimestampOverride || getNowMinusMinutesTimestamp12UTC(3);
+      const valid = await filterValidSliderMinutesAgo(dr, productForTimeline, maxMin, radarConfigs, baseTs12, ac.signal);
       if (!ac.signal.aborted) {
         setValidSliderMinutesAgo(valid);
         setSliderMinutesAgo((prev) => {
@@ -1435,7 +1458,7 @@ export default function AoVivoPage() {
       }
     })();
     return () => ac.abort();
-  }, [radarMode, focusedRadarKey, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs, splitCount]);
+  }, [radarMode, focusedRadarKey, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs, splitCount, historicalTimestampOverride]);
 
   /** Setas do teclado: controlam o slider de tempo do radar (evita mover o mapa). Captura no capture phase para ter prioridade sobre o mapa. */
   useEffect(() => {
@@ -1516,7 +1539,7 @@ export default function AoVivoPage() {
           body: JSON.stringify({
             roomName,
             participantName: user?.displayName || 'Visualizador',
-            participantIdentity: `viewer-${user?.uid ?? Date.now()}`,
+            participantIdentity: user?.uid ? `viewer-${user.uid}` : `viewer-${Date.now()}`,
           }),
         });
         if (!tokenRes.ok) {
@@ -1952,8 +1975,11 @@ export default function AoVivoPage() {
 
         const renderWebGLRadar = (imageUrl: string, source: string, finalTs: string) => {
           if (currentGen !== overlayGenerationRef.current) return;
-          const sourceId = `source-${radarKey}`;
-          const layerId = `layer-${radarKey}`;
+          const bufferIdx = currentGen % 2;
+          const oldBufferIdx = (currentGen + 1) % 2;
+          const sourceId = `source-${radarKey}-${bufferIdx}`;
+          const layerId = `layer-${radarKey}-${bufferIdx}`;
+          const oldLayerId = `layer-${radarKey}-${oldBufferIdx}`;
 
           const bounds = getBoundsForDisplayRadar(dr, source as any);
           const coordinates: [[number, number], [number, number], [number, number], [number, number]] = [
@@ -1968,13 +1994,24 @@ export default function AoVivoPage() {
             existingSource.updateImage({ url: imageUrl, coordinates });
           } else {
             map.addSource(sourceId, { type: 'image', url: imageUrl, coordinates });
+          }
+          if (!map.getLayer(layerId)) {
             map.addLayer({
               id: layerId,
               type: 'raster',
               source: sourceId,
-              paint: { 'raster-opacity': opacity, 'raster-fade-duration': 350 },
+              paint: { 'raster-opacity': 0, 'raster-fade-duration': 350 },
             });
           }
+
+          requestAnimationFrame(() => {
+            if (map.getLayer(layerId)) {
+              map.setPaintProperty(layerId, 'raster-opacity', opacity);
+            }
+            if (map.getLayer(oldLayerId)) {
+              map.setPaintProperty(oldLayerId, 'raster-opacity', 0);
+            }
+          });
 
           setRadarEffectiveTimestamps((prev) => ({ ...prev, [radarKey]: finalTs }));
           setRadarEffectiveSource((prev) => ({ ...prev, [radarKey]: source as any }));
@@ -3459,7 +3496,7 @@ export default function AoVivoPage() {
                   {historicalTimestampOverride
                     ? `-${sliderMinutesAgo >= 60 ? `${Math.floor(sliderMinutesAgo / 60)}h${sliderMinutesAgo % 60 ? String(sliderMinutesAgo % 60).padStart(2, '0') : ''}` : `${sliderMinutesAgo}m`}`
                     : sliderMinutesAgo >= maxSliderMinutesAgo
-                      ? (maxSliderMinutesAgo >= 1440 ? '-24h' : '00:00')
+                      ? '-1h'
                       : sliderMinutesAgo >= 60 ? `-${Math.floor(sliderMinutesAgo / 60)}h` : `-${sliderMinutesAgo}m`}
                 </span>
                 <div className="flex-1 flex flex-col gap-0 relative group/slider">
@@ -3506,7 +3543,7 @@ export default function AoVivoPage() {
                     }}
                     disabled={sliderValidVerifying}
                     className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 sm:[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-3 sm:[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-3 sm:[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
-                    title={sliderMinutesAgo === 0 ? 'Ao vivo' : sliderMinutesAgo >= maxSliderMinutesAgo ? (maxSliderMinutesAgo >= 1440 ? '24h atrás' : 'Meia-noite') : `${sliderMinutesAgo} min atrás`}
+                    title={sliderMinutesAgo === 0 ? 'Ao vivo' : sliderMinutesAgo >= maxSliderMinutesAgo ? '1 h atrás' : `${sliderMinutesAgo} min atrás`}
                   />
                   )}
                   <div className="text-center leading-none mt-1">
@@ -3826,7 +3863,7 @@ export default function AoVivoPage() {
                 body: JSON.stringify({
                   roomName,
                   participantName: user?.displayName || 'Transmissor',
-                  participantIdentity: user?.uid,
+                  participantIdentity: user?.uid ?? `anon-${Date.now()}`,
                 }),
               });
               if (!tokenRes.ok) {

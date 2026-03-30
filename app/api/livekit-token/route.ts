@@ -2,20 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AccessToken } from 'livekit-server-sdk';
 
 /**
- * Gera token de acesso LiveKit para transmissão ou visualização.
+ * Gera token JWT LiveKit para transmissão ou visualização.
  * POST /api/livekit-token
- * Body: { roomName: string, participantName: string, participantIdentity?: string }
- * O participantIdentity pode ser o uid do Firebase para consistência.
+ * Body: { roomName, participantName, participantIdentity? }
  */
 export async function POST(req: NextRequest) {
-  const url = process.env.LIVEKIT_URL;
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const wsUrl = process.env.LIVEKIT_URL?.trim();
+  const apiKey = process.env.LIVEKIT_API_KEY?.trim();
+  const apiSecret = process.env.LIVEKIT_API_SECRET?.trim();
 
-  if (!url || !apiKey || !apiSecret) {
+  if (!wsUrl || !apiKey || !apiSecret) {
+    console.error('[livekit-token] LIVEKIT_URL, LIVEKIT_API_KEY ou LIVEKIT_API_SECRET ausentes');
     return NextResponse.json(
-      { error: 'LiveKit não configurado. Defina LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET em .env.local' },
-      { status: 503 }
+      { error: 'Servidor mal configurado: defina LIVEKIT_URL, LIVEKIT_API_KEY e LIVEKIT_API_SECRET em .env.local' },
+      { status: 500 }
     );
   }
 
@@ -26,12 +26,18 @@ export async function POST(req: NextRequest) {
     if (!roomName || typeof roomName !== 'string') {
       return NextResponse.json({ error: 'roomName é obrigatório' }, { status: 400 });
     }
+    if (!participantName || typeof participantName !== 'string') {
+      return NextResponse.json({ error: 'participantName é obrigatório' }, { status: 400 });
+    }
 
-    const identity = participantIdentity || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const identity =
+      typeof participantIdentity === 'string' && participantIdentity.length > 0
+        ? participantIdentity
+        : `user-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
     const at = new AccessToken(apiKey, apiSecret, {
       identity,
-      name: participantName || 'Participante',
+      name: participantName,
     });
 
     at.addGrant({
@@ -44,11 +50,11 @@ export async function POST(req: NextRequest) {
 
     const token = await at.toJwt();
 
-    return NextResponse.json({ token, url });
+    return NextResponse.json({ token, url: wsUrl });
   } catch (err) {
     console.error('[livekit-token]', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Erro ao gerar token' },
+      { error: err instanceof Error ? err.message : 'Falha ao gerar token de transmissão' },
       { status: 500 }
     );
   }
