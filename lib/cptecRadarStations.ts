@@ -100,6 +100,32 @@ export interface CptecRadarStation {
 }
 
 /**
+ * Arredonda um timestamp ts12 (YYYYMMDDHHmm) para baixo, baseando-se no intervalo do radar.
+ * Ex: 10:15 arredondado para intervalo de 10 min vira 10:10.
+ */
+export function floorTimestampToInterval(ts12: string, intervalMinutes: number): string {
+  if (!ts12 || ts12.length !== 12 || intervalMinutes <= 1) return ts12;
+
+  const y = parseInt(ts12.slice(0, 4), 10);
+  const m = parseInt(ts12.slice(4, 6), 10) - 1;
+  const d = parseInt(ts12.slice(6, 8), 10);
+  const hh = parseInt(ts12.slice(8, 10), 10);
+  const mm = parseInt(ts12.slice(10, 12), 10);
+
+  // Calcula os minutos passados desde a meia-noite
+  const totalMinutes = hh * 60 + mm;
+  
+  // Arredonda para baixo para o múltiplo do intervalo
+  const flooredTotalMinutes = Math.floor(totalMinutes / intervalMinutes) * intervalMinutes;
+  
+  const flooredHh = Math.floor(flooredTotalMinutes / 60);
+  const flooredMm = flooredTotalMinutes % 60;
+
+  return `${ts12.slice(0, 8)}${String(flooredHh).padStart(2, '0')}${String(flooredMm).padStart(2, '0')}`;
+}
+
+
+/**
  * Lista completa de radares CPTEC/Nowcasting.
  * URL: https://s{N}.cptec.inpe.br/radar/{org}/{slug}/ppi/{ppicz|ppivr}/{ano}/{mes}/{idtip}_{YYYYMMDDHHmm}.png
  */

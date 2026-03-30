@@ -191,3 +191,42 @@ export const MAP_STYLE_DARK = [
   },
 ];
 
+// Estilo Branco Minimalista (Só contornos)
+export const MAP_STYLE_WHITE = [
+  { featureType: "all", elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+  { featureType: "all", elementType: "labels.text.stroke", stylers: [{ visibility: "on" }, { color: "#ffffff" }, { weight: 2 }] },
+  { featureType: "all", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#94a3b8" }, { weight: 1.2 }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "road", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#f1f5f9" }] }
+];
+
+// Estilo Azul Meia-Noite (Ideal para contrastar com refletividade dBZ)
+export const MAP_STYLE_MIDNIGHT = [
+  { featureType: "all", elementType: "labels.text.fill", stylers: [{ color: "#8b9bb4" }] },
+  { featureType: "all", elementType: "labels.text.stroke", stylers: [{ visibility: "on" }, { color: "#0f172a" }, { weight: 2 }] },
+  { featureType: "all", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#3b82f6" }, { weight: 1.2 }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "road", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#020617" }] }
+];
+
+// Estilo Escuro Clean (Cinza/Preto sem ruas)
+export const MAP_STYLE_CLEAN_DARK = [
+  { featureType: "all", elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+  { featureType: "all", elementType: "labels.text.stroke", stylers: [{ visibility: "on" }, { color: "#1e293b" }, { weight: 2 }] },
+  { featureType: "all", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#475569" }, { weight: 1 }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#1e293b" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "road", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0f172a" }] }
+];
+
