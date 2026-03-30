@@ -51,6 +51,7 @@ import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
 import { filterRadarImageFromUrl, filterClimatempoRadarImage, filterDopplerSuperRes } from '@/lib/radarImageFilter';
 import { cacheRadarImage } from '@/lib/radarCacheClient';
+import { preloadRadarAnimationFrames, type RadarProductPreload } from '@/lib/radarAnimationPreload';
 import { Room, RoomEvent, Track } from 'livekit-client';
 import { recordVisit, subscribeToTodayVisitCount } from '@/lib/visitCounter';
 import { fetchAllRadarViews, incrementRadarViews } from '@/lib/radarViewsStore';
@@ -513,6 +514,10 @@ export default function AoVivoPage() {
 
   // Controle de Animação
   const [isPlaying, setIsPlaying] = useState(false);
+  /** Pré-carrega todas as imagens do intervalo antes de iniciar o play (cache quente, sem atraso frame a frame). */
+  const [animationPreloading, setAnimationPreloading] = useState(false);
+  const [animationPreloadProgress, setAnimationPreloadProgress] = useState(0);
+  const animationPreloadAbortRef = useRef<AbortController | null>(null);
   const [animationSpeedMultiplier, setAnimationSpeedMultiplier] = useState(1);
 
   const toggleAnimationSpeed = useCallback(() => {
@@ -1487,6 +1492,74 @@ export default function AoVivoPage() {
     })();
     return () => ac.abort();
   }, [radarMode, focusedRadarKey, displayRadars, radarProductType, maxSliderMinutesAgo, radarConfigs, splitCount, historicalTimestampOverride]);
+
+  useEffect(() => () => {
+    animationPreloadAbortRef.current?.abort();
+  }, []);
+
+  const handlePlayPauseClick = useCallback(async () => {
+    if (animationPreloading) {
+      animationPreloadAbortRef.current?.abort();
+      setAnimationPreloading(false);
+      return;
+    }
+    if (isPlaying) {
+      setIsPlaying(false);
+      return;
+    }
+    if (displayRadars.length === 0) return;
+
+    const minutesList =
+      validSliderMinutesAgo && validSliderMinutesAgo.length > 0
+        ? validSliderMinutesAgo
+        : Array.from({ length: Math.floor(maxSliderMinutesAgo / 5) + 1 }, (_, i) => i * 5);
+
+    const products: RadarProductPreload[] =
+      splitCount >= 2 ? ['reflectividade', 'velocidade', 'vil', 'waldvogel'] : [radarProductType];
+
+    const ac = new AbortController();
+    animationPreloadAbortRef.current = ac;
+    setAnimationPreloading(true);
+    setAnimationPreloadProgress(0);
+
+    try {
+      await preloadRadarAnimationFrames({
+        displayRadars,
+        minutesList,
+        products,
+        historicalTimestampOverride,
+        radarSourceMode,
+        onProgress: setAnimationPreloadProgress,
+        signal: ac.signal,
+      });
+    } catch {
+      /* abort */
+    } finally {
+      setAnimationPreloading(false);
+    }
+
+    if (ac.signal.aborted) return;
+
+    if (sliderMinutesAgo === 0) {
+      if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
+        setSliderMinutesAgo(validSliderMinutesAgo[0]);
+      } else {
+        setSliderMinutesAgo(60);
+      }
+    }
+    setIsPlaying(true);
+  }, [
+    animationPreloading,
+    isPlaying,
+    displayRadars,
+    validSliderMinutesAgo,
+    maxSliderMinutesAgo,
+    splitCount,
+    radarProductType,
+    historicalTimestampOverride,
+    radarSourceMode,
+    sliderMinutesAgo,
+  ]);
 
   /** Setas do teclado: controlam o slider de tempo do radar (evita mover o mapa). Captura no capture phase para ter prioridade sobre o mapa. */
   useEffect(() => {
@@ -3665,44 +3738,59 @@ export default function AoVivoPage() {
             </div>
 
             {/* Bloco de Botões de Controle da Animação */}
-            <div className="flex justify-center items-center gap-4 py-1">
-              <button
-                onClick={() => { setIsPlaying(false); handleSkipBack(); }}
-                title="Voltar 1 imagem"
-                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
-              >
-                <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  if (!isPlaying) {
-                    if (sliderMinutesAgo === 0) {
-                      if (validSliderMinutesAgo && validSliderMinutesAgo.length > 0) {
-                        setSliderMinutesAgo(validSliderMinutesAgo[0]);
-                      } else {
-                        setSliderMinutesAgo(60);
-                      }
-                    }
+            <div className="flex flex-col items-center gap-1.5 py-1">
+              <div className="flex justify-center items-center gap-4">
+                <button
+                  onClick={() => { setIsPlaying(false); handleSkipBack(); }}
+                  title="Voltar 1 imagem"
+                  disabled={animationPreloading}
+                  className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handlePlayPauseClick()}
+                  disabled={sliderValidVerifying}
+                  title={
+                    animationPreloading ? 'Cancelar preparação' : isPlaying ? 'Pausar' : 'Iniciar animação (pré-carrega imagens)'
                   }
-                  setIsPlaying(!isPlaying);
-                }}
-                disabled={sliderValidVerifying}
-                title={isPlaying ? "Pausar" : "Iniciar animação"}
-                className={`p-3 sm:p-4 rounded-full border-2 transition-all hover:scale-110 shadow-[0_0_15px_rgba(6,182,212,0.3)] backdrop-blur-md ${
-                  isPlaying 
-                    ? 'bg-amber-500/90 border-amber-400/80 text-black hover:bg-amber-400' 
-                    : 'bg-cyan-600 border-cyan-400 text-white hover:bg-cyan-500'
-                } ${sliderValidVerifying ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-1" />}
-              </button>
-              <button
-                onClick={() => { setIsPlaying(false); handleSkipForward(); }}
-                title="Avançar 1 imagem"
-                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
-              >
-                <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
+                  className={`p-3 sm:p-4 rounded-full border-2 transition-all hover:scale-110 shadow-[0_0_15px_rgba(6,182,212,0.3)] backdrop-blur-md ${
+                    animationPreloading
+                      ? 'bg-cyan-800/90 border-cyan-500/80 text-white hover:bg-cyan-700'
+                      : isPlaying
+                        ? 'bg-amber-500/90 border-amber-400/80 text-black hover:bg-amber-400'
+                        : 'bg-cyan-600 border-cyan-400 text-white hover:bg-cyan-500'
+                  } ${sliderValidVerifying ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {animationPreloading ? (
+                    <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
+                  ) : (
+                    <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-1" />
+                  )}
+                </button>
+                <button
+                  onClick={() => { setIsPlaying(false); handleSkipForward(); }}
+                  title="Avançar 1 imagem"
+                  disabled={animationPreloading}
+                  className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              </div>
+              {animationPreloading && (
+                <div className="w-full max-w-[220px] mx-auto px-2">
+                  <div className="h-1 rounded-full bg-slate-700/80 overflow-hidden">
+                    <div
+                      className="h-full bg-cyan-400 transition-[width] duration-150 ease-out"
+                      style={{ width: `${Math.round(animationPreloadProgress * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-center text-slate-400 mt-1">Preparando imagens da animação…</p>
+                </div>
+              )}
             </div>
           </div>
           </div>{/* fecha div pointer-events-none */}
