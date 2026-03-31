@@ -22,22 +22,35 @@ const VARIABLE_LABELS: Record<string, string> = {
   Thetae_2m: 'Theta-e (2m)'
 };
 
-function formatRunName(run: string) {
+function formatRunDateTime(run: string) {
   const match = run.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
   if (match) {
     const [, y, m, d, H, M] = match;
-    return `${d}/${m}/${y} ${H}:${M}Z`;
+    return `${d}/${m}/${y} ${H}:${M} UTC`;
   }
   return run;
 }
 
-function formatFileNameToHour(name: string) {
-  const match = name.match(/_(\d{2})(\d{2})(\d{2})\./);
+function formatValidDateTime(name: string) {
+  const match = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\./);
   if (match) {
-    const [, H, M] = match;
-    return `${H}:${M}Z`;
+    const [, y, m, d, H, M] = match;
+    return `${d}/${m}/${y} ${H}:${M} UTC`;
   }
   return name.replace(/\.\w+$/, '');
+}
+
+function getForecastHour(run: string, name: string, idx: number) {
+  const matchRun = run.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+  const matchName = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\./);
+  
+  if (matchRun && matchName) {
+    const d1 = Date.UTC(+matchRun[1], +matchRun[2] - 1, +matchRun[3], +matchRun[4], +matchRun[5]);
+    const d2 = Date.UTC(+matchName[1], +matchName[2] - 1, +matchName[3], +matchName[4], +matchName[5]);
+    const diffHrs = Math.round((d2 - d1) / 3600000);
+    return diffHrs;
+  }
+  return idx;
 }
 
 export default function NumericModelPage() {
@@ -179,7 +192,7 @@ export default function NumericModelPage() {
               disabled={isLoading || runs.length === 0}
             >
               {runs.map(run => (
-                <option key={run} value={run}>{formatRunName(run)}</option>
+                <option key={run} value={run}>{formatRunDateTime(run)}</option>
               ))}
               {runs.length === 0 && <option>Carregando...</option>}
             </select>
@@ -251,8 +264,53 @@ export default function NumericModelPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-neutral-600 border-t-blue-500"></div>
             </div>
           )}
+
+          {/* TOP SPC-STYLE TIMELINE */}
+          {images.length > 0 && (
+            <div className="w-full flex bg-neutral-900 border-b border-neutral-800 text-[10px] sm:text-xs font-mono select-none overflow-x-auto custom-scrollbar shrink-0">
+              <div className="flex items-center px-2 py-1.5 text-neutral-500 font-bold border-r border-neutral-800 shrink-0">
+                F+
+              </div>
+              {images.map((img, idx) => {
+                const fHour = getForecastHour(selectedRun, img.name, idx);
+                return (
+                  <div
+                    key={idx}
+                    className={`flex-1 min-w-[28px] text-center py-1.5 cursor-crosshair border-r border-neutral-800 last:border-0 hover:bg-neutral-700 hover:text-white transition-colors ${
+                      idx === currentIndex ? 'bg-blue-600 text-white font-bold hover:bg-blue-500' : 'text-neutral-400'
+                    }`}
+                    onMouseEnter={() => {
+                      if (currentIndex !== idx) {
+                        setCurrentIndex(idx);
+                        setIsPlaying(false);
+                      }
+                    }}
+                    onClick={() => {
+                      setCurrentIndex(idx);
+                      setIsPlaying(false);
+                    }}
+                  >
+                    {String(fHour).padStart(2, '0')}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           
           <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4 bg-neutral-900/50">
+            {images.length > 0 && (
+              <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-1 font-mono text-sm sm:text-base bg-black/60 backdrop-blur-md text-white p-3 rounded-md shadow-lg border border-neutral-700 pointer-events-none">
+                <div className="flex gap-2">
+                  <span className="text-neutral-400 font-medium">Rodada:</span> 
+                  <span className="font-bold">{formatRunDateTime(selectedRun)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-neutral-400 font-medium">Validade:</span> 
+                  <span className="font-bold text-blue-400">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
+                </div>
+              </div>
+            )}
+
             {images.length > 0 ? (
               images.map((img, idx) => (
                 <img 
@@ -293,53 +351,7 @@ export default function NumericModelPage() {
                 </button>
               </div>
 
-              <div className="flex-1 flex flex-col justify-center px-4 relative">
-                {/* Custom Hover Slider */}
-                  <div 
-                    className="w-full h-10 flex flex-col justify-center cursor-crosshair group relative py-2"
-                    onMouseMove={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-                      const percentage = x / rect.width;
-                      const safeIndex = Math.min(Math.floor(percentage * images.length), images.length - 1);
-                      if (currentIndex !== safeIndex) {
-                        setCurrentIndex(safeIndex);
-                        setIsPlaying(false);
-                      }
-                    }}
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-                      const percentage = x / rect.width;
-                      const safeIndex = Math.min(Math.floor(percentage * images.length), images.length - 1);
-                      setCurrentIndex(safeIndex);
-                      setIsPlaying(false);
-                    }}
-                  >
-                  {/* Slider Track */}
-                  <div className="w-full h-2 bg-neutral-800 rounded-lg overflow-hidden relative ring-1 ring-inset ring-neutral-700/50">
-                    <div 
-                      className="absolute top-0 left-0 h-full bg-blue-500/80 transition-all duration-75 ease-out rounded-lg"
-                      style={{ width: `${(currentIndex / Math.max(1, images.length - 1)) * 100}%` }}
-                    />
-                  </div>
-                  
-                  {/* Ticks (optional visual aid) */}
-                  <div className="absolute top-1/2 left-0 w-full h-full pointer-events-none flex justify-between px-1 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                     {images.map((_, i) => (
-                       <div key={i} className="w-[1px] h-3 bg-white/20" />
-                     ))}
-                  </div>
-                </div>
-
-                <div className="flex justify-between text-xs text-neutral-500 mt-1 font-medium pointer-events-none px-1">
-                  <span>{formatFileNameToHour(images[0]?.name || '')}</span>
-                  <span className="text-blue-400 font-bold px-3 py-0.5 bg-blue-500/10 rounded-full border border-blue-500/20">
-                    {formatFileNameToHour(images[currentIndex]?.name || '')}
-                  </span>
-                  <span>{formatFileNameToHour(images[images.length - 1]?.name || '')}</span>
-                </div>
-              </div>
+              <div className="flex-1"></div>
 
               <div className="flex items-center gap-3">
                 <span className="text-xs text-neutral-400 font-medium">Velocidade:</span>
