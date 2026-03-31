@@ -189,20 +189,55 @@ export async function collectRadarPreloadUrls(
     return urls.map(proxied);
   }
 
-  if (dr.type === 'cptec' && dr.station.org === 'funceme') {
-    if (!isPast) {
-      const funcemeId = (dr.station as CptecRadarStation).funcemeId || dr.station.id;
+  // Se o modo for HD, tenta o fallback diretamente (Sipam, Funceme, Redemet)
+  if (radarSourceMode === 'hd' && dr.type === 'cptec') {
+    const st = dr.station as CptecRadarStation;
+    
+    if (st.org === 'funceme' && !isPast) {
+      const funcemeId = st.funcemeId || st.id;
       pushIf(`/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`);
+    } else if (st.sipamSlug && !isPast) {
+      const ns = getNearestRadarTimestamp(nominalTs12, st);
+      const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
+      pushIf(buildSipamHdPngUrl(st.sipamSlug, ns, sipProd));
     }
+    
+    const wantRedemet = radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
+    const area = wantRedemet ? getRedemetArea(st.slug) : null;
+    if (area) {
+      const tsRed = getNearestRadarTimestamp(nominalTs12, st);
+      try {
+        const res = await fetch(
+          `/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`,
+          { signal }
+        );
+        const data = await res.json().catch(() => null);
+        if (data?.url) pushIf(data.url);
+      } catch {
+        /* ignore */
+      }
+    }
+    
     return urls.map(proxied);
   }
 
-  if (dr.type === 'cptec' && radarSourceMode === 'hd' && dr.station.sipamSlug) {
-    if (!isPast) {
-      const ns = getNearestRadarTimestamp(nominalTs12, dr.station);
-      const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
-      pushIf(buildSipamHdPngUrl(dr.station.sipamSlug, ns, sipProd));
-      const st = dr.station;
+  // Modo Super Res (Nowcasting)
+  if (!(isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam')) {
+    pushIf(buildNowcastingPngUrl(dr.station, exactTs12, productType, true));
+    
+    if (dr.type === 'cptec') {
+      const st = dr.station as CptecRadarStation;
+      
+      // Fallbacks em Super Res se Nowcasting falhar
+      if (st.org === 'funceme' && !isPast) {
+        const funcemeId = st.funcemeId || st.id;
+        pushIf(`/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`);
+      } else if (st.sipamSlug && !isPast) {
+        const ns = getNearestRadarTimestamp(nominalTs12, st);
+        const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
+        pushIf(buildSipamHdPngUrl(st.sipamSlug, ns, sipProd));
+      }
+
       const wantRedemet = hasRedemetFallback(st.slug) && productType === 'reflectividade';
       const area = wantRedemet ? getRedemetArea(st.slug) : null;
       if (area) {
@@ -219,58 +254,8 @@ export async function collectRadarPreloadUrls(
         }
       }
     }
-    return urls.map(proxied);
   }
 
-  if (radarSourceMode !== 'hd') {
-    if (!(isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam')) {
-      pushIf(buildNowcastingPngUrl(dr.station, exactTs12, productType, true));
-      if (dr.type === 'cptec') {
-        const st = dr.station as CptecRadarStation;
-        if (st.org === 'funceme' && !isPast) {
-          const funcemeId = st.funcemeId || st.id;
-          pushIf(`/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`);
-        }
-        const wantRedemet = hasRedemetFallback(st.slug) && productType === 'reflectividade';
-        const area = wantRedemet ? getRedemetArea(st.slug) : null;
-        if (area) {
-          const tsRed = getNearestRadarTimestamp(nominalTs12, st);
-          try {
-            const res = await fetch(
-              `/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`,
-              { signal }
-            );
-            const data = await res.json().catch(() => null);
-            if (data?.url) pushIf(data.url);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-    }
-    return urls.map(proxied);
-  }
-
-  if (dr.type === 'cptec') {
-    if (!(isPast && (dr.station as CptecRadarStation).org === 'sipam')) {
-      const st = dr.station as CptecRadarStation;
-      const wantRedemet = radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
-      const area = wantRedemet ? getRedemetArea(st.slug) : null;
-      if (area) {
-        const tsRed = getNearestRadarTimestamp(nominalTs12, st);
-        try {
-          const res = await fetch(
-            `/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`,
-            { signal }
-          );
-          const data = await res.json().catch(() => null);
-          if (data?.url) pushIf(data.url);
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-  }
   return urls.map(proxied);
 }
 

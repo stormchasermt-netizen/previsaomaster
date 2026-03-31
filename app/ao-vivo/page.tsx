@@ -2298,19 +2298,49 @@ export default function AoVivoPage() {
           }
         };
 
-        /** Redemet só como fallback após Storage já tentado (não volta ao Storage). */
-        const tryRedemetAfterStorage = async () => {
+        /** Redemet/Funceme/Sipam como HD / Fallback após Storage */
+        const tryHDFallbackAfterStorage = async () => {
           if (dr.type !== 'cptec') {
             markFailed();
             return;
           }
           const st = dr.station as CptecRadarStation;
-          const wantRedemet =
-            radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
-          if (!wantRedemet) {
+          const wantHD = radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
+          if (!wantHD) {
             markFailed();
             return;
           }
+
+          // Funceme in HD mode
+          if (st.org === 'funceme') {
+            if (isPast) {
+              markFailed();
+              return;
+            }
+            const funcemeId = st.funcemeId || st.id;
+            processWithWorker(
+              `/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`,
+              'funceme',
+              exactTs12,
+              markFailed
+            );
+            return;
+          }
+
+          // Sipam in HD mode
+          if (st.sipamSlug && radarSourceMode === 'hd') {
+            const ns = getNearestRadarTimestamp(timestamp, st);
+            const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
+            const sipUrl = buildSipamHdPngUrl(st.sipamSlug, ns, sipProd);
+            if (isPast) {
+              markFailed();
+              return;
+            }
+            processWithWorker(sipUrl, 'cptec', ns, markFailed);
+            return;
+          }
+
+          // Redemet fallback
           const area = getRedemetArea(st.slug);
           if (!area) {
             markFailed();
@@ -2350,7 +2380,7 @@ export default function AoVivoPage() {
             const argUrl = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
             void tryStorageThen(() => processWithWorker(argUrl, 'argentina', argTs, markFailed));
           } else if (dr.type === 'cptec' && getRedemetArea(slug)) {
-            void tryStorageThen(() => void tryRedemetAfterStorage());
+            void tryStorageThen(() => void tryHDFallbackAfterStorage());
           } else {
             void tryStorageThen(() => markFailed());
           }
@@ -2364,6 +2394,12 @@ export default function AoVivoPage() {
           return;
         }
 
+        // Se o modo for HD, tenta o fallback diretamente (Sipam, Funceme, Redemet)
+        if (radarSourceMode === 'hd') {
+          void tryStorageThen(() => void tryHDFallbackAfterStorage());
+          return;
+        }
+
         if (dr.station.slug === 'chapeco') {
           const radarId = productType === 'velocidade' ? dr.station.velocityId || dr.station.id : dr.station.id;
           void tryStorageThen(() =>
@@ -2371,75 +2407,21 @@ export default function AoVivoPage() {
               `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${exactTs12}`,
               'cptec',
               exactTs12,
-              () => void tryRedemetAfterStorage()
+              () => void tryHDFallbackAfterStorage()
             )
           );
           return;
         }
 
-        if (dr.station.org === 'funceme') {
-          void tryStorageThen(() => {
-            if (isPast) {
-              markFailed();
-              return;
-            }
-            const funcemeId = (dr.station as CptecRadarStation).funcemeId || dr.station.id;
-            processWithWorker(
-              `/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`,
-              'funceme',
-              exactTs12,
-              markFailed
-            );
-          });
-          return;
-        }
-
-        if (dr.type === 'cptec' && radarSourceMode === 'hd' && dr.station.sipamSlug) {
-          const ns = getNearestRadarTimestamp(timestamp, dr.station);
-          const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
-          const sipUrl = buildSipamHdPngUrl(dr.station.sipamSlug, ns, sipProd);
-          void tryStorageThen(() => {
-            if (isPast) {
-              markFailed();
-              return;
-            }
-            processWithWorker(sipUrl, 'cptec', ns, () => void tryRedemetAfterStorage());
-          });
-          return;
-        }
-
-        const tryFallbackAfterCPTEC = () => {
-          if (dr.type === 'cptec' && dr.station.org === 'funceme' && !isPast) {
-            const funcemeId = (dr.station as CptecRadarStation).funcemeId || dr.station.id;
-            processWithWorker(
-              `/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`,
-              'funceme',
-              exactTs12,
-              markFailed
-            );
+        // Modo Super Res (Nowcasting)
+        const cptecUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType as any, true);
+        void tryStorageThen(() => {
+          if (isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam') {
+            markFailed();
             return;
           }
-          void tryRedemetAfterStorage();
-        };
-
-        if (radarSourceMode !== 'hd') {
-          const cptecUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType as any, true);
-          void tryStorageThen(() => {
-            if (isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam') {
-              markFailed();
-              return;
-            }
-            processWithWorker(cptecUrl, 'cptec', exactTs12, tryFallbackAfterCPTEC);
-          });
-        } else {
-          void tryStorageThen(() => {
-            if (isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam') {
-              markFailed();
-              return;
-            }
-            void tryRedemetAfterStorage();
-          });
-        }
+          processWithWorker(cptecUrl, 'cptec', exactTs12, () => void tryHDFallbackAfterStorage());
+        });
       });
     },
     [radarSourceMode, getBoundsForDisplayRadar, overlayGenerationRef]
