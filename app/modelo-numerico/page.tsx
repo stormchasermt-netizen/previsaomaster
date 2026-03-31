@@ -514,7 +514,7 @@ export default function NumericModelPage() {
             )}
 
             {/* Hover tooltip for Lat/Lon */}
-            {hoverPos && !isSoundingLoading && (
+            {hoverPos && !isSoundingLoading && !soundingImageUrl && (
               <div 
                 className="absolute pointer-events-none bg-black/80 text-white text-[10px] px-2 py-1 rounded shadow-lg z-50 transform -translate-x-1/2 -translate-y-full mt-[-10px]"
                 style={{ 
@@ -524,7 +524,7 @@ export default function NumericModelPage() {
               >
                 <div>Lat: {hoverPos.lat.toFixed(4)}</div>
                 <div>Lon: {hoverPos.lon.toFixed(4)}</div>
-                <div className="text-blue-300 font-bold">Clique para sondagem</div>
+                <div className="text-blue-300 font-bold mt-1">Clique para sondagem</div>
               </div>
             )}
 
