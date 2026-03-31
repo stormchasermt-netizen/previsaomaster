@@ -4,22 +4,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
-  'Precipitação / Radar': ['hrt01km', 'hrt03km', 'mdbz'],
-  'Convecção / Severo': ['mucape', 'mlcape', 'mllr', 'sblcl'],
-  'Superfície / Termodinâmica': ['T2m', 'Td_2m', 'Thetae_2m']
+  'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl'],
+  'Atributos da Tempestade': ['mdbz'],
+  'Sinótico': ['T2m', 'Td_2m', 'Thetae_2m']
 };
 
 const VARIABLE_LABELS: Record<string, string> = {
-  hrt01km: 'Refletividade Simulada (1km)',
-  hrt03km: 'Refletividade Simulada (3km)',
-  mdbz: 'Refletividade Máxima (Max dBZ)',
-  mlcape: 'Mixed Layer CAPE',
-  mllr: 'Mid-Level Lapse Rate',
-  mucape: 'Most Unstable CAPE',
-  sblcl: 'Surface-Based LCL',
+  hrt01km: 'Helicidade Relativa à Tempestade (Sfc - 1km)',
+  hrt03km: 'Helicidade Relativa à Tempestade (Sfc - 3km)',
+  mdbz: 'Refletividade Máxima',
+  mlcape: 'ml-CAPE',
+  mllr: 'ml-Lapse-rate',
+  mucape: 'mu-CAPE',
+  sblcl: 'sb-LCL',
   T2m: 'Temperatura (2m)',
-  Td_2m: 'Ponto de Orvalho (2m)',
-  Thetae_2m: 'Temp. Potencial Equiv. (2m)'
+  Td_2m: 'Temperatura do Ponto de Orvalho',
+  Thetae_2m: 'Theta-e (2m)'
 };
 
 function formatRunName(run: string) {
