@@ -180,6 +180,17 @@ export default function NumericModelPage() {
     !Object.values(VARIABLE_CATEGORIES).flat().includes(v)
   );
 
+  // Renderiza de forma sincrona sem delay de opacity
+  // Preload approach for images to avoid flickering quando altera src ou oculta
+  useEffect(() => {
+    images.forEach(img => {
+      const i = new window.Image();
+      i.src = img.url;
+    });
+  }, [images]);
+
+  if (!isMounted) return null;
+
   return (
     <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
       {/* HEADER */}
@@ -190,38 +201,49 @@ export default function NumericModelPage() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 font-bold">Data:</span>
               <select 
-                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium"
-                value={selectedRun}
-                onChange={e => setSelectedRun(e.target.value)}
+                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium cursor-pointer"
+                value={selectedRun ? selectedRun.substring(0, 8) : ''}
+                onChange={e => {
+                  const newDate = e.target.value;
+                  const firstRunOfDate = runs.find(r => r.startsWith(newDate));
+                  if (firstRunOfDate) setSelectedRun(firstRunOfDate);
+                }}
                 disabled={isLoading || runs.length === 0}
               >
-                {runs.map(run => (
-                  <option key={run} value={run}>{formatRunDateTime(run).split(' ')[0]}</option>
+                {Array.from(new Set(runs.map(run => run.substring(0, 8)))).map(dateStr => (
+                  <option key={dateStr} value={dateStr}>
+                    {`${dateStr.substring(6, 8)}/${dateStr.substring(4, 6)}/${dateStr.substring(0, 4)}`}
+                  </option>
                 ))}
-                {runs.length === 0 && <option>Carregando...</option>}
+                {runs.length === 0 && <option value="">Carregando...</option>}
               </select>
             </div>
             
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 font-bold">Rodada:</span>
               <select 
-                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium"
+                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium cursor-pointer"
                 value={selectedRun}
                 onChange={e => setSelectedRun(e.target.value)}
                 disabled={isLoading || runs.length === 0}
               >
-                {runs.map(run => (
-                  <option key={run} value={run}>{formatRunDateTime(run).split(' ').slice(1).join(' ')}</option>
+                {runs
+                  .filter(run => selectedRun && run.startsWith(selectedRun.substring(0, 8)))
+                  .map(run => (
+                  <option key={run} value={run}>
+                    {`${run.substring(9, 11)}:${run.substring(11, 13)} UTC`}
+                  </option>
                 ))}
-                {runs.length === 0 && <option>Carregando...</option>}
+                {runs.length === 0 && <option value="">Carregando...</option>}
               </select>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 font-bold">Domínio:</span>
               <select 
-                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium"
+                className="bg-gray-100 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none font-medium cursor-not-allowed text-gray-500"
                 defaultValue="Centro-Sul"
+                disabled
               >
                 <option value="Centro-Sul">Centro-Sul</option>
               </select>
@@ -236,9 +258,9 @@ export default function NumericModelPage() {
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* SIDEBAR */}
-        <aside className="w-72 bg-neutral-950 border-r border-neutral-800 flex flex-col overflow-y-auto custom-scrollbar shrink-0">
+        <aside className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto custom-scrollbar shrink-0">
           <div className="p-4">
-            <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-4">Variáveis (Produtos)</h2>
+            <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Variáveis (Produtos)</h2>
             
             <div className="space-y-6">
               {Object.entries(VARIABLE_CATEGORIES).map(([category, vars]) => {
@@ -247,7 +269,7 @@ export default function NumericModelPage() {
                 
                 return (
                   <div key={category}>
-                    <h3 className="text-sm font-semibold text-neutral-300 mb-2">{category}</h3>
+                    <h3 className="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200 pb-1">{category}</h3>
                     <div className="flex flex-col gap-1">
                       {activeVars.map(v => (
                         <button
@@ -255,8 +277,8 @@ export default function NumericModelPage() {
                           onClick={() => setSelectedVariable(v)}
                           className={`text-left px-3 py-2 rounded-md text-sm transition-all ${
                             selectedVariable === v 
-                              ? 'bg-blue-600 text-white font-medium shadow-sm' 
-                              : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
+                              ? 'bg-blue-800 text-white font-medium shadow-sm' 
+                              : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900 font-medium'
                           }`}
                         >
                           {VARIABLE_LABELS[v] || v}
@@ -269,7 +291,7 @@ export default function NumericModelPage() {
 
               {uncategorizedVariables.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-neutral-300 mb-2">Outros</h3>
+                  <h3 className="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200 pb-1">Outros</h3>
                   <div className="flex flex-col gap-1">
                     {uncategorizedVariables.map(v => (
                       <button
@@ -277,8 +299,8 @@ export default function NumericModelPage() {
                         onClick={() => setSelectedVariable(v)}
                         className={`text-left px-3 py-2 rounded-md text-sm transition-all ${
                           selectedVariable === v 
-                            ? 'bg-blue-600 text-white font-medium' 
-                            : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
+                            ? 'bg-blue-800 text-white font-medium shadow-sm' 
+                            : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900 font-medium'
                         }`}
                       >
                         {v}
@@ -292,17 +314,17 @@ export default function NumericModelPage() {
         </aside>
 
         {/* MAIN VIEWER */}
-        <main className="flex-1 bg-black relative flex flex-col">
+        <main className="flex-1 bg-white relative flex flex-col">
           {isLoading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-neutral-600 border-t-blue-500"></div>
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-400 border-t-blue-800"></div>
             </div>
           )}
 
           {/* TOP SPC-STYLE TIMELINE */}
           {images.length > 0 && (
-            <div className="w-full flex bg-neutral-900 border-b border-neutral-800 text-[10px] sm:text-xs font-mono select-none overflow-x-auto custom-scrollbar shrink-0">
-              <div className="flex items-center px-2 py-1.5 text-neutral-500 font-bold border-r border-neutral-800 shrink-0">
+            <div className="w-full flex bg-gray-100 border-b border-gray-300 text-[10px] sm:text-xs font-mono select-none overflow-x-auto custom-scrollbar shrink-0 shadow-sm z-20">
+              <div className="flex items-center px-2 py-1.5 text-gray-500 font-bold border-r border-gray-300 shrink-0 bg-gray-200">
                 F+
               </div>
               {images.map((img, idx) => {
@@ -310,8 +332,8 @@ export default function NumericModelPage() {
                 return (
                   <div
                     key={idx}
-                    className={`flex-1 min-w-[28px] text-center py-1.5 cursor-crosshair border-r border-neutral-800 last:border-0 hover:bg-neutral-700 hover:text-white transition-colors ${
-                      idx === currentIndex ? 'bg-blue-600 text-white font-bold hover:bg-blue-500' : 'text-neutral-400'
+                    className={`flex-1 min-w-[28px] text-center py-1.5 cursor-crosshair border-r border-gray-300 last:border-0 hover:bg-blue-100 hover:text-blue-900 transition-colors ${
+                      idx === currentIndex ? 'bg-blue-800 text-white font-bold hover:bg-blue-700' : 'text-gray-600 font-medium'
                     }`}
                     onMouseEnter={() => {
                       if (currentIndex !== idx) {
@@ -331,16 +353,16 @@ export default function NumericModelPage() {
             </div>
           )}
           
-          <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4 bg-neutral-900/50">
+          <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-white p-2">
             {images.length > 0 && (
-              <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-1 font-mono text-sm sm:text-base bg-black/60 backdrop-blur-md text-white p-3 rounded-md shadow-lg border border-neutral-700 pointer-events-none">
-                <div className="flex gap-2">
-                  <span className="text-neutral-400 font-medium">Rodada:</span> 
-                  <span className="font-bold">{formatRunDateTime(selectedRun)}</span>
+              <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-0.5 font-mono text-sm sm:text-base text-gray-800 pointer-events-none">
+                <div className="flex gap-2 items-baseline">
+                  <span className="text-gray-500 font-bold text-xs uppercase tracking-wide">Run:</span> 
+                  <span className="font-bold text-sm bg-gray-100 px-2 border border-gray-200 rounded">{formatRunDateTime(selectedRun)}</span>
                 </div>
-                <div className="flex gap-2">
-                  <span className="text-neutral-400 font-medium">Validade:</span> 
-                  <span className="font-bold text-blue-400">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
+                <div className="flex gap-2 items-baseline mt-1">
+                  <span className="text-gray-500 font-bold text-xs uppercase tracking-wide">Valid:</span> 
+                  <span className="font-bold text-sm bg-blue-50 text-blue-900 px-2 border border-blue-200 rounded">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
                 </div>
               </div>
             )}
@@ -348,26 +370,24 @@ export default function NumericModelPage() {
             {images.length > 0 ? (
               images.map((img, idx) => {
                 const isCurrent = idx === currentIndex;
-                const isPrev = idx === prevIndexRef.current && !isCurrent;
+                
+                // NO SPC, a troca é SECA E DIRETA (flicker free porque o browser cacheia e renderiza na hora)
+                // Não usamos transition-opacity para drag/hover, pois isso causa o "fade preto" indesejado em trocas rápidas.
                 
                 return (
                   <img 
                     key={img.url}
                     src={img.url} 
                     alt={`Forecast frame ${idx}`}
-                    className={`absolute max-w-full max-h-full object-contain will-change-opacity pointer-events-none transition-opacity ${
-                      isCurrent 
-                        ? (isPlaying && playSpeed <= 100 ? 'opacity-100 z-10 duration-0 ease-linear' : 'opacity-100 z-10 duration-150 ease-in')
-                        : isPrev 
-                          ? 'opacity-100 z-0 duration-300 ease-out' 
-                          : 'opacity-0 z-0 duration-0 ease-linear'
+                    className={`absolute max-w-full max-h-full object-contain pointer-events-none ${
+                      isCurrent ? 'block z-10' : 'hidden z-0'
                     }`}
                   />
                 );
               })
             ) : (
               !isLoading && (
-                <div className="text-neutral-500 flex flex-col items-center">
+                <div className="text-gray-400 flex flex-col items-center">
                   <div className="text-4xl mb-2">🌩️</div>
                   <p>Nenhuma imagem disponível para esta seleção.</p>
                 </div>
@@ -377,18 +397,18 @@ export default function NumericModelPage() {
 
           {/* BOTTOM PLAYBACK CONTROLS */}
           {images.length > 0 && (
-            <div className="h-16 bg-neutral-950 border-t border-neutral-800 flex items-center px-4 gap-4 shrink-0">
+            <div className="h-14 bg-gray-100 border-t border-gray-300 flex items-center px-4 gap-4 shrink-0 shadow-inner z-20">
               <div className="flex items-center gap-2">
-                <button onClick={prevFrame} className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors">
+                <button onClick={prevFrame} className="p-2 text-gray-600 hover:text-blue-800 hover:bg-gray-200 rounded-full transition-colors">
                   <SkipBack size={20} />
                 </button>
                 <button 
                   onClick={togglePlay} 
-                  className="p-3 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-colors shadow-md flex items-center justify-center"
+                  className="p-2.5 bg-blue-800 hover:bg-blue-700 text-white rounded-full transition-colors shadow flex items-center justify-center"
                 >
-                  {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}
+                  {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
                 </button>
-                <button onClick={nextFrame} className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors">
+                <button onClick={nextFrame} className="p-2 text-gray-600 hover:text-blue-800 hover:bg-gray-200 rounded-full transition-colors">
                   <SkipForward size={20} />
                 </button>
               </div>
@@ -396,9 +416,9 @@ export default function NumericModelPage() {
               <div className="flex-1"></div>
 
               <div className="flex items-center gap-3">
-                <span className="text-xs text-neutral-400 font-medium">Velocidade:</span>
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Velocidade:</span>
                 <select 
-                  className="bg-neutral-800 border border-neutral-700 text-xs rounded px-2 py-1 outline-none text-neutral-200 focus:border-blue-500"
+                  className="bg-white border border-gray-300 text-xs rounded px-2 py-1 outline-none text-gray-800 focus:border-blue-500 font-medium shadow-sm"
                   value={playSpeed}
                   onChange={e => setPlaySpeed(Number(e.target.value))}
                 >
