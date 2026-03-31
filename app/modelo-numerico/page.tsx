@@ -64,6 +64,11 @@ export default function NumericModelPage() {
   
   const [images, setImages] = useState<{name: string, url: string}[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const prevIndexRef = useRef<number>(0);
+
+  useEffect(() => {
+    prevIndexRef.current = currentIndex;
+  }, [currentIndex]);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(300); // ms per frame
@@ -312,17 +317,25 @@ export default function NumericModelPage() {
             )}
 
             {images.length > 0 ? (
-              images.map((img, idx) => (
-                <img 
-                  key={img.url} // Usar URL como key ajuda o React se as imagens mudarem
-                  src={img.url} 
-                  alt={`Forecast frame ${idx}`}
-                  className={`absolute max-w-full max-h-full object-contain transition-opacity duration-200 ease-in-out ${
-                    idx === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'
-                  }`}
-                  // Force preload in background by omitting lazy
-                />
-              ))
+              images.map((img, idx) => {
+                const isCurrent = idx === currentIndex;
+                const isPrev = idx === prevIndexRef.current && !isCurrent;
+                
+                return (
+                  <img 
+                    key={img.url}
+                    src={img.url} 
+                    alt={`Forecast frame ${idx}`}
+                    className={`absolute max-w-full max-h-full object-contain ease-in-out ${
+                      isCurrent 
+                        ? (isPlaying && playSpeed <= 100 ? 'opacity-100 z-10 duration-0' : 'opacity-100 z-10 transition-opacity duration-200')
+                        : isPrev 
+                          ? 'opacity-100 z-0' 
+                          : 'opacity-0 z-0'
+                    }`}
+                  />
+                );
+              })
             ) : (
               !isLoading && (
                 <div className="text-neutral-500 flex flex-col items-center">
