@@ -835,59 +835,114 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
     try:
         app = get_qapp()
         
-        # 1. Parse CSV para Profile do SHARPpy
-        df = pd.read_csv(io.StringIO(csv_text))
-        col_map = {
-            'Pressure': 'pres', 'pressure': 'pres', 'press': 'pres',
-            'Altitude': 'hght', 'altitude': 'hght', 'hght': 'hght', 'z': 'hght',
-            'Temperature': 'temp', 'temperature': 'temp', 'tc': 'temp',
-            'Dew_point': 'dwpt', 'dew_point': 'dwpt', 'Dewpoint': 'dwpt', 'td': 'dwpt',
-            'Wind_direction': 'wdir', 'wind_direction': 'wdir', 'wdir': 'wdir',
-            'Wind_speed': 'wspd', 'wind_speed': 'wspd', 'wspd': 'wspd',
-        }
-        df.rename(columns=col_map, inplace=True)
+        # Faz uma analise bruta se for de linhas simples, limpa o cabecalho vazio e preenche de forma forçada
+        clean_lines = []
+        for line in csv_text.split('\n'):
+            line = line.strip()
+            # Pula linha que é apenas aspas e/ou vazia
+            if line and line != '""' and line != "''":
+                # Pula cabecalho e pula colunas do pandas vazias
+                lower_line = line.lower()
+                if 'pressure' not in lower_line and 'pres' not in lower_line and 'hght' not in lower_line and 'z' not in lower_line and 'temp' not in lower_line and 'altitude' not in lower_line:
+                     if line.split(',')[0].strip(): # so garante que a primeira linha nao ta vazia tbm
+                         clean_lines.append(line)
         
-        # Certificar-se de que se alguma coluna original não estava mapeada, ela seja ignorada se não existir
-        # Se a VM enviou colunas com quebra de linha ou espaços, limpamos os nomes das colunas
-        df.columns = df.columns.str.strip()
-        df.rename(columns=col_map, inplace=True)
+        if len(clean_lines) < 2:
+            raise ValueError(f"O CSV tem {len(clean_lines)} niveis de dados disponiveis validos. SHARPpy precisa de ao menos 2 niveis. Texto raw: {csv_text[:100]}")
+            
+        # Refaz o array extraindo os indices pelo split da virgula em float, 
+        # sem usar pandas para o core pra evitar o warning do pandas de length ou string cast
+        p = []
+        h = []
+        t = []
+        td = []
+        wd = []
+        ws = []
+        for line in clean_lines:
+             parts = line.split(',')
+             if len(parts) >= 6:
+                 try:
+                     # Remove empty strings by checking if the part is not just whitespace
+                     part0 = parts[0].strip()
+                     if part0 == "": continue
+                     
+                     p_val = float(part0)
+                     h_val = float(parts[1].strip())
+                     t_val = float(parts[2].strip())
+                     td_val = float(parts[3].strip())
+                     wd_val = float(parts[4].strip())
+                     ws_val = float(parts[5].strip())
+                     
+                     p.append(p_val)
+                     h.append(h_val)
+                     t.append(t_val)
+                     td.append(td_val)
+                     wd.append(wd_val)
+                     ws.append(ws_val)
+                 except ValueError:
+                     pass # Pula linha q deu pau no cast
+                     
+        import numpy as np
+        import sharppy.sharptab as tab
         
-        # Caso a VM mande outras colunas (ex: T em vez de Temp, DWPT em vez de td)
-        # Vamos buscar flexível pelas variáveis
-        def get_col(df_obj, possible_names):
-            for name in possible_names:
-                if name in df_obj.columns:
-                    return df_obj[name]
-                # checar case-insensitive
-                for col in df_obj.columns:
-                    if col.lower() == name.lower():
-                        return df_obj[col]
-            # Se não achou por nome, levanta erro pra cair no fallback de índices numéricos
-            raise KeyError(f"Coluna não encontrada. Procurado: {possible_names}. Disponíveis: {list(df_obj.columns)}")
+        # Limpar os NaNs que podem ocorrer no cast e atrapalhar o SHARPpy
+        # Usamos list comprehension em par para remover índices onde qualquer um é nulo
+        clean_tuples = [(p_i, h_i, t_i, td_i, wd_i, ws_i) 
+                        for p_i, h_i, t_i, td_i, wd_i, ws_i in zip(p, h, t, td, wd, ws)
+                        if not any(np.isnan(x) for x in (p_i, h_i, t_i, td_i, wd_i, ws_i))]
+                        
+        p = [x[0] for x in clean_tuples]
+        h = [x[1] for x in clean_tuples]
+        t = [x[2] for x in clean_tuples]
+        td = [x[3] for x in clean_tuples]
+        wd = [x[4] for x in clean_tuples]
+        ws = [x[5] for x in clean_tuples]
         
-        # Criar objeto Profile, extraindo os vetores garantindo que o tipo numpy array / list seja convertido em lista de floats
-        try:
-            p = get_col(df, ['pres', 'Pressure', 'pressure']).astype(float).tolist()
-            h = get_col(df, ['hght', 'Altitude', 'altitude', 'z']).astype(float).tolist()
-            t = get_col(df, ['temp', 'Temperature', 'temperature', 'tc']).astype(float).tolist()
-            td = get_col(df, ['dwpt', 'Dew_point', 'dew_point', 'td']).astype(float).tolist()
-            wd = get_col(df, ['wdir', 'Wind_direction', 'wind_direction']).astype(float).tolist()
-            ws = get_col(df, ['wspd', 'Wind_speed', 'wind_speed']).astype(float).tolist()
-        except KeyError as ke:
-            # Fallback forçado caso os mapeamentos não deram match
-            # Assumir que é CSV do wrf com formato exato:
-            # "Pressure,Altitude,Temperature,Dew_point,Wind_direction,Wind_speed"
-            # O df.rename as vezes falha com espaços em branco nas keys
-            col_list = df.columns.tolist()
-            if len(col_list) >= 6:
-                p = df.iloc[:, 0].astype(float).tolist()
-                h = df.iloc[:, 1].astype(float).tolist()
-                t = df.iloc[:, 2].astype(float).tolist()
-                td = df.iloc[:, 3].astype(float).tolist()
-                wd = df.iloc[:, 4].astype(float).tolist()
-                ws = df.iloc[:, 5].astype(float).tolist()
-            else:
-                raise ke
+        if len(p) < 2:
+            raise ValueError(f"Dados limpos geraram menos de 2 níveis. p:{len(p)}")
+
+        # Garante que p seja ordenado decrescente (SHARPpy prefere profile começando do chão)
+        if len(p) > 1 and p[0] < p[-1]:
+            p = p[::-1]
+            h = h[::-1]
+            t = t[::-1]
+            td = td[::-1]
+            wd = wd[::-1]
+            ws = ws[::-1]
+            
+        print(f"VALORES ANTES SHARPPY: p={p[:2]} len={len(p)}")
+        
+        import numpy.ma as ma
+        import sharppy.sharptab.interp as interp
+        
+        # O construtor SHARPpy usa kwargs sem checar tipos mas a assertiva len() 
+        # as vezes quebra se for uma lista simples em alguns forks.
+        # Envolva em numpy array novamente (já que clean_tuples removeu os nan).
+        p_np = np.array(p, dtype=float)
+        h_np = np.array(h, dtype=float)
+        t_np = np.array(t, dtype=float)
+        td_np = np.array(td, dtype=float)
+        wd_np = np.array(wd, dtype=float)
+        ws_np = np.array(ws, dtype=float)
+        
+        # IMPORTANTE: Em BasicProfile init ele tem: assert len(self.pres) > 1 
+        # Em algumas versões do SHARPpy, se o array original vier "mascarado" de alguma forma ou
+        # se o array estiver em formato que len() retorne tipo inválido, a assertiva falha.
+        # Vamos passar listas python brutas, caso falhe tentamos mask array.
+        p_np = list(p_np)
+        h_np = list(h_np)
+        t_np = list(t_np)
+        td_np = list(td_np)
+        wd_np = list(wd_np)
+        ws_np = list(ws_np)
+        
+        # Trata array vazio ou missing height caso falte por algum motivo bizarro
+        if len(h_np) < 2:
+            h_np = [interp.hght(p_val) for p_val in p_np]
+        
+        # Evita mandar arrays vazios que crasham o construtor do profile
+        if len(p_np) < 2 or len(h_np) < 2 or len(t_np) < 2 or len(td_np) < 2:
+            raise ValueError(f"Arrays devem ter length > 1 para SHARPpy construtor. p:{len(p_np)}, h:{len(h_np)}, t:{len(t_np)}, td:{len(td_np)}")
         
         if latitude is not None:
             try:
@@ -898,12 +953,23 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
             lat = -25.0 if is_hs else 40.0
         curr_date = datetime.datetime.now()
         
-        prof = tab.profile.create_profile(
-            profile='convective',
-            pres=p, hght=h, tmpc=t, dwpc=td, wspd=ws, wdir=wd,
-            lat=lat,
-            date=curr_date
-        )
+        print(f"Creating profile with lengths -> p:{len(p_np)} h:{len(h_np)} t:{len(t_np)} td:{len(td_np)} wd:{len(wd_np)} ws:{len(ws_np)}")
+        
+        try:
+            # SHARPpy create_profile as vezes precisa de mask explicito para pres e tmpc
+            prof = tab.profile.create_profile(
+                profile='convective',
+                pres=np.ma.array(p_np), 
+                hght=np.ma.array(h_np), 
+                tmpc=np.ma.array(t_np), 
+                dwpc=np.ma.array(td_np), 
+                wspd=np.ma.array(ws_np), 
+                wdir=np.ma.array(wd_np),
+                lat=lat,
+                date=curr_date
+            )
+        except Exception as e:
+            raise ValueError(f"SHARPpy create_profile failed. Lengths: p:{len(p_np)}, h:{len(h_np)}, t:{len(t_np)}, td:{len(td_np)}. Error: {str(e)}\nTraceback: {traceback.format_exc()}")
         
         # Criar Coleção (necessário para o SPCWidget)
         # O ProfCollection espera um dict de membros e uma lista de datas
@@ -969,13 +1035,13 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
 
         profile_out = []
         try:
-            for i in range(len(df)):
-                pr = float(df['pres'].iloc[i])
-                hg = float(df['hght'].iloc[i])
-                tm = float(df['temp'].iloc[i])
-                dp = float(df['dwpt'].iloc[i])
-                wdir = float(df['wdir'].iloc[i])
-                wspd = float(df['wspd'].iloc[i])
+            for i in range(len(p)):
+                pr = float(p[i])
+                hg = float(h[i])
+                tm = float(t[i])
+                dp = float(td[i])
+                wdir = float(wd[i])
+                wspd = float(ws[i])
                 rad = math.radians(wdir)
                 u = -wspd * math.sin(rad)
                 v = -wspd * math.cos(rad)
