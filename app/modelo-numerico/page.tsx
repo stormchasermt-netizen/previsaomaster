@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, SkipBack, SkipForward, FastForward, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Precipitação / Radar': ['hrt01km', 'hrt03km', 'mdbz'],
@@ -23,7 +23,6 @@ const VARIABLE_LABELS: Record<string, string> = {
 };
 
 function formatRunName(run: string) {
-  // 20251107_000000 -> 07/11/2025 - 00:00Z
   const match = run.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
   if (match) {
     const [, y, m, d, H, M] = match;
@@ -33,7 +32,6 @@ function formatRunName(run: string) {
 }
 
 function formatFileNameToHour(name: string) {
-  // 20251107_010000.jpg -> 01:00Z
   const match = name.match(/_(\d{2})(\d{2})(\d{2})\./);
   if (match) {
     const [, H, M] = match;
@@ -43,11 +41,13 @@ function formatFileNameToHour(name: string) {
 }
 
 export default function NumericModelPage() {
+  const [isMounted, setIsMounted] = useState(false);
+
   const [runs, setRuns] = useState<string[]>([]);
   const [selectedRun, setSelectedRun] = useState<string>('');
   
   const [availableVariables, setAvailableVariables] = useState<string[]>([]);
-  const [selectedVariable, setSelectedVariable] = useState<string>('hrt01km');
+  const [selectedVariable, setSelectedVariable] = useState<string>('mllr'); // Fallback para a variavel pedida
   
   const [images, setImages] = useState<{name: string, url: string}[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
@@ -59,8 +59,16 @@ export default function NumericModelPage() {
   // Preloading state
   const preloadedImagesRef = useRef<Set<string>>(new Set());
 
+  // Mount
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Fetch Runs on mount
   useEffect(() => {
+    if (!isMounted) return;
+    
+    setIsLoading(true);
     fetch('/api/model-images?action=listRuns')
       .then(r => r.json())
       .then(data => {
@@ -71,8 +79,11 @@ export default function NumericModelPage() {
           setIsLoading(false);
         }
       })
-      .catch(console.error);
-  }, []);
+      .catch(err => {
+        console.error("Erro ao listar runs:", err);
+        setIsLoading(false);
+      });
+  }, [isMounted]);
 
   // Fetch variables when run changes
   useEffect(() => {
@@ -83,7 +94,6 @@ export default function NumericModelPage() {
       .then(data => {
         if (data.variables) {
           setAvailableVariables(data.variables);
-          // Auto-select a valid variable if the current one is not in this run
           if (!data.variables.includes(selectedVariable) && data.variables.length > 0) {
             setSelectedVariable(data.variables[0]);
           }
@@ -91,7 +101,7 @@ export default function NumericModelPage() {
       })
       .catch(console.error)
       .finally(() => setIsLoading(false));
-  }, [selectedRun]); // selectedVariable omitted intentionally to avoid loops, only run changes should trigger this
+  }, [selectedRun, selectedVariable]); 
 
   // Fetch images when run or variable changes
   useEffect(() => {
@@ -102,14 +112,22 @@ export default function NumericModelPage() {
     setIsPlaying(false);
     
     fetch(`/api/model-images?action=getImages&run=${selectedRun}&variable=${selectedVariable}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error("Erro da API: " + r.status);
+        return r.json();
+      })
       .then(data => {
         if (data.images && data.images.length > 0) {
           setImages(data.images);
           preloadImages(data.images.map((i: any) => i.url));
+        } else {
+          setImages([]);
         }
       })
-      .catch(console.error)
+      .catch(err => {
+        console.error("Erro ao buscar imagens:", err);
+        setImages([]);
+      })
       .finally(() => setIsLoading(false));
   }, [selectedRun, selectedVariable]);
 
@@ -132,6 +150,8 @@ export default function NumericModelPage() {
     }
     return () => clearInterval(interval);
   }, [isPlaying, images.length, playSpeed]);
+
+  if (!isMounted) return <div className="min-h-screen bg-neutral-900" />;
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   const nextFrame = () => { setIsPlaying(false); setCurrentIndex(prev => (prev + 1) % images.length); };
