@@ -1860,10 +1860,30 @@ export default function AoVivoPage() {
         const exactTs12 = floorTimestampToInterval(timestamp, radarInterval);
         
         const activeFrameKey = `${radarKey}-${productType}-${exactTs12}`;
+        let bestLayerId = `lyr-${activeFrameKey}`;
+
+        // Fallback: se a camada do minuto exato não existe (radar offline nesse minuto/404),
+        // busca a camada MAIS RECENTE que seja <= ao timestamp atual para não piscar/sumir
+        const exists = style.layers.some((l: any) => l.id === bestLayerId);
+        if (!exists) {
+          const prefix = `lyr-${radarKey}-${productType}-`;
+          let maxPastTs = '';
+          style.layers.forEach((layer: any) => {
+            if (layer.id.startsWith(prefix)) {
+              const layerTs = layer.id.substring(prefix.length);
+              if (layerTs <= exactTs12 && layerTs > maxPastTs) {
+                maxPastTs = layerTs;
+              }
+            }
+          });
+          if (maxPastTs !== '') {
+            bestLayerId = `${prefix}${maxPastTs}`;
+          }
+        }
 
         style.layers.forEach((layer: any) => {
           if (layer.id.startsWith(`lyr-${radarKey}-${productType}-`)) {
-            if (layer.id === `lyr-${activeFrameKey}`) {
+            if (layer.id === bestLayerId) {
               map.setPaintProperty(layer.id, 'raster-opacity', opacity);
             } else {
               map.setPaintProperty(layer.id, 'raster-opacity', 0);
