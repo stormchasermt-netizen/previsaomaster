@@ -38,15 +38,7 @@ import {
 } from '@/lib/cptecRadarStations';
 import { fetchPrevotsForecasts } from '@/lib/prevotsForecastStore';
 import { PREVOTS_LEVEL_COLORS, type PrevotsForecast } from '@/lib/prevotsForecastData';
-import {
-  ARGENTINA_RADAR_STATIONS,
-  buildArgentinaRadarPngUrl,
-  getArgentinaRadarTimestamp,
-  getArgentinaRadarBounds,
-  type ArgentinaRadarStation,
-} from '@/lib/argentinaRadarStations';
 import { fetchRadarConfigs, saveRadarConfig, type RadarConfig } from '@/lib/radarConfigStore';
-import { groupRadarsByLocation } from '@/lib/radarGrouping';
 import { hasRedemetFallback, getRedemetArea } from '@/lib/redemetRadar';
 import { getIpmetStorageUrlCandidates } from '@/lib/ipmetStorage';
 import { filterRadarImageFromUrl, filterClimatempoRadarImage, filterDopplerSuperRes } from '@/lib/radarImageFilter';
@@ -59,9 +51,25 @@ import { fetchAllRadarViews, incrementRadarViews } from '@/lib/radarViewsStore';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-type DisplayRadar = { type: 'cptec'; station: CptecRadarStation } | { type: 'argentina'; station: ArgentinaRadarStation };
+type DisplayRadar = { type: 'cptec'; station: CptecRadarStation };
 
 type BaseMapId = 'satellite' | 'streets' | 'topo' | 'toner';
+
+// Re-implementação da função groupRadarsByLocation para DisplayRadar simples
+function groupRadarsByLocation(radars: DisplayRadar[]) {
+  const groups = new Map<string, DisplayRadar[]>();
+  radars.forEach(r => {
+    // Organiza todos no Brasil por enquanto, pode ser melhorado
+    const key = `Brasil-CPTEC`; 
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  });
+  return Array.from(groups.entries()).map(([k, v]) => ({
+    country: k.split('-')[0],
+    state: k.split('-')[1],
+    radars: v
+  }));
+}
 
 const MAPTILER_KEY = 'WyOGmI7ufyBLH3G7aX9o';
 
@@ -142,36 +150,21 @@ async function probeRadarImageExists(
     const j = await st.json().catch(() => ({}));
     if (j?.url) return true;
   }
-  if (dr.type === 'cptec') {
-    if (isHistorical) {
-      const area = getRedemetArea((dr.station as CptecRadarStation).slug);
-      if (area) {
-        const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(ts12)}&historical=true`, { cache: 'no-store', signal });
-        const data = await res.json().catch(() => ({}));
-        if (data?.url) return true;
-      }
-      return false; // se é histórico e não tá no storage nem redemet, falha.
+  
+  if (isHistorical) {
+    const area = getRedemetArea(dr.station.slug);
+    if (area) {
+      const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(ts12)}&historical=true`, { cache: 'no-store', signal });
+      const data = await res.json().catch(() => ({}));
+      if (data?.url) return true;
     }
-    const url = buildNowcastingPngUrl(dr.station, ts12, productType, true);
-    const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
-    const data = await res.json().catch(() => ({}));
-    if (data.exists === true) return true;
-  } else {
-    const nominalDate = new Date(
-      Date.UTC(
-        parseInt(ts12.slice(0, 4), 10),
-        parseInt(ts12.slice(4, 6), 10) - 1,
-        parseInt(ts12.slice(6, 8), 10),
-        parseInt(ts12.slice(8, 10), 10),
-        parseInt(ts12.slice(10, 12), 10)
-      )
-    );
-    const argTs = getArgentinaRadarTimestamp(nominalDate, dr.station);
-    const url = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
-    const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
-    const data = await res.json().catch(() => ({}));
-    if (data.exists === true) return true;
+    return false; // se é histórico e não tá no storage nem redemet, falha.
   }
+  const url = buildNowcastingPngUrl(dr.station, ts12, productType, true);
+  const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
+  const data = await res.json().catch(() => ({}));
+  if (data.exists === true) return true;
+
   return false;
 }
 
@@ -185,17 +178,17 @@ async function filterValidSliderMinutesAgo(
   isHistorical: boolean,
   signal?: AbortSignal
 ): Promise<number[]> {
-  const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+  const configSlug = dr.station.slug;
   const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
 
-  const radarInterval = cfg?.updateIntervalMinutes ?? (dr.type === 'cptec' ? (dr.station.updateIntervalMinutes ?? 10) : 10);
+  const radarInterval = cfg?.updateIntervalMinutes ?? (dr.station.updateIntervalMinutes ?? 10);
   const step = Math.max(1, radarInterval);
   const candidates: number[] = [];
   for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
   if (candidates.length === 0) return [0];
 
   /** IPMET */
-  if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru' && !isHistorical) {
+  if (dr.station.slug === 'ipmet-bauru' && !isHistorical) {
     const baseTs12 = referenceTs12;
     const result: number[] = [0];
 
@@ -240,7 +233,7 @@ async function filterValidSliderMinutesAgo(
   }
 
   /** FUNCEME: busca frames reais da API ao invés de sondar URLs */
-  if (dr.type === 'cptec' && dr.station.org === 'funceme' && !isHistorical) {
+  if (dr.station.org === 'funceme' && !isHistorical) {
     const baseTs12 = referenceTs12;
     const dateStr = `${baseTs12.slice(0, 4)}-${baseTs12.slice(4, 6)}-${baseTs12.slice(6, 8)}`;
     try {
@@ -274,7 +267,7 @@ async function filterValidSliderMinutesAgo(
   }
 
   /** Chapecó (CPTEC Nowcasting): busca frames reais da API */
-  if (dr.type === 'cptec' && dr.station.slug === 'chapeco' && !isHistorical) {
+  if (dr.station.slug === 'chapeco' && !isHistorical) {
     const radarId = productType === 'velocidade' ? dr.station.velocityId : dr.station.id;
     try {
       const res = await fetch(`/api/nowcasting/chapeco/frames?radarId=${encodeURIComponent(radarId || dr.station.id)}`, { cache: 'no-store', signal });
@@ -634,7 +627,7 @@ export default function AoVivoPage() {
   /** Timestamp efetivo carregado por radar (quando usa fallback, difere do nominal) — para legenda */
   const [radarEffectiveTimestamps, setRadarEffectiveTimestamps] = useState<Record<string, string>>({});
   /** Fonte da imagem por radar: CPTEC ou REDEMET (quando usou fallback) */
-  const [radarEffectiveSource, setRadarEffectiveSource] = useState<Record<string, 'cptec' | 'redemet'>>({});
+  const [radarEffectiveSource, setRadarEffectiveSource] = useState<Record<string, 'cptec' | 'redemet' | 'storage' | 'funceme' | 'argentina'>>({});
   /** Toggle HD (REDEMET) / Super Res (CPTEC) */
   const [radarSourceMode, setRadarSourceMode] = useState<'superres' | 'hd'>('superres');
   /** Super Res local toggle (filtro doppler ativado pelo usuario no sidebar) */
@@ -921,15 +914,13 @@ export default function AoVivoPage() {
   const handleSampleAll = useCallback(() => {
     samplePixelFromOverlays(mapInstanceRef.current, radarOverlaysRef.current, setSampledValue1, dBZ_COLORS);
     if (splitCount >= 2 && map2InstanceRef.current) {
-        samplePixelFromOverlays(mapInstanceRef.current, radarOverlays2Ref.current, setSampledValue2, VEL_COLORS);
+        samplePixelFromOverlays(map2InstanceRef.current, radarOverlays2Ref.current, setSampledValue2, VEL_COLORS);
     }
     if (splitCount === 4 && map3InstanceRef.current) {
-        // VIL usa uma paleta similar ou específica? Vou usar dBZ_COLORS por ora ou criar uma de VIL
-        samplePixelFromOverlays(mapInstanceRef.current, radarOverlays3Ref.current, setSampledValue3, dBZ_COLORS);
+        samplePixelFromOverlays(map3InstanceRef.current, radarOverlays3Ref.current, setSampledValue3, dBZ_COLORS);
     }
     if (splitCount === 4 && map4InstanceRef.current) {
-        // Echo Top (km) paleta específica?
-        samplePixelFromOverlays(mapInstanceRef.current, radarOverlays4Ref.current, setSampledValue4, dBZ_COLORS);
+        samplePixelFromOverlays(map4InstanceRef.current, radarOverlays4Ref.current, setSampledValue4, dBZ_COLORS);
     }
   }, [samplePixelFromOverlays, splitCount]);
 
@@ -968,11 +959,13 @@ export default function AoVivoPage() {
 
   const BRAZIL_CENTER = { lat: -14.235, lng: -51.925 };
 
+  const allAvailableRadars: DisplayRadar[] = useMemo(() => {
+    return CPTEC_RADAR_STATIONS.map(s => ({ type: 'cptec', station: s }));
+  }, []);
+
   /** Todos os radares disponíveis (CPTEC + Argentina), ordenados por distância quando há localização */
   const allRadars = useMemo((): DisplayRadar[] => {
-    const cptec: DisplayRadar[] = CPTEC_RADAR_STATIONS.map((s) => ({ type: 'cptec' as const, station: s }));
-    const argentina: DisplayRadar[] = ARGENTINA_RADAR_STATIONS.map((s) => ({ type: 'argentina' as const, station: s }));
-    let list = [...cptec, ...argentina];
+    let list = [...allAvailableRadars];
     
     // Ocultar POA caso a data de histórico seja menor que 01/03/2026
     if (historicalTimestampOverride && historicalDate && historicalDate < '2026-03-01') {
@@ -989,18 +982,18 @@ export default function AoVivoPage() {
       });
     }
     return list;
-  }, [myLocation, historicalTimestampOverride, historicalDate]);
+  }, [myLocation, historicalTimestampOverride, historicalDate, allAvailableRadars]);
 
 
   const displayRadars = useMemo(() => {
     if (focusedRadarKey) {
-      const dr = allRadars.find((r) => (r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`) === focusedRadarKey);
+      const dr = allRadars.find((r) => `cptec:${r.station.slug}` === focusedRadarKey);
       return dr ? [dr] : [];
     }
     if (radarMode === 'mosaico') return allRadars;
     if (selectedIndividualRadars.size === 0) return [];
     return allRadars.filter((r) => {
-      const id = r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`;
+                            const id = `cptec:${r.station.slug}`;
       return selectedIndividualRadars.has(id);
     });
   }, [focusedRadarKey, radarMode, selectedIndividualRadars, allRadars]);
@@ -1011,66 +1004,41 @@ export default function AoVivoPage() {
     ? (sliderMinutesAgo > 0 ? subtractMinutesFromTimestamp12UTC(historicalTimestampOverride, sliderMinutesAgo) : historicalTimestampOverride)
     : radarTimestamp;
 
-  const fetchSantiagoRedemet = useCallback(async () => {
-    if (santiagoRedemetLoading) return;
-    setSantiagoRedemetLoading(true);
-    try {
-      const ts12 = (historicalTimestampOverride && sliderMinutesAgo > 0) 
-        ? subtractMinutesFromTimestamp12UTC(historicalTimestampOverride, sliderMinutesAgo)
-        : effectiveRadarTimestamp;
-      const res = await fetch(`/api/radar-redemet-find?area=sg&ts12=${ts12}`);
-      const data = await res.json();
-      if (data.url) {
-        setSantiagoRedemetUrl(data.url);
-        setRadarSourceMode('hd');
-        addToast("Imagem Redemet encontrada para Santiago!", "success");
-      } else {
-        addToast("Nenhuma imagem Redemet encontrada para este horário.", "error");
-      }
-    } catch (err) {
-      addToast("Erro ao buscar no Redemet.", "error");
-    } finally {
-      setSantiagoRedemetLoading(false);
-    }
-  }, [effectiveRadarTimestamp, santiagoRedemetLoading, addToast, historicalTimestampOverride, sliderMinutesAgo]);
-
   const radarTimeLegends = useMemo(() => {
-    const nominalDate = new Date(Date.UTC(
-      parseInt(effectiveRadarTimestamp.slice(0, 4), 10),
-      parseInt(effectiveRadarTimestamp.slice(4, 6), 10) - 1,
-      parseInt(effectiveRadarTimestamp.slice(6, 8), 10),
-      parseInt(effectiveRadarTimestamp.slice(8, 10), 10),
-      parseInt(effectiveRadarTimestamp.slice(10, 12), 10)
-    ));
-    const formatLocal = (d: Date) =>
-      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const effectiveTsToUtcDate = (ts: string) => {
-      const y = parseInt(ts.slice(0, 4), 10);
-      const m = parseInt(ts.slice(4, 6), 10) - 1;
-      const d = parseInt(ts.slice(6, 8), 10);
-      const h = ts.includes('T') ? parseInt(ts.slice(9, 11), 10) : parseInt(ts.slice(8, 10), 10);
-      const min = ts.includes('T') ? parseInt(ts.slice(11, 13), 10) : parseInt(ts.slice(10, 12), 10);
-      return new Date(Date.UTC(y, m, d, h, min));
+    if (!isMounted || displayRadars.length === 0) return [];
+    const effectiveTsToUtcDate = (ts12: string) => {
+      if (ts12.length !== 12) return new Date();
+      return new Date(Date.UTC(
+        parseInt(ts12.substring(0, 4), 10),
+        parseInt(ts12.substring(4, 6), 10) - 1,
+        parseInt(ts12.substring(6, 8), 10),
+        parseInt(ts12.substring(8, 10), 10),
+        parseInt(ts12.substring(10, 12), 10)
+      ));
+    };
+    const formatLocal = (d: Date) => {
+      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     };
     return displayRadars.map((dr) => {
-      const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
+      const radarKey = `cptec:${dr.station.slug}`;
       const source = radarEffectiveSource[radarKey];
       if (failedRadars.has(radarKey)) {
-        return { name: dr.station.name, hhmm: 'sem imagem', source: undefined as 'cptec' | 'redemet' | undefined };
+        return { name: dr.station.name, hhmm: 'sem imagem', source: undefined as any };
       }
-      const effectiveTs = radarEffectiveTimestamps[radarKey];
-      if (effectiveTs) {
-        return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(effectiveTs)), source };
+      const anchorTs = radarEffectiveTimestamps[radarKey];
+      if (anchorTs) {
+        let currentFrameTs = anchorTs;
+        if (sliderMinutesAgo > 0) {
+           currentFrameTs = subtractMinutesFromTimestamp12UTC(anchorTs, sliderMinutesAgo);
+           currentFrameTs = floorTimestampToInterval(currentFrameTs, dr.station.updateIntervalMinutes ?? 10);
+        }
+        return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(currentFrameTs)), source };
       }
       let ts: string;
-      if (dr.type === 'cptec') {
-        ts = getNearestRadarTimestamp(effectiveRadarTimestamp, dr.station);
-      } else {
-        ts = getArgentinaRadarTimestamp(nominalDate, dr.station);
-      }
-      return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(ts)), source: undefined as 'cptec' | 'redemet' | undefined };
+      ts = getNearestRadarTimestamp(effectiveRadarTimestamp, dr.station);
+      return { name: dr.station.name, hhmm: formatLocal(effectiveTsToUtcDate(ts)), source: undefined as any };
     });
-  }, [displayRadars, effectiveRadarTimestamp, failedRadars, radarEffectiveTimestamps, radarEffectiveSource]);
+  }, [isMounted, displayRadars, effectiveRadarTimestamp, failedRadars, radarEffectiveTimestamps, radarEffectiveSource, sliderMinutesAgo]);
 
   /** Título central do header: nome do radar + horário da última imagem (local).
    * Em LIVE mosaico: cada radar tem seu próprio horário → mostra "Ao vivo"; detalhe no menu lateral.
@@ -1113,44 +1081,34 @@ export default function AoVivoPage() {
         parseInt(ts.slice(8, 10), 10),
         parseInt(ts.slice(10, 12), 10)
       ));
-      if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
+      if (dr.station.slug === 'ipmet-bauru') {
         if (editMinutesAgo === 0) return GET_RADAR_IPMET_URL + `?t=${Date.now()}`;
         const candidates = getIpmetStorageUrlCandidates(ts);
         return candidates[0] ?? GET_RADAR_IPMET_URL;
       }
-      if (dr.type === 'cptec' && dr.station.slug === 'usp-starnet') {
+      if (dr.station.slug === 'usp-starnet') {
         return GET_RADAR_USP_URL + `?t=${Date.now()}`;
       }
-      if (dr.type === 'cptec') {
-        const ts12 = getNearestRadarTimestamp(ts, dr.station);
-        // HD mode: se sipamSlug existe e modo é HD, usar SIPAM-HD
-        if (radarSourceMode === 'hd' && dr.station.sipamSlug) {
-          return getProxiedRadarUrl(buildSipamHdPngUrl(dr.station.sipamSlug, ts12, radarProductType));
-        }
-        return getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, radarProductType));
+      const ts12 = getNearestRadarTimestamp(ts, dr.station);
+      // HD mode: se sipamSlug existe e modo é HD, usar SIPAM-HD
+      if (radarSourceMode === 'hd' && dr.station.sipamSlug) {
+        return getProxiedRadarUrl(buildSipamHdPngUrl(dr.station.sipamSlug, ts12, radarProductType));
       }
-      const tsArg = getArgentinaRadarTimestamp(nominalDate, dr.station);
-      return getProxiedRadarUrl(buildArgentinaRadarPngUrl(dr.station, tsArg, radarProductType));
+      return getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, radarProductType));
     },
     [editMinutesAgo, radarProductType, radarSourceMode]
   );
 
-  /** Template URL padrão para salvar (quando não há config) */
   const getDefaultUrlTemplate = useCallback((dr: DisplayRadar): string => {
-    if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru') {
+    if (dr.station.slug === 'ipmet-bauru') {
       return GET_RADAR_IPMET_URL;
     }
-    if (dr.type === 'cptec' && dr.station.slug === 'usp-starnet') {
+    if (dr.station.slug === 'usp-starnet') {
       return GET_RADAR_USP_URL;
     }
-    if (dr.type === 'cptec') {
-      const ts12 = getNowMinusMinutesTimestamp12UTC(3);
-      const url = buildNowcastingPngUrl(dr.station, ts12, 'reflectividade');
-      return url.replace(/\d{4}\/\d{2}\//, '{year}/{month}/').replace(/_\d{12}(\.png)/, '_{ts12}$1');
-    }
-    const tsArg = `${getNowMinusMinutesTimestamp12UTC(3).slice(0, 8)}T${getNowMinusMinutesTimestamp12UTC(3).slice(8, 10)}${getNowMinusMinutesTimestamp12UTC(3).slice(10, 12)}00Z`;
-    const url = buildArgentinaRadarPngUrl(dr.station, tsArg, 'reflectividade');
-    return url.replace(/(\d{4})\/(\d{2})\/(\d{2})\//, '{year}/{month}/{day}/').replace(/_\d{8}T\d{6}Z/, '_{tsArgentina}');
+    const ts12 = getNowMinusMinutesTimestamp12UTC(3);
+    const url = buildNowcastingPngUrl(dr.station, ts12, 'reflectividade');
+    return url.replace(/\d{4}\/\d{2}\//, '{year}/{month}/').replace(/_\d{12}(\.png)/, '_{ts12}$1');
   }, []);
 
   const handleOpenEditRadar = useCallback((dr: DisplayRadar) => {
@@ -1158,7 +1116,7 @@ export default function AoVivoPage() {
       addToast('Apenas administradores podem configurar radares.', 'info');
       return;
     }
-    const cfg = radarConfigs.find((c) => c.stationSlug === (dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`));
+    const cfg = radarConfigs.find((c) => c.stationSlug === dr.station.slug);
     setEditingRadar(dr);
     setEditMinutesAgo(0);
     setEditCenterLat(cfg?.lat ?? dr.station.lat);
@@ -1177,10 +1135,10 @@ export default function AoVivoPage() {
     if (!editingRadar || user?.type !== 'admin') return;
     const lat = overrideLat ?? (editLiveCenter ? editLiveCenter.lat : editCenterLat);
     const lng = overrideLng ?? (editLiveCenter ? editLiveCenter.lng : editCenterLng);
-    const slug = editingRadar.type === 'cptec' ? editingRadar.station.slug : `argentina:${editingRadar.station.id}`;
+    const slug = editingRadar.station.slug;
     const cfg = radarConfigs.find((c) => c.stationSlug === slug);
     const urlTemplate = cfg?.urlTemplate ?? getDefaultUrlTemplate(editingRadar);
-    const isFixedBounds = editingRadar.type === 'cptec' && (editingRadar.station.slug === 'ipmet-bauru' || editingRadar.station.slug === 'usp-starnet');
+    const isFixedBounds = editingRadar.station.slug === 'ipmet-bauru' || editingRadar.station.slug === 'usp-starnet';
     const computedBounds = isFixedBounds
       ? (editingRadar.station.slug === 'ipmet-bauru' ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw } : { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw })
       : calculateRadarBounds(lat, lng, editRangeKm);
@@ -1219,88 +1177,72 @@ export default function AoVivoPage() {
 
   const getBoundsForDisplayRadar = useCallback(
     (dr: DisplayRadar, source?: string) => {
-      if (dr.type === 'cptec') {
-        let configSlug = dr.station.slug;
-        // Se a fonte for REDEMET, usamos o slug de fallback para pegar o range de 400km
-        if ((source === 'redemet' || (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd')) && radarProductType === 'reflectividade') {
-          configSlug = `${dr.station.slug}-redemet`;
-        }
-        
-        // PRIORIDADE 1: Configurações Salvas no Firebase com Custom Bounds manuais
-        const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
-        if (cfg?.customBounds) {
-          return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
-        }
-
-        // Se for REDEMET mas não tiver config salva, forçar range de 400km (Padrão Ouro Redemet)
-        if (source === 'redemet') {
-           const b = calculateRadarBounds(dr.station.lat, dr.station.lng, 400);
-           return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
-        }
-
-        // PRIORIDADE 2: Bounds Nativos do CPTEC (A MAIS IMPORTANTE!)
-        // Se a latitude no Firebase for a MESMA da estação original, significa que o Admin só salvou opacidade/rotação.
-        // Então DEVEMOS usar os bounds originais do CPTEC que vieram do radaresv2.txt (campo bounds).
-        const isDefaultPosition = !cfg || (cfg.lat === dr.station.lat && cfg.lng === dr.station.lng);
-
-        if (isDefaultPosition) {
-           if (dr.station.bounds) {
-              return { 
-                north: dr.station.bounds.maxLat, 
-                south: dr.station.bounds.minLat, 
-                east: dr.station.bounds.maxLon, 
-                west: dr.station.bounds.minLon 
-              };
-           }
-           // Fallback para getRadarImageBounds se não tiver bounds explícitos
-           const b = getRadarImageBounds(dr.station);
-           return { north: b.north, south: b.south, east: b.east, west: b.west };
-        }
-
-        // PRIORIDADE 3: O Admin moveu o radar de lugar (Fallback Matemático)
-        if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
-          const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
-          // Agora esse cálculo vai usar o Cosseno corrigido no lib/cptecRadarStations.ts
-          const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
-          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
-        }
-
-        // Fallbacks EspecíficosLegados
-        const isIpmet = dr.station.slug === 'ipmet-bauru';
-        const isUspStarnet = dr.station.slug === 'usp-starnet';
-        if (isIpmet) {
-          return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
-        }
-        if (isUspStarnet) {
-          return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
-        }
-        if (dr.station.slug === 'funceme-fortaleza') {
-          return { north: FUNCEME_FORTALEZA_FIXED_BOUNDS.north, south: FUNCEME_FORTALEZA_FIXED_BOUNDS.south, east: FUNCEME_FORTALEZA_FIXED_BOUNDS.east, west: FUNCEME_FORTALEZA_FIXED_BOUNDS.west };
-        }
-        if (dr.station.slug === 'funceme-quixeramobim') {
-          return { north: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.north, south: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.south, east: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.east, west: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.west };
-        }
-        if (dr.station.sipamSlug && SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug] && radarSourceMode === 'hd') {
-          const sb = SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug];
-          return { north: sb.north, south: sb.south, east: sb.east, west: sb.west };
-        }
-        
-        const b = getRadarImageBounds(dr.station);
-        return { north: b.north, south: b.south, east: b.east, west: b.west };
+      let configSlug = dr.station.slug;
+      // Se a fonte for REDEMET, usamos o slug de fallback para pegar o range de 400km
+      if ((source === 'redemet' || (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd')) && radarProductType === 'reflectividade') {
+        configSlug = `${dr.station.slug}-redemet`;
       }
       
-      const configSlug = `argentina:${dr.station.id}`;
-      const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
+      // PRIORIDADE 1: Configurações Salvas no Firebase com Custom Bounds manuais
+      const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
       if (cfg?.customBounds) {
         return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
       }
+
+      // Se for REDEMET mas não tiver config salva, forçar range de 400km (Padrão Ouro Redemet)
+      if (source === 'redemet') {
+          const b = calculateRadarBounds(dr.station.lat, dr.station.lng, 400);
+          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
+      }
+
+      // PRIORIDADE 2: Bounds Nativos do CPTEC (A MAIS IMPORTANTE!)
+      // Se a latitude no Firebase for a MESMA da estação original, significa que o Admin só salvou opacidade/rotação.
+      // Então DEVEMOS usar os bounds originais do CPTEC que vieram do radaresv2.txt (campo bounds).
+      const isDefaultPosition = !cfg || (cfg.lat === dr.station.lat && cfg.lng === dr.station.lng);
+
+      if (isDefaultPosition) {
+          if (dr.station.bounds) {
+            return { 
+              north: dr.station.bounds.maxLat, 
+              south: dr.station.bounds.minLat, 
+              east: dr.station.bounds.maxLon, 
+              west: dr.station.bounds.minLon 
+            };
+          }
+          // Fallback para getRadarImageBounds se não tiver bounds explícitos
+          const b = getRadarImageBounds(dr.station);
+          return { north: b.north, south: b.south, east: b.east, west: b.west };
+      }
+
+      // PRIORIDADE 3: O Admin moveu o radar de lugar (Fallback Matemático)
       if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
-        const range = cfg.rangeKm ?? dr.station.rangeKm ?? 480;
+        const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
+        // Agora esse cálculo vai usar o Cosseno corrigido no lib/cptecRadarStations.ts
         const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
         return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
       }
 
-      const b = getArgentinaRadarBounds(dr.station);
+      // Fallbacks EspecíficosLegados
+      const isIpmet = dr.station.slug === 'ipmet-bauru';
+      const isUspStarnet = dr.station.slug === 'usp-starnet';
+      if (isIpmet) {
+        return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
+      }
+      if (isUspStarnet) {
+        return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
+      }
+      if (dr.station.slug === 'funceme-fortaleza') {
+        return { north: FUNCEME_FORTALEZA_FIXED_BOUNDS.north, south: FUNCEME_FORTALEZA_FIXED_BOUNDS.south, east: FUNCEME_FORTALEZA_FIXED_BOUNDS.east, west: FUNCEME_FORTALEZA_FIXED_BOUNDS.west };
+      }
+      if (dr.station.slug === 'funceme-quixeramobim') {
+        return { north: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.north, south: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.south, east: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.east, west: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.west };
+      }
+      if (dr.station.sipamSlug && SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug] && radarSourceMode === 'hd') {
+        const sb = SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug];
+        return { north: sb.north, south: sb.south, east: sb.east, west: sb.west };
+      }
+      
+      const b = getRadarImageBounds(dr.station);
       return { north: b.north, south: b.south, east: b.east, west: b.west };
     },
     [radarConfigs, radarSourceMode]
@@ -1960,7 +1902,7 @@ export default function AoVivoPage() {
 
   /** Ícones de radar no mapa — clicar filtra para mostrar só esse radar */
   const getRadarCenter = useCallback((dr: DisplayRadar): { lat: number; lng: number } => {
-    const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
+    const configSlug = dr.station.slug;
     const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
     if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) return { lat: cfg.lat, lng: cfg.lng };
     return { lat: dr.station.lat, lng: dr.station.lng };
@@ -2214,7 +2156,7 @@ export default function AoVivoPage() {
     if (!mapReady || !mapInstanceRef.current || displayRadars.length === 0) return;
     const product = (splitCount >= 2) ? 'reflectividade' : radarProductType;
     const radarsToShow = editingRadar
-      ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
+      ? displayRadars.filter((dr) => dr.station.slug !== editingRadar.station.slug)
       : displayRadars;
     
     const isPast = sliderMinutesAgo > 0 || !!historicalTimestampOverride;
@@ -2241,7 +2183,7 @@ export default function AoVivoPage() {
       if (!ready || !map || displayRadars.length === 0 || (splitCount !== 2 && splitCount !== 4)) return;
 
       const radars = editingRadar
-        ? displayRadars.filter((dr) => dr.type !== editingRadar!.type || (dr.type === 'cptec' && editingRadar!.type === 'cptec' && dr.station.slug !== (editingRadar!.station as CptecRadarStation).slug) || (dr.type === 'argentina' && editingRadar!.type === 'argentina' && dr.station.id !== (editingRadar!.station as ArgentinaRadarStation).id))
+        ? displayRadars.filter((dr) => dr.station.slug !== editingRadar.station.slug)
         : displayRadars;
 
       const isPast = sliderMinutesAgo > 0 || !!historicalTimestampOverride;
@@ -2619,12 +2561,12 @@ export default function AoVivoPage() {
                     className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-2 custom-scrollbar"
                   >
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">Ative os radares desejados</p>
-                    {groupRadarsByLocation(allRadars).map(({ country, state, radars }) => (
+                    {groupRadarsByLocation(allAvailableRadars).map(({ country, state, radars }) => (
                       <div key={`${country}-${state}`} className="mb-3 last:mb-0">
                         <p className="text-[10px] font-semibold text-cyan-400/90 mb-1.5 px-1">{country} – {state}</p>
                         <div className="space-y-1">
                           {radars.map((r) => {
-                            const id = r.type === 'cptec' ? `cptec:${r.station.slug}` : `argentina:${r.station.id}`;
+                            const id = `cptec:${r.station.slug}`;
                             const checked = selectedIndividualRadars.has(id);
                             return (
                               <label key={id} className="flex items-center gap-3 py-1.5 px-2 rounded cursor-pointer hover:bg-white/5 transition-colors">
@@ -3020,9 +2962,9 @@ export default function AoVivoPage() {
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Horário da última imagem</p>
                   <div className="space-y-1.5 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                     {radarTimeLegends.map(({ name, hhmm, source }, i) => {
-                      const dr = displayRadars[i];
-                      const isEditing = editingRadar && dr && (editingRadar.type !== dr.type ? false : editingRadar.type === 'cptec' ? (editingRadar.station as CptecRadarStation).slug === (dr.station as CptecRadarStation).slug : (editingRadar.station as ArgentinaRadarStation).id === (dr.station as ArgentinaRadarStation).id);
-                      return (
+                            const dr = displayRadars[i];
+                            const isEditing = editingRadar && dr && (editingRadar.station.slug === dr.station.slug);
+                            return (
                         <div key={name} className="text-xs flex flex-col gap-1 bg-black/20 px-2 py-1.5 rounded border border-white/5">
                           <div className="flex justify-between items-center">
                             <span className="text-slate-300 truncate mr-2">{name}</span>
@@ -3322,16 +3264,6 @@ export default function AoVivoPage() {
                   HD
                 </button>
               </div>
-            )}
-            {focusedRadarKey === 'cptec:santiago' && failedRadars.has('cptec:santiago') && !santiagoRedemetUrl && (
-              <button
-                onClick={fetchSantiagoRedemet}
-                disabled={santiagoRedemetLoading}
-                className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/90 border border-amber-400/50 text-slate-900 font-bold text-[10px] uppercase tracking-wider backdrop-blur-md shadow-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-              >
-                {santiagoRedemetLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Radar className="w-3.5 h-3.5" />}
-                {t('live_show_redemet')} (Santiago)
-              </button>
             )}
           </div>
 
