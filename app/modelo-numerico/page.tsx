@@ -362,7 +362,7 @@ export default function NumericModelPage() {
                 </div>
                 <div className="flex gap-2 items-baseline mt-1">
                   <span className="text-gray-500 font-bold text-xs uppercase tracking-wide">Valid:</span> 
-                  <span className="font-bold text-sm bg-blue-50 text-blue-900 px-2 border border-blue-200 rounded">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
+                  <span className="font-bold text-sm bg-blue-100 text-blue-900 px-2 border border-blue-200 rounded">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
                 </div>
               </div>
             )}
