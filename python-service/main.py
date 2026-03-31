@@ -54,6 +54,28 @@ def get_csv_text(data):
 def health():
     return jsonify({'status': 'ok', 'version': 'v9.1-cloud-hub'})
 
+
+@app.route('/proxy-wrf-sounding', methods=['POST'])
+def proxy_wrf_sounding():
+    """
+    Encaminha o POST para a VM do WRF (CSV). O Firebase App Hosting costuma falhar em
+    fetch() HTTP direto para IP:porta; daqui (Cloud Run) o requests até http://VM:8095 funciona.
+    Configure WRF_VM_URL no deploy (ex.: http://IP_EXTERNO:8095/generate-wrf-sounding).
+    """
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({'error': 'JSON inválido'}), 400
+    vm_url = os.environ.get(
+        'WRF_VM_URL',
+        'http://34.57.94.181:8095/generate-wrf-sounding',
+    )
+    try:
+        r = requests.post(vm_url, json=data, timeout=120)
+        ct = r.headers.get('Content-Type', 'application/json')
+        return (r.text, r.status_code, {'Content-Type': ct})
+    except requests.RequestException as e:
+        return jsonify({'error': str(e), 'step': 'proxy_to_vm'}), 502
+
 @app.route('/process', methods=['POST'])
 @app.route('/api/process-sounding', methods=['POST'])
 def process():

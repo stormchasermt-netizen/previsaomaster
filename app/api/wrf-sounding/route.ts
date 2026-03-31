@@ -18,12 +18,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
-    // URL da VM (CSV) — use env no App Hosting para não depender de IP fixo no código.
-    // Doc: o SSR do Firebase roda no Google Cloud; o IP de origem NÃO é o seu PC.
-    // Se a regra de firewall da VM só permitir o seu IP, o servidor não alcança a VM e o log não atualiza.
+    // CSV do WRF: por padrão usa proxy na Cloud Run (HTTPS). O App Hosting costuma falhar em
+    // fetch HTTP direto para http://IP:8095 ("fetch failed"), mesmo com firewall VPC ok.
+    // Override: WRF_SOUNDING_VM_URL = URL direta da VM | WRF_SOUNDING_VM_PROXY_URL = URL do proxy.
     const vmUrl =
       process.env.WRF_SOUNDING_VM_URL ||
-      'http://34.57.94.181:8095/generate-wrf-sounding';
+      process.env.WRF_SOUNDING_VM_PROXY_URL ||
+      'https://sounding-engine-303740989273.us-central1.run.app/proxy-wrf-sounding';
 
     const renderUrl =
       process.env.SOUNDING_ENGINE_URL ||
