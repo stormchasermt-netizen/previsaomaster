@@ -67,7 +67,7 @@ export default function AppLayout({ children }: { children?: React.ReactNode }) 
   const bestDistance = stats.length > 0 ? Math.min(...stats.map(s => s.distanceKm)) : 0;
   
   const pathname = usePathname();
-  const isFullScreenPage = pathname === '/rastros-tornados' || pathname === '/ao-vivo' || pathname?.startsWith('/jogar') || pathname?.startsWith('/admin');
+  const isFullScreenPage = pathname === '/rastros-tornados' || pathname === '/ao-vivo' || pathname === '/ao-vivo-2' || pathname?.startsWith('/jogar') || pathname?.startsWith('/admin');
   
   // Only calculate best personal score from valid games (distance is not 99999)
   const validGames = stats.filter(s => s.distanceKm < 99900);
