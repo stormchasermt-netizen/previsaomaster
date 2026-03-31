@@ -500,22 +500,13 @@ export function buildNowcastingPngUrl(
   productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' = 'reflectividade',
   skipProxy = false
 ): string {
+  // Ignoramos temporariamente proxy de Chapecó caso seja necessário no futuro
   if (station.slug === 'chapeco' && !skipProxy) {
     const radarId = productType === 'velocidade' ? station.velocityId : station.id;
     return `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${ts12}`;
   }
 
   let finalTs12 = ts12;
-  if (station.slug === 'chapeco' && skipProxy) {
-    const min = parseInt(ts12.slice(10, 12), 10);
-    let nearest6 = Math.round(min / 6) * 6;
-    let hour = parseInt(ts12.slice(8, 10), 10);
-    if (nearest6 >= 60) {
-      nearest6 = 0;
-      hour = (hour + 1) % 24;
-    }
-    finalTs12 = ts12.slice(0, 8) + hour.toString().padStart(2, '0') + nearest6.toString().padStart(2, '0');
-  }
 
   const y = finalTs12.slice(0, 4);
   const m = finalTs12.slice(4, 6);
@@ -539,6 +530,8 @@ export function buildNowcastingPngUrl(
   }
 
   const server = (productType === 'velocidade' && station.velocityServer) ? station.velocityServer : station.server;
+  
+  // Constrói padrão da URL do CDN, ex: https://s1.cptec.inpe.br/radar/cemaden/saoroque/ppi/ppicz/2025/11/R12537563_202511071950.png
   return `https://${server}.cptec.inpe.br/radar/${station.org}/${station.slug}/${prod}/${sub}/${y}/${m}/${fileId}_${finalTs12}.png`;
 }
 
