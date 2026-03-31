@@ -34,9 +34,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid response from WRF VM' }, { status: 500 });
     }
 
-    // Passo 2: Envia o CSV para o python-service local para renderizar a imagem
-    // O python-service está rodando na porta 8095 (rota /process)
-    const renderUrl = 'http://127.0.0.1:8095/process'; 
+    // Passo 2: Envia o CSV para o python-service hospedado no Cloud Run
+    // Removendo o localhost e usando a URL pública da sua API de Sondagens que foi feito deploy
+    const renderUrl = 'https://sounding-engine-303740989273.us-central1.run.app/process'; 
     
     // Log do tamanho do CSV recebido para debug
     console.log(`[WRF Sondagem] CSV recebido da VM com sucesso, tamanho: ${vmData.csv_data.length} caracteres`);
