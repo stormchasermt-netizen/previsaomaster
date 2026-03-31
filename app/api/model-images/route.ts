@@ -49,19 +49,14 @@ export async function GET(req: NextRequest) {
         .filter(f => f.name.match(/\.(jpg|jpeg|png|gif)$/i))
         .sort((a, b) => a.name.localeCompare(b.name));
       
-      const expires = Date.now() + 1000 * 60 * 60 * 24; // 24 hours
       const images = await Promise.all(
         imageFiles.map(async (file) => {
-          let url = '';
           const fileName = file.name.split('/').pop() || '';
-          try {
-            // Attempt to generate a signed URL (requires Service Account credentials to be present)
-            const [signedUrl] = await file.getSignedUrl({ action: 'read', expires });
-            url = signedUrl;
-          } catch(err) {
-            // Fallback: se estiver rodando local sem Service Account e não conseguir assinar a URL, tenta devolver a URL pública direta
-            url = `https://storage.googleapis.com/${BUCKET_NAME}/${file.name}`;
-          }
+          
+          // Fallback seguro: Em vez de usar getSignedUrl (que pode falhar em VMs sem permissão iam.signBlob),
+          // Usamos um proxy interno ou retornamos a URL do proxy.
+          // Aqui, vamos montar a rota do nosso próprio proxy
+          const url = `/api/model-image-proxy?file=${encodeURIComponent(file.name)}`;
           
           return {
             name: fileName,
