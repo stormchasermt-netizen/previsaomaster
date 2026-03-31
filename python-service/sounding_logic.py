@@ -838,22 +838,56 @@ def render_to_base64(csv_text, title="Sounding", is_hs=True, latitude=None):
         # 1. Parse CSV para Profile do SHARPpy
         df = pd.read_csv(io.StringIO(csv_text))
         col_map = {
-            'Pressure': 'pres', 'pressure': 'pres',
-            'Altitude': 'hght', 'altitude': 'hght',
-            'Temperature': 'temp', 'temperature': 'temp',
-            'Dew_point': 'dwpt', 'dew_point': 'dwpt', 'Dewpoint': 'dwpt',
-            'Wind_direction': 'wdir', 'wind_direction': 'wdir',
-            'Wind_speed': 'wspd', 'wind_speed': 'wspd',
+            'Pressure': 'pres', 'pressure': 'pres', 'press': 'pres',
+            'Altitude': 'hght', 'altitude': 'hght', 'hght': 'hght', 'z': 'hght',
+            'Temperature': 'temp', 'temperature': 'temp', 'tc': 'temp',
+            'Dew_point': 'dwpt', 'dew_point': 'dwpt', 'Dewpoint': 'dwpt', 'td': 'dwpt',
+            'Wind_direction': 'wdir', 'wind_direction': 'wdir', 'wdir': 'wdir',
+            'Wind_speed': 'wspd', 'wind_speed': 'wspd', 'wspd': 'wspd',
         }
         df.rename(columns=col_map, inplace=True)
         
-        # Criar objeto Profile
-        p = df['pres'].astype(float).tolist()
-        h = df['hght'].astype(float).tolist()
-        t = df['temp'].astype(float).tolist()
-        td = df['dwpt'].astype(float).tolist()
-        wd = df['wdir'].astype(float).tolist()
-        ws = df['wspd'].astype(float).tolist()
+        # Certificar-se de que se alguma coluna original não estava mapeada, ela seja ignorada se não existir
+        # Se a VM enviou colunas com quebra de linha ou espaços, limpamos os nomes das colunas
+        df.columns = df.columns.str.strip()
+        df.rename(columns=col_map, inplace=True)
+        
+        # Caso a VM mande outras colunas (ex: T em vez de Temp, DWPT em vez de td)
+        # Vamos buscar flexível pelas variáveis
+        def get_col(df_obj, possible_names):
+            for name in possible_names:
+                if name in df_obj.columns:
+                    return df_obj[name]
+                # checar case-insensitive
+                for col in df_obj.columns:
+                    if col.lower() == name.lower():
+                        return df_obj[col]
+            # Se não achou por nome, levanta erro pra cair no fallback de índices numéricos
+            raise KeyError(f"Coluna não encontrada. Procurado: {possible_names}. Disponíveis: {list(df_obj.columns)}")
+        
+        # Criar objeto Profile, extraindo os vetores garantindo que o tipo numpy array / list seja convertido em lista de floats
+        try:
+            p = get_col(df, ['pres', 'Pressure', 'pressure']).astype(float).tolist()
+            h = get_col(df, ['hght', 'Altitude', 'altitude', 'z']).astype(float).tolist()
+            t = get_col(df, ['temp', 'Temperature', 'temperature', 'tc']).astype(float).tolist()
+            td = get_col(df, ['dwpt', 'Dew_point', 'dew_point', 'td']).astype(float).tolist()
+            wd = get_col(df, ['wdir', 'Wind_direction', 'wind_direction']).astype(float).tolist()
+            ws = get_col(df, ['wspd', 'Wind_speed', 'wind_speed']).astype(float).tolist()
+        except KeyError as ke:
+            # Fallback forçado caso os mapeamentos não deram match
+            # Assumir que é CSV do wrf com formato exato:
+            # "Pressure,Altitude,Temperature,Dew_point,Wind_direction,Wind_speed"
+            # O df.rename as vezes falha com espaços em branco nas keys
+            col_list = df.columns.tolist()
+            if len(col_list) >= 6:
+                p = df.iloc[:, 0].astype(float).tolist()
+                h = df.iloc[:, 1].astype(float).tolist()
+                t = df.iloc[:, 2].astype(float).tolist()
+                td = df.iloc[:, 3].astype(float).tolist()
+                wd = df.iloc[:, 4].astype(float).tolist()
+                ws = df.iloc[:, 5].astype(float).tolist()
+            else:
+                raise ke
         
         if latitude is not None:
             try:
