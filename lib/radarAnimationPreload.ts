@@ -188,7 +188,7 @@ export async function collectRadarPreloadUrls(
     return urls.map(proxied);
   }
 
-  if (dr.type === 'cptec' && radarSourceMode === 'hd' && dr.station.org === 'funceme') {
+  if (dr.type === 'cptec' && dr.station.org === 'funceme') {
     if (!isPast) {
       const funcemeId = (dr.station as CptecRadarStation).funcemeId || dr.station.id;
       pushIf(`/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`);
