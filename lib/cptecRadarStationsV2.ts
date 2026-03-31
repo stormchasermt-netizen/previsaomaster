@@ -500,12 +500,6 @@ export function buildNowcastingPngUrl(
   productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel' = 'reflectividade',
   skipProxy = false
 ): string {
-  // Ignoramos temporariamente proxy de Chapecó caso seja necessário no futuro
-  if (station.slug === 'chapeco' && !skipProxy) {
-    const radarId = productType === 'velocidade' ? station.velocityId : station.id;
-    return `/api/nowcasting/chapeco?radarId=${radarId}&timestamp=${ts12}`;
-  }
-
   let finalTs12 = ts12;
 
   const y = finalTs12.slice(0, 4);

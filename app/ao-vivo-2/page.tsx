@@ -1890,7 +1890,11 @@ export default function AoVivoPage() {
 
   /** MOTOR DE PRELOAD SILENCIOSO (ZERO FLICKER) */
   useEffect(() => {
-    if (!mapReady || !validSliderMinutesAgo || validSliderMinutesAgo.length === 0 || displayRadars.length === 0) return;
+    const minutesList = validSliderMinutesAgo && validSliderMinutesAgo.length > 0
+      ? validSliderMinutesAgo
+      : Array.from({ length: Math.floor((maxSliderMinutesAgo || 60) / 5) + 1 }, (_, i) => i * 5);
+
+    if (!mapReady || minutesList.length === 0 || displayRadars.length === 0) return;
 
     const baseTs12 = historicalTimestampOverride || getNowMinusMinutesTimestamp12UTC(3);
     
@@ -1912,7 +1916,7 @@ export default function AoVivoPage() {
       return mapInstanceRef.current;
     };
 
-    validSliderMinutesAgo.forEach((minutesAgo) => {
+    minutesList.forEach((minutesAgo) => {
       displayRadars.forEach((dr) => {
         const radarKey = dr.type === 'cptec' ? `cptec:${dr.station.slug}` : `argentina:${dr.station.id}`;
         const radarInterval = dr.type === 'cptec' ? (dr.station.updateIntervalMinutes ?? 10) : 10;
@@ -1985,7 +1989,7 @@ export default function AoVivoPage() {
         });
       });
     });
-  }, [mapReady, validSliderMinutesAgo, displayRadars, radarProductType, splitCount, radarSourceMode, historicalTimestampOverride, getBoundsForDisplayRadar]);
+  }, [mapReady, validSliderMinutesAgo, maxSliderMinutesAgo, displayRadars, radarProductType, splitCount, radarSourceMode, historicalTimestampOverride, getBoundsForDisplayRadar]);
 
   /** Central de Renderização de Radares (Motor de Alta Performance - Mapa 1) */
   useEffect(() => {
