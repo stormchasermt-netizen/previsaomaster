@@ -36,8 +36,11 @@ export async function POST(req: NextRequest) {
 
     // Passo 2: Envia o CSV para o python-service local para renderizar a imagem
     // O python-service está rodando na porta 8000 (rota /process-average-sounding)
-    const renderUrl = 'http://127.0.0.1:8000/process-average-sounding';
+    const renderUrl = 'http://127.0.0.1:8095/process-average-sounding'; // Altere a porta para 8095 de acordo com seu script local de sounding_logic
     
+    // Log do tamanho do CSV recebido para debug
+    console.log(`[WRF Sondagem] CSV recebido da VM com sucesso, tamanho: ${vmData.csv_data.length} caracteres`);
+
     const renderResponse = await fetch(renderUrl, {
       method: 'POST',
       headers: {

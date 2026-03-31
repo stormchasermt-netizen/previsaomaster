@@ -284,7 +284,7 @@ export default function NumericModelPage() {
       <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center w-full relative">
           
-          <div className="flex items-center gap-4">
+          <div className="flex gap-4 items-center flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 font-bold">Data:</span>
               <select 
@@ -296,6 +296,7 @@ export default function NumericModelPage() {
                   if (firstRunOfDate) setSelectedRun(firstRunOfDate);
                 }}
                 disabled={isLoading || runs.length === 0}
+                suppressHydrationWarning
               >
                 {Array.from(new Set(runs.map(run => run.substring(0, 8)))).map(dateStr => (
                   <option key={dateStr} value={dateStr}>
@@ -313,6 +314,7 @@ export default function NumericModelPage() {
                 value={selectedRun}
                 onChange={e => setSelectedRun(e.target.value)}
                 disabled={isLoading || runs.length === 0}
+                suppressHydrationWarning
               >
                 {runs
                   .filter(run => selectedRun && run.startsWith(selectedRun.substring(0, 8)))
