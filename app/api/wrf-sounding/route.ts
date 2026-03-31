@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Passo 2: Envia o CSV para o python-service local para renderizar a imagem
-    // O python-service está rodando na porta 8095
-    const renderUrl = 'http://127.0.0.1:8095/process-average-sounding'; 
+    // O python-service está rodando na porta 8095 (rota /process)
+    const renderUrl = 'http://127.0.0.1:8095/process'; 
     
     // Log do tamanho do CSV recebido para debug
     console.log(`[WRF Sondagem] CSV recebido da VM com sucesso, tamanho: ${vmData.csv_data.length} caracteres`);
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ 
-        csv_content: vmData.csv_data,
+        csv: vmData.csv_data,
         title: `WRF Sounding - Lat: ${lat.toFixed(2)} Lon: ${lon.toFixed(2)}`
       }),
       cache: 'no-store',
@@ -60,7 +60,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Passo 3: Retorna a imagem final para o frontend
-    const imageBuffer = await renderResponse.arrayBuffer();
+    const responseJson = await renderResponse.json();
+    
+    if (!responseJson.success || !responseJson.base64_img) {
+       console.error('Render failure:', responseJson);
+       return NextResponse.json({ error: `Render failed: ${responseJson.error || 'No image'}` }, { status: 500 });
+    }
+
+    const imageBuffer = Buffer.from(responseJson.base64_img, 'base64');
 
     return new NextResponse(imageBuffer, {
       status: 200,
