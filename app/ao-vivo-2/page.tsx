@@ -17,25 +17,16 @@ import {
   LOCATION_REQUEST_EXCLUDED_UIDS
 } from '@/lib/constants';
 import {
+  type CptecRadarStation,
   CPTEC_RADAR_STATIONS,
   getRadarImageBounds,
   calculateRadarBounds,
-  IPMET_FIXED_BOUNDS,
-  USP_STARNET_FIXED_BOUNDS,
-  FUNCEME_FORTALEZA_FIXED_BOUNDS,
-  FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS,
-  SIPAM_HD_FIXED_BOUNDS,
-  GET_RADAR_IPMET_URL,
-  GET_RADAR_USP_URL,
   buildNowcastingPngUrl,
-  buildSipamHdPngUrl,
-  hasSipamHdFallback,
   getNearestRadarTimestamp,
   getNowMinusMinutesTimestamp12UTC,
   subtractMinutesFromTimestamp12UTC,
-  type CptecRadarStation,
   floorTimestampToInterval,
-} from '@/lib/cptecRadarStations';
+} from '@/lib/cptecRadarStationsV2';
 import { fetchPrevotsForecasts } from '@/lib/prevotsForecastStore';
 import { PREVOTS_LEVEL_COLORS, type PrevotsForecast } from '@/lib/prevotsForecastData';
 import { fetchRadarConfigs, saveRadarConfig, type RadarConfig } from '@/lib/radarConfigStore';
@@ -1081,31 +1072,13 @@ export default function AoVivoPage() {
         parseInt(ts.slice(8, 10), 10),
         parseInt(ts.slice(10, 12), 10)
       ));
-      if (dr.station.slug === 'ipmet-bauru') {
-        if (editMinutesAgo === 0) return GET_RADAR_IPMET_URL + `?t=${Date.now()}`;
-        const candidates = getIpmetStorageUrlCandidates(ts);
-        return candidates[0] ?? GET_RADAR_IPMET_URL;
-      }
-      if (dr.station.slug === 'usp-starnet') {
-        return GET_RADAR_USP_URL + `?t=${Date.now()}`;
-      }
       const ts12 = getNearestRadarTimestamp(ts, dr.station);
-      // HD mode: se sipamSlug existe e modo é HD, usar SIPAM-HD
-      if (radarSourceMode === 'hd' && dr.station.sipamSlug) {
-        return getProxiedRadarUrl(buildSipamHdPngUrl(dr.station.sipamSlug, ts12, radarProductType));
-      }
       return getProxiedRadarUrl(buildNowcastingPngUrl(dr.station, ts12, radarProductType));
     },
-    [editMinutesAgo, radarProductType, radarSourceMode]
+    [editMinutesAgo, radarProductType]
   );
 
   const getDefaultUrlTemplate = useCallback((dr: DisplayRadar): string => {
-    if (dr.station.slug === 'ipmet-bauru') {
-      return GET_RADAR_IPMET_URL;
-    }
-    if (dr.station.slug === 'usp-starnet') {
-      return GET_RADAR_USP_URL;
-    }
     const ts12 = getNowMinusMinutesTimestamp12UTC(3);
     const url = buildNowcastingPngUrl(dr.station, ts12, 'reflectividade');
     return url.replace(/\d{4}\/\d{2}\//, '{year}/{month}/').replace(/_\d{12}(\.png)/, '_{ts12}$1');
@@ -1138,10 +1111,10 @@ export default function AoVivoPage() {
     const slug = editingRadar.station.slug;
     const cfg = radarConfigs.find((c) => c.stationSlug === slug);
     const urlTemplate = cfg?.urlTemplate ?? getDefaultUrlTemplate(editingRadar);
-    const isFixedBounds = editingRadar.station.slug === 'ipmet-bauru' || editingRadar.station.slug === 'usp-starnet';
-    const computedBounds = isFixedBounds
-      ? (editingRadar.station.slug === 'ipmet-bauru' ? { ne: IPMET_FIXED_BOUNDS.ne, sw: IPMET_FIXED_BOUNDS.sw } : { ne: USP_STARNET_FIXED_BOUNDS.ne, sw: USP_STARNET_FIXED_BOUNDS.sw })
-      : calculateRadarBounds(lat, lng, editRangeKm);
+    
+    // Bounds calculados baseados no range
+    const computedBounds = calculateRadarBounds(lat, lng, editRangeKm);
+    
     setEditSaving(true);
     try {
       await saveRadarConfig({
@@ -1153,7 +1126,7 @@ export default function AoVivoPage() {
         lat,
         lng,
         rangeKm: editRangeKm,
-        updateIntervalMinutes: editingRadar.station.updateIntervalMinutes ?? 6,
+        updateIntervalMinutes: editingRadar.station.updateIntervalMinutes ?? 10,
         rotationDegrees: editRotationDegrees,
       });
       addToast('Configuração salva.', 'success');
@@ -1178,26 +1151,12 @@ export default function AoVivoPage() {
   const getBoundsForDisplayRadar = useCallback(
     (dr: DisplayRadar, source?: string) => {
       let configSlug = dr.station.slug;
-      // Se a fonte for REDEMET, usamos o slug de fallback para pegar o range de 400km
-      if ((source === 'redemet' || (hasRedemetFallback(dr.station.slug) && typeof radarSourceMode !== 'undefined' && radarSourceMode === 'hd')) && radarProductType === 'reflectividade') {
-        configSlug = `${dr.station.slug}-redemet`;
-      }
       
-      // PRIORIDADE 1: Configurações Salvas no Firebase com Custom Bounds manuais
       const cfg = radarConfigs.find((c) => c.id === configSlug || c.stationSlug === configSlug);
       if (cfg?.customBounds) {
         return { north: cfg.customBounds.north, south: cfg.customBounds.south, east: cfg.customBounds.east, west: cfg.customBounds.west };
       }
 
-      // Se for REDEMET mas não tiver config salva, forçar range de 400km (Padrão Ouro Redemet)
-      if (source === 'redemet') {
-          const b = calculateRadarBounds(dr.station.lat, dr.station.lng, 400);
-          return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
-      }
-
-      // PRIORIDADE 2: Bounds Nativos do CPTEC (A MAIS IMPORTANTE!)
-      // Se a latitude no Firebase for a MESMA da estação original, significa que o Admin só salvou opacidade/rotação.
-      // Então DEVEMOS usar os bounds originais do CPTEC que vieram do radaresv2.txt (campo bounds).
       const isDefaultPosition = !cfg || (cfg.lat === dr.station.lat && cfg.lng === dr.station.lng);
 
       if (isDefaultPosition) {
@@ -1209,43 +1168,20 @@ export default function AoVivoPage() {
               west: dr.station.bounds.minLon 
             };
           }
-          // Fallback para getRadarImageBounds se não tiver bounds explícitos
           const b = getRadarImageBounds(dr.station);
           return { north: b.north, south: b.south, east: b.east, west: b.west };
       }
 
-      // PRIORIDADE 3: O Admin moveu o radar de lugar (Fallback Matemático)
       if (cfg && (cfg.lat !== 0 || cfg.lng !== 0)) {
         const range = cfg.rangeKm ?? dr.station.rangeKm ?? 250;
-        // Agora esse cálculo vai usar o Cosseno corrigido no lib/cptecRadarStations.ts
         const b = calculateRadarBounds(cfg.lat, cfg.lng, range);
         return { north: b.ne.lat, south: b.sw.lat, east: b.ne.lng, west: b.sw.lng };
       }
 
-      // Fallbacks EspecíficosLegados
-      const isIpmet = dr.station.slug === 'ipmet-bauru';
-      const isUspStarnet = dr.station.slug === 'usp-starnet';
-      if (isIpmet) {
-        return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
-      }
-      if (isUspStarnet) {
-        return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
-      }
-      if (dr.station.slug === 'funceme-fortaleza') {
-        return { north: FUNCEME_FORTALEZA_FIXED_BOUNDS.north, south: FUNCEME_FORTALEZA_FIXED_BOUNDS.south, east: FUNCEME_FORTALEZA_FIXED_BOUNDS.east, west: FUNCEME_FORTALEZA_FIXED_BOUNDS.west };
-      }
-      if (dr.station.slug === 'funceme-quixeramobim') {
-        return { north: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.north, south: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.south, east: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.east, west: FUNCEME_QUIXERAMOBIM_FIXED_BOUNDS.west };
-      }
-      if (dr.station.sipamSlug && SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug] && radarSourceMode === 'hd') {
-        const sb = SIPAM_HD_FIXED_BOUNDS[dr.station.sipamSlug];
-        return { north: sb.north, south: sb.south, east: sb.east, west: sb.west };
-      }
-      
-      const b = getRadarImageBounds(dr.station);
-      return { north: b.north, south: b.south, east: b.east, west: b.west };
+      const b2 = getRadarImageBounds(dr.station);
+      return { north: b2.north, south: b2.south, east: b2.east, west: b2.west };
     },
-    [radarConfigs, radarSourceMode]
+    [radarConfigs]
   );
 
   const requestLocation = useCallback(() => {
