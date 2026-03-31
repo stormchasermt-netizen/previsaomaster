@@ -64,6 +64,13 @@ function getForecastHour(run: string, name: string, idx: number) {
   return idx;
 }
 
+const WRF_BOUNDS = { 
+  north: -17.9648, 
+  south: -35.7217, 
+  east: -41.3680, 
+  west: -62.6320 
+};
+
 export default function NumericModelPage() {
   const [isMounted, setIsMounted] = useState(false);
 
@@ -76,6 +83,78 @@ export default function NumericModelPage() {
   const [images, setImages] = useState<{name: string, url: string}[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const prevIndexRef = useRef<number>(0);
+
+  // States para Sondagem (WRF)
+  const [hoverPos, setHoverPos] = useState<{x: number, y: number, lat: number, lon: number} | null>(null);
+  const [isSoundingLoading, setIsSoundingLoading] = useState(false);
+  const [soundingImageUrl, setSoundingImageUrl] = useState<string | null>(null);
+  
+  const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
+    // Pegar dimensões da imagem real vs exibida
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xRatio = e.nativeEvent.offsetX / rect.width;
+    const yRatio = e.nativeEvent.offsetY / rect.height;
+
+    // Calcular Lat/Lon aproximada baseada no bounding box do WRF
+    // (Presumindo que a imagem mapeia linearmente. WRF pode ter curvatura, mas isso é uma boa aproximação inicial)
+    const latSpan = WRF_BOUNDS.north - WRF_BOUNDS.south;
+    const lonSpan = WRF_BOUNDS.east - WRF_BOUNDS.west;
+
+    // O eixo Y de uma imagem normalmente cresce para baixo, então yRatio=0 é o Norte, yRatio=1 é o Sul
+    const lat = WRF_BOUNDS.north - (yRatio * latSpan);
+    
+    // O eixo X cresce para a direita, então xRatio=0 é o Oeste, xRatio=1 é o Leste
+    const lon = WRF_BOUNDS.west + (xRatio * lonSpan);
+
+    setHoverPos({
+      x: e.nativeEvent.offsetX,
+      y: e.nativeEvent.offsetY,
+      lat,
+      lon
+    });
+  };
+
+  const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!hoverPos || !images[currentIndex]) return;
+    
+    setIsSoundingLoading(true);
+    setSoundingImageUrl(null);
+    
+    try {
+      // images[currentIndex].name é o nome do arquivo que guardamos antes
+      const res = await fetch('/api/wrf-sounding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          lat: hoverPos.lat,
+          lon: hoverPos.lon,
+          fileName: images[currentIndex].name
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Falha ao gerar sondagem');
+      }
+
+      // Recebemos a imagem renderizada como blob (via api interna -> python-service local)
+      const blob = await res.blob();
+      const imageUrl = URL.createObjectURL(blob);
+      setSoundingImageUrl(imageUrl);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao buscar ou renderizar sondagem do WRF.');
+    } finally {
+      setIsSoundingLoading(false);
+    }
+  };
+
+  const closeSounding = () => {
+    setSoundingImageUrl(null);
+  };
+
+
 
   useEffect(() => {
     prevIndexRef.current = currentIndex;
@@ -416,7 +495,10 @@ export default function NumericModelPage() {
                     key={img.url}
                     src={img.url} 
                     alt={`Forecast frame ${idx}`}
-                    className={`absolute max-w-full max-h-full object-contain pointer-events-none ${
+                    onMouseMove={isCurrent ? mapImageToCoords : undefined}
+                    onMouseLeave={isCurrent ? () => setHoverPos(null) : undefined}
+                    onClick={isCurrent ? handleImageClick : undefined}
+                    className={`absolute max-w-full max-h-full object-contain cursor-crosshair ${
                       isCurrent ? 'block z-10' : 'hidden z-0'
                     }`}
                   />
@@ -429,6 +511,46 @@ export default function NumericModelPage() {
                   <p>Nenhuma imagem disponível para esta seleção.</p>
                 </div>
               )
+            )}
+
+            {/* Hover tooltip for Lat/Lon */}
+            {hoverPos && !isSoundingLoading && (
+              <div 
+                className="absolute pointer-events-none bg-black/80 text-white text-[10px] px-2 py-1 rounded shadow-lg z-50 transform -translate-x-1/2 -translate-y-full mt-[-10px]"
+                style={{ 
+                  left: hoverPos.x, 
+                  top: hoverPos.y 
+                }}
+              >
+                <div>Lat: {hoverPos.lat.toFixed(4)}</div>
+                <div>Lon: {hoverPos.lon.toFixed(4)}</div>
+                <div className="text-blue-300 font-bold">Clique para sondagem</div>
+              </div>
+            )}
+
+            {/* Loading Indicator for Sounding */}
+            {isSoundingLoading && (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-400 border-t-blue-800 mb-4"></div>
+                <div className="text-gray-800 font-bold bg-white px-4 py-2 rounded shadow">
+                  Acessando VM e gerando sondagem...
+                </div>
+              </div>
+            )}
+
+            {/* Sounding Result Modal */}
+            {soundingImageUrl && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+                <div className="relative bg-white p-2 rounded max-w-full max-h-full overflow-auto flex flex-col items-end">
+                  <button 
+                    onClick={closeSounding}
+                    className="mb-2 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded font-bold"
+                  >
+                    Fechar
+                  </button>
+                  <img src={soundingImageUrl} alt="WRF Sounding" className="max-w-full h-auto max-h-[85vh] object-contain border border-gray-300" />
+                </div>
+              </div>
             )}
           </div>
 
