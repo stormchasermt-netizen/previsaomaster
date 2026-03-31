@@ -252,14 +252,19 @@ export default function NumericModelPage() {
             </div>
           )}
           
-          <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4">
+          <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4 bg-neutral-900/50">
             {images.length > 0 ? (
-              <img 
-                src={images[currentIndex]?.url} 
-                alt={`Forecast frame ${currentIndex}`}
-                className="max-w-full max-h-full object-contain"
-                loading="eager"
-              />
+              images.map((img, idx) => (
+                <img 
+                  key={img.url} // Usar URL como key ajuda o React se as imagens mudarem
+                  src={img.url} 
+                  alt={`Forecast frame ${idx}`}
+                  className={`absolute max-w-full max-h-full object-contain transition-opacity duration-200 ease-in-out ${
+                    idx === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'
+                  }`}
+                  // Force preload in background by omitting lazy
+                />
+              ))
             ) : (
               !isLoading && (
                 <div className="text-neutral-500 flex flex-col items-center">
@@ -268,13 +273,6 @@ export default function NumericModelPage() {
                 </div>
               )
             )}
-            
-            {/* INVISIBLE PRELOAD CONTAINER - Ensures browser caches the next frames */}
-            <div className="hidden">
-              {images.map((img, idx) => (
-                <img key={idx} src={img.url} alt="preload" />
-              ))}
-            </div>
           </div>
 
           {/* BOTTOM PLAYBACK CONTROLS */}
@@ -295,26 +293,58 @@ export default function NumericModelPage() {
                 </button>
               </div>
 
-              <div className="flex-1 flex flex-col justify-center px-4">
-                <input 
-                  type="range" 
-                  min={0} 
-                  max={images.length - 1} 
-                  value={currentIndex}
-                  onChange={(e) => { setIsPlaying(false); setCurrentIndex(Number(e.target.value)); }}
-                  className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                />
-                <div className="flex justify-between text-xs text-neutral-500 mt-1 font-medium">
-                  <span>Início</span>
-                  <span className="text-blue-400 font-bold">{formatFileNameToHour(images[currentIndex]?.name || '')}</span>
-                  <span>Fim</span>
+              <div className="flex-1 flex flex-col justify-center px-4 relative">
+                {/* Custom Hover Slider */}
+                  <div 
+                    className="w-full h-10 flex flex-col justify-center cursor-crosshair group relative py-2"
+                    onMouseMove={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                      const percentage = x / rect.width;
+                      const safeIndex = Math.min(Math.floor(percentage * images.length), images.length - 1);
+                      if (currentIndex !== safeIndex) {
+                        setCurrentIndex(safeIndex);
+                        setIsPlaying(false);
+                      }
+                    }}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                      const percentage = x / rect.width;
+                      const safeIndex = Math.min(Math.floor(percentage * images.length), images.length - 1);
+                      setCurrentIndex(safeIndex);
+                      setIsPlaying(false);
+                    }}
+                  >
+                  {/* Slider Track */}
+                  <div className="w-full h-2 bg-neutral-800 rounded-lg overflow-hidden relative ring-1 ring-inset ring-neutral-700/50">
+                    <div 
+                      className="absolute top-0 left-0 h-full bg-blue-500/80 transition-all duration-75 ease-out rounded-lg"
+                      style={{ width: `${(currentIndex / Math.max(1, images.length - 1)) * 100}%` }}
+                    />
+                  </div>
+                  
+                  {/* Ticks (optional visual aid) */}
+                  <div className="absolute top-1/2 left-0 w-full h-full pointer-events-none flex justify-between px-1 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                     {images.map((_, i) => (
+                       <div key={i} className="w-[1px] h-3 bg-white/20" />
+                     ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-between text-xs text-neutral-500 mt-1 font-medium pointer-events-none px-1">
+                  <span>{formatFileNameToHour(images[0]?.name || '')}</span>
+                  <span className="text-blue-400 font-bold px-3 py-0.5 bg-blue-500/10 rounded-full border border-blue-500/20">
+                    {formatFileNameToHour(images[currentIndex]?.name || '')}
+                  </span>
+                  <span>{formatFileNameToHour(images[images.length - 1]?.name || '')}</span>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
                 <span className="text-xs text-neutral-400 font-medium">Velocidade:</span>
                 <select 
-                  className="bg-neutral-800 border border-neutral-700 text-xs rounded px-2 py-1 outline-none text-neutral-200"
+                  className="bg-neutral-800 border border-neutral-700 text-xs rounded px-2 py-1 outline-none text-neutral-200 focus:border-blue-500"
                   value={playSpeed}
                   onChange={e => setPlaySpeed(Number(e.target.value))}
                 >
