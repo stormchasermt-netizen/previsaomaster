@@ -124,7 +124,7 @@ function getRadarUrlsWithFallback(url: string): [string, string] {
   return [getProxiedRadarUrl(url), url];
 }
 
-/** Sonda Storage + CPTEC/Argentina (radar-exists) — sem /api/radar-frame (evita cadeia API no servidor). */
+/** Sonda CPTEC (radar-exists) — sem /api/radar-frame (evita cadeia API no servidor). */
 async function probeRadarImageExists(
   dr: DisplayRadar,
   ts12: string,
@@ -133,24 +133,6 @@ async function probeRadarImageExists(
   signal?: AbortSignal,
   isHistorical: boolean = false
 ): Promise<boolean> {
-  const st = await fetch(
-    `/api/radar-storage-fallback?radarId=${encodeURIComponent(slugParam)}&ts12=${encodeURIComponent(ts12)}&productType=${productType}&maxDiff=10`,
-    { signal, cache: 'no-store' }
-  );
-  if (st.ok) {
-    const j = await st.json().catch(() => ({}));
-    if (j?.url) return true;
-  }
-  
-  if (isHistorical) {
-    const area = getRedemetArea(dr.station.slug);
-    if (area) {
-      const res = await fetch(`/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(ts12)}&historical=true`, { cache: 'no-store', signal });
-      const data = await res.json().catch(() => ({}));
-      if (data?.url) return true;
-    }
-    return false; // se é histórico e não tá no storage nem redemet, falha.
-  }
   const url = buildNowcastingPngUrl(dr.station, ts12, productType, true);
   const res = await fetch(`/api/radar-exists?url=${encodeURIComponent(url)}`, { cache: 'no-store', signal });
   const data = await res.json().catch(() => ({}));
@@ -159,7 +141,7 @@ async function probeRadarImageExists(
   return false;
 }
 
-/** Filtra minutos atrás usando hora de referência (ao vivo ou histórico) + Storage / CPTEC. */
+/** Filtra minutos atrás usando hora de referência (ao vivo ou histórico) + CPTEC. */
 async function filterValidSliderMinutesAgo(
   dr: DisplayRadar,
   productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
@@ -177,85 +159,6 @@ async function filterValidSliderMinutesAgo(
   const candidates: number[] = [];
   for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
   if (candidates.length === 0) return [0];
-
-  /** IPMET */
-  if (dr.station.slug === 'ipmet-bauru' && !isHistorical) {
-    const baseTs12 = referenceTs12;
-    const result: number[] = [0];
-
-    try {
-      const res = await fetch(`/api/ipmet-available-timestamps?ts12=${encodeURIComponent(baseTs12)}`, { cache: 'no-store', signal });
-      const data = await res.json().catch(() => ({}));
-      
-      const timestamps: string[] = data.timestamps || [];
-      if (timestamps.length > 0) {
-        const y = parseInt(baseTs12.slice(0, 4), 10);
-        const m = parseInt(baseTs12.slice(4, 6), 10) - 1;
-        const d = parseInt(baseTs12.slice(6, 8), 10);
-        const hh = parseInt(baseTs12.slice(8, 10), 10);
-        const mm = parseInt(baseTs12.slice(10, 12), 10);
-        const baseDateMs = Date.UTC(y, m, d, hh, mm);
-        
-        timestamps.forEach(ts => {
-           const fy = parseInt(ts.slice(0, 4), 10);
-           const fm = parseInt(ts.slice(4, 6), 10) - 1;
-           const fd = parseInt(ts.slice(6, 8), 10);
-           const fhh = parseInt(ts.slice(8, 10), 10);
-           const fmm = parseInt(ts.slice(10, 12), 10);
-           const fileDateMs = Date.UTC(fy, fm, fd, fhh, fmm);
-           
-           const diffMin = Math.round((baseDateMs - fileDateMs) / 60000);
-           // Como estamos lidando com imagens históricas de até maxMinutes, filtramos:
-           if (diffMin > 0 && diffMin <= maxMinutes) {
-             result.push(diffMin);
-           }
-        });
-      }
-    } catch {
-       // Se der erro, só exibe o Ao Vivo (0)
-    }
-
-    // A API retorna do mais recente pro mais antigo (diffMin será 14, 25, 36, ...)
-    // Então o vetor "result" fica [0, 14, 25, 36]
-    // A interface genérica espera que idx=0 seja o mais ANTIGO, e o final seja 0 (recente).
-    // Ou seja: [60, 50, ..., 0]. Precisamos reverter.
-    result.reverse();
-    return result;
-  }
-
-  /** FUNCEME: busca frames reais da API ao invés de sondar URLs */
-  if (dr.station.org === 'funceme' && !isHistorical) {
-    const baseTs12 = referenceTs12;
-    const dateStr = `${baseTs12.slice(0, 4)}-${baseTs12.slice(4, 6)}-${baseTs12.slice(6, 8)}`;
-    try {
-      const res = await fetch(`/api/funceme/frames?radar=${encodeURIComponent(dr.station.id)}&date=${dateStr}`, { cache: 'no-store', signal });
-      const data = await res.json().catch(() => ({ frames: [] }));
-      const frames: { ts12: string; datahora: string }[] = data.frames || [];
-      if (frames.length === 0) return [0];
-      const baseY = parseInt(baseTs12.slice(0, 4), 10);
-      const baseM = parseInt(baseTs12.slice(4, 6), 10) - 1;
-      const baseD = parseInt(baseTs12.slice(6, 8), 10);
-      const baseHH = parseInt(baseTs12.slice(8, 10), 10);
-      const baseMM = parseInt(baseTs12.slice(10, 12), 10);
-      const baseDateMs = Date.UTC(baseY, baseM, baseD, baseHH, baseMM);
-      const result: number[] = [];
-      frames.forEach(f => {
-        const fy = parseInt(f.ts12.slice(0, 4), 10);
-        const fm = parseInt(f.ts12.slice(4, 6), 10) - 1;
-        const fd = parseInt(f.ts12.slice(6, 8), 10);
-        const fhh = parseInt(f.ts12.slice(8, 10), 10);
-        const fmm = parseInt(f.ts12.slice(10, 12), 10);
-        const fileDateMs = Date.UTC(fy, fm, fd, fhh, fmm);
-        const diffMin = Math.round((baseDateMs - fileDateMs) / 60000);
-        if (diffMin >= 0 && diffMin <= maxMinutes) result.push(diffMin);
-      });
-      // frames veio do mais antigo ao mais recente, minutesAgo fica decrescente
-      result.sort((a, b) => b - a); // mais antigo (maior minutesAgo) primeiro
-      return result.length > 0 ? result : [0];
-    } catch {
-      return [0];
-    }
-  }
 
   /** Chapecó (CPTEC Nowcasting): busca frames reais da API */
   if (dr.station.slug === 'chapeco' && !isHistorical) {
@@ -2044,11 +1947,7 @@ export default function AoVivoPage() {
 
                     preloadedFramesRef.current.set(frameKey, processedUrl);
 
-                    let sourceStr = 'cptec';
-                    if (u.includes('redemet')) sourceStr = 'redemet';
-                    else if (u.includes('funceme')) sourceStr = 'funceme';
-                    else if (u.includes('argentina') || u.includes('ohmc')) sourceStr = 'argentina';
-                    else if (u.includes('storage')) sourceStr = 'storage';
+                    const sourceStr = 'cptec';
 
                     const sourceId = `src-${frameKey}`;
                     const layerId = `lyr-${frameKey}`;
@@ -2074,7 +1973,7 @@ export default function AoVivoPage() {
                         }
                       });
                     }
-                    return; // Sucesso, não tenta próxima URL
+                    break; // Sucesso, não tenta próxima URL
                   } catch (e) {
                     // falhou, tenta próxima
                   }

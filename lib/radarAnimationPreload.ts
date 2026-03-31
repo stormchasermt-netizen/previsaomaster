@@ -25,21 +25,8 @@ async function fetchRadarStorageUrls(
   signal?: AbortSignal,
   isPast?: boolean
 ): Promise<string[]> {
-  const found = new Set<string>();
-  const slug = dr.station.slug;
-
-  try {
-    const res = await fetch(
-      `/api/radar-storage-fallback?slug=${encodeURIComponent(slug)}&ts12=${encodeURIComponent(exactTs12)}&productType=${productType}`,
-      { signal }
-    );
-    const data = await res.json().catch(() => null);
-    if (data?.url) found.add(data.url);
-  } catch {
-    /* abort */
-  }
-
-  return Array.from(found);
+  // Desativando fallback para o storage na ao-vivo-2
+  return [];
 }
 
 function proxied(url: string): string {
@@ -81,10 +68,8 @@ export async function collectRadarPreloadUrls(
   const storageUrls = await fetchRadarStorageUrls(dr, exactTs12, productType, signal, isPast);
   storageUrls.forEach((u) => pushIf(u));
 
-  if (!isPast) {
-    const cptecUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType, false);
-    pushIf(cptecUrl);
-  }
+  const cptecUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType, false);
+  pushIf(cptecUrl);
 
   return urls.map(proxied);
 }
