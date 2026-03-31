@@ -70,25 +70,25 @@ const BASE_MAP_OPTIONS: { id: BaseMapId; label: string; styleUrl: string; previe
     id: 'satellite', 
     label: 'Satélite', 
     styleUrl: `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/hybrid-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/289c0229e6b781ea1c1a5c4161b6fe2da53fe1ee/Captura%20de%20tela%202026-03-30%20212709.png`
   },
   { 
     id: 'streets', 
     label: 'Ruas', 
     styleUrl: `https://api.maptiler.com/maps/streets-v4/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/streets-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/289c0229e6b781ea1c1a5c4161b6fe2da53fe1ee/Captura%20de%20tela%202026-03-30%20212655.png`
   },
   { 
     id: 'topo', 
     label: 'Relevos', 
     styleUrl: `https://api.maptiler.com/maps/topo-v4/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/topo-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/289c0229e6b781ea1c1a5c4161b6fe2da53fe1ee/Captura%20de%20tela%202026-03-30%20212638.png`
   },
   { 
     id: 'toner', 
     label: 'Branco', 
     styleUrl: `https://api.maptiler.com/maps/toner-v2/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/toner-v2/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/289c0229e6b781ea1c1a5c4161b6fe2da53fe1ee/Captura%20de%20tela%202026-03-30%20212551.png`
   },
 ];
 
@@ -533,7 +533,7 @@ export default function AoVivoPage() {
   const applyBaseMapStyle = useCallback((mapInstance: any) => {
     if (!mapInstance) return;
     const selectedMap = BASE_MAP_OPTIONS.find((opt) => opt.id === baseMapId) || BASE_MAP_OPTIONS[0];
-    mapInstance.setStyle(selectedMap.styleUrl);
+    mapInstance.setStyle(selectedMap.styleUrl, { diff: false });
   }, [baseMapId]);
 
   // Procura o índice do valor mais próximo disponível no array de tempos válidos
@@ -1800,11 +1800,11 @@ export default function AoVivoPage() {
     
     const styleUrl = BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl;
 
-    map.setStyle(styleUrl);
+    map.setStyle(styleUrl, { diff: false });
     
     // Sync style with other split maps
     const extraMaps = [map2InstanceRef.current, map3InstanceRef.current, map4InstanceRef.current].filter(Boolean);
-    extraMaps.forEach(m => m.setStyle(styleUrl));
+    extraMaps.forEach(m => m.setStyle(styleUrl, { diff: false }));
   }, [mapReady, baseMapId]);
 
   useEffect(() => {
@@ -2405,7 +2405,7 @@ export default function AoVivoPage() {
       radarOpacity,
       overlayGenerationRef.current,
     );
-  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs, sliderMinutesAgo, historicalTimestampOverride]);
+  }, [mapReady, displayRadars, radarProductType, radarOpacity, effectiveRadarTimestamp, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs, sliderMinutesAgo, historicalTimestampOverride, baseMapId]);
 
   /** Overlays Mapas Secundários (Doppler, VIL, Waldvogel - WebGL) */
   useEffect(() => {
@@ -2434,7 +2434,7 @@ export default function AoVivoPage() {
         overlayGenerationRef.current
       );
     });
-  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs, sliderMinutesAgo, historicalTimestampOverride]);
+  }, [map2Ready, map3Ready, map4Ready, displayRadars, effectiveRadarTimestamp, radarOpacity, splitCount, addRadarOverlaysMapLibre, editingRadar, radarConfigs, sliderMinutesAgo, historicalTimestampOverride, baseMapId]);
 
   /** Editor de Posição de Radar (Desativado temporariamente para estabilização WebGL) */
   useEffect(() => {
