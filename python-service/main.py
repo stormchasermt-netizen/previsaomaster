@@ -126,5 +126,6 @@ def process_average():
     })
 
 if __name__ == '__main__':
-    # Porta padrão para execução local (Next.js route as vezes aponta para 9090)
-    app.run(host='0.0.0.0', port=9090, debug=False)
+    # Porta alterada para 8095 a pedido do usuário
+    app.run(host='0.0.0.0', port=8095, debug=False)
+    
