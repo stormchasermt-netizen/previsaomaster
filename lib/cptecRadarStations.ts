@@ -68,6 +68,8 @@ export interface CptecRadarStation {
   org: 'decea' | 'sdcsc' | 'inea' | 'cemaden' | 'sipam' | 'funceme' | 'argentina' | 'redemet';
   /** Slug SIPAM para radares HD (usado nas URLs siger.sipam.gov.br). Ex: 'sbbv' */
   sipamSlug?: string;
+  /** ID para chamadas na API da FUNCEME (ex: 'GMWR1000SST') */
+  funcemeId?: string;
   /** Servidor s0, s1, s2, s3 */
   server: string;
   /** Produto: ppi ou cappi (São Roque) */
@@ -178,9 +180,9 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12800001', slug: 'belem', name: 'Belém', lat: -1.4019, lng: -48.4573, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbbe', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -50.7025, minLat: -3.64342, maxLon: -46.21216, maxLat: 0.83949 } },
 
   // FUNCEME
-  { id: 'R13851142', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.7944, lng: -38.5575, rangeKm: 480, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13851143', vilId: 'R13851137', waldvogelId: 'R13851141', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.1691, minLat: -7.37854, maxLon: -34.94578, maxLat: -0.20518 } },
-  { id: 'R13967017', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 400, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13967018', vilId: 'R13967012', waldvogelId: 'R13967016', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.8899, minLat: -8.6533, maxLon: -35.6439, maxLat: -1.47747 } },
-  { id: 'RMT0100DS', slug: 'funceme-ceara', name: 'Ceará Mosaico (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 600, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.6806, minLat: -12.4827, maxLon: -35.8536, maxLat: -1.6557 } },
+  { id: 'R13851142', funcemeId: 'GMWR1000SST', slug: 'funceme-fortaleza', name: 'Fortaleza (FUNCEME)', lat: -3.7944, lng: -38.5575, rangeKm: 480, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13851143', vilId: 'R13851137', waldvogelId: 'R13851141', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.1691, minLat: -7.37854, maxLon: -34.94578, maxLat: -0.20518 } },
+  { id: 'R13967017', funcemeId: 'DWSR92X', slug: 'funceme-quixeramobim', name: 'Quixeramobim (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 400, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R13967018', vilId: 'R13967012', waldvogelId: 'R13967016', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.8899, minLat: -8.6533, maxLon: -35.6439, maxLat: -1.47747 } },
+  { id: 'RMT0100DS', funcemeId: 'RMT0100DS', slug: 'funceme-ceara', name: 'Ceará Mosaico (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 600, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.6806, minLat: -12.4827, maxLon: -35.8536, maxLat: -1.6557 } },
 
   // Fontes especiais (WMS/proxy)
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 36, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
@@ -624,14 +626,6 @@ export function buildNowcastingPngUrl(
   if (station.slug === 'ipmet-bauru') {
     return GET_RADAR_IPMET_URL + `?t=${ts12}`;
   }
-  if (station.org === 'funceme') {
-    // Para FUNCEME, passamos o tipo de produto se for VIL ou Waldvogel
-    let prod = 'reflectividade';
-    if (productType === 'vil') prod = 'vil';
-    else if (productType === 'waldvogel') prod = 'waldvogel';
-    else if (productType === 'velocidade') prod = 'velocidade';
-    return `/api/funceme/image?radar=${station.id}&timestamp=${ts12}&produto=${prod}`;
-  }
   if (station.slug === 'climatempo-poa') {
     return `https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png?nocache=${ts12}`;
   }
@@ -672,7 +666,11 @@ export function buildNowcastingPngUrl(
   }
 
   const server = (productType === 'velocidade' && station.velocityServer) ? station.velocityServer : station.server;
-  return `https://${server}.cptec.inpe.br/radar/${station.org}/${station.slug}/${prod}/${sub}/${y}/${m}/${fileId}_${finalTs12}.png`;
+  let slug = station.slug;
+  if (station.org === 'funceme' && slug.startsWith('funceme-')) {
+    slug = slug.replace('funceme-', '');
+  }
+  return `https://${server}.cptec.inpe.br/radar/${station.org}/${slug}/${prod}/${sub}/${y}/${m}/${fileId}_${finalTs12}.png`;
 }
 
 /** Converte lat/lng para Web Mercator (EPSG:3857). */

@@ -2214,7 +2214,12 @@ export default function AoVivoPage() {
             
             const idsToCheck = new Set<string>([slug]);
             if (dr.type === 'cptec') {
-              if (dr.station.org === 'funceme') idsToCheck.add(dr.station.id);
+              if (dr.station.org === 'funceme') {
+                idsToCheck.add(dr.station.id);
+                if ((dr.station as CptecRadarStation).funcemeId) {
+                  idsToCheck.add((dr.station as CptecRadarStation).funcemeId!);
+                }
+              }
               if (dr.station.sipamSlug) idsToCheck.add(dr.station.sipamSlug);
             }
 
@@ -2318,8 +2323,9 @@ export default function AoVivoPage() {
               markFailed();
               return;
             }
+            const funcemeId = (dr.station as CptecRadarStation).funcemeId || dr.station.id;
             processWithWorker(
-              `/api/funceme/image?radar=${encodeURIComponent(dr.station.id)}&produto=${productType}&timestamp=${exactTs12}`,
+              `/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`,
               'funceme',
               exactTs12,
               markFailed
@@ -2342,11 +2348,37 @@ export default function AoVivoPage() {
           return;
         }
 
+        const tryFallbackAfterCPTEC = () => {
+          if (dr.type === 'cptec' && dr.station.org === 'funceme' && !isPast) {
+            const funcemeId = (dr.station as CptecRadarStation).funcemeId || dr.station.id;
+            processWithWorker(
+              `/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`,
+              'funceme',
+              exactTs12,
+              markFailed
+            );
+            return;
+          }
+          void tryRedemetAfterStorage();
+        };
+
         if (radarSourceMode !== 'hd') {
           const cptecUrl = buildNowcastingPngUrl(dr.station, exactTs12, productType as any, true);
-          void tryStorageThen(() => processWithWorker(cptecUrl, 'cptec', exactTs12, () => void tryRedemetAfterStorage()));
+          void tryStorageThen(() => {
+            if (isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam') {
+              markFailed();
+              return;
+            }
+            processWithWorker(cptecUrl, 'cptec', exactTs12, tryFallbackAfterCPTEC);
+          });
         } else {
-          void tryStorageThen(() => void tryRedemetAfterStorage());
+          void tryStorageThen(() => {
+            if (isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam') {
+              markFailed();
+              return;
+            }
+            void tryRedemetAfterStorage();
+          });
         }
       });
     },

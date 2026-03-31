@@ -30,19 +30,21 @@ async function fetchRadarStorageUrls(
   dr: PreloadDisplayRadar,
   exactTs12: string,
   productType: RadarProductPreload,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  isPast?: boolean
 ): Promise<string[]> {
   const found = new Set<string>();
   const slug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
-  const radarIds = new Set<string>([slug]);
+  const radarIds = Array.from(new Set<string>([slug]));
 
   if (dr.type === 'cptec') {
     const s = dr.station;
     if (s.org === 'funceme') {
-      radarIds.add(s.id);
+      radarIds.push(s.id);
+      if (s.funcemeId) radarIds.push(s.funcemeId);
     }
     if (s.sipamSlug) {
-      radarIds.add(s.sipamSlug);
+      radarIds.push(s.sipamSlug);
     }
   }
 
@@ -71,7 +73,7 @@ async function fetchRadarStorageUrls(
     }
   }
 
-  return [...found];
+  return Array.from(found);
 }
 
 function proxied(url: string): string {
@@ -98,7 +100,8 @@ export async function collectRadarPreloadUrls(
   nominalTs12: string,
   productType: RadarProductPreload,
   radarSourceMode: 'superres' | 'hd',
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  isPast?: boolean
 ): Promise<string[]> {
   const urls: string[] = [];
   const slug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
@@ -126,7 +129,7 @@ export async function collectRadarPreloadUrls(
   storageUrls.forEach((u) => pushIf(u));
 
   if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug) && dr.type === 'cptec') {
-    pushIf(buildNowcastingPngUrl(dr.station, exactTs12, productType, true));
+    if (!isPast) pushIf(buildNowcastingPngUrl(dr.station, exactTs12, productType, true));
     return urls.map(proxied);
   }
 
@@ -185,40 +188,20 @@ export async function collectRadarPreloadUrls(
     return urls.map(proxied);
   }
 
-  if (dr.type === 'cptec' && dr.station.org === 'funceme') {
-    pushIf(
-      `/api/funceme/image?radar=${encodeURIComponent(dr.station.id)}&produto=${productType}&timestamp=${exactTs12}`
-    );
-    return urls.map(proxied);
-  }
-
-  if (dr.type === 'cptec' && radarSourceMode === 'hd' && dr.station.sipamSlug) {
-    const ns = getNearestRadarTimestamp(nominalTs12, dr.station);
-    const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
-    pushIf(buildSipamHdPngUrl(dr.station.sipamSlug, ns, sipProd));
-    const st = dr.station;
-    const wantRedemet = hasRedemetFallback(st.slug) && productType === 'reflectividade';
-    const area = wantRedemet ? getRedemetArea(st.slug) : null;
-    if (area) {
-      const tsRed = getNearestRadarTimestamp(nominalTs12, st);
-      try {
-        const res = await fetch(
-          `/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`,
-          { signal }
-        );
-        const data = await res.json().catch(() => null);
-        if (data?.url) pushIf(data.url);
-      } catch {
-        /* ignore */
-      }
+  if (dr.type === 'cptec' && radarSourceMode === 'hd' && dr.station.org === 'funceme') {
+    if (!isPast) {
+      const funcemeId = (dr.station as CptecRadarStation).funcemeId || dr.station.id;
+      pushIf(`/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`);
     }
     return urls.map(proxied);
   }
 
-  if (radarSourceMode !== 'hd') {
-    pushIf(buildNowcastingPngUrl(dr.station, exactTs12, productType, true));
-    if (dr.type === 'cptec') {
-      const st = dr.station as CptecRadarStation;
+  if (dr.type === 'cptec' && radarSourceMode === 'hd' && dr.station.sipamSlug) {
+    if (!isPast) {
+      const ns = getNearestRadarTimestamp(nominalTs12, dr.station);
+      const sipProd = productType === 'velocidade' ? 'velocidade' : 'reflectividade';
+      pushIf(buildSipamHdPngUrl(dr.station.sipamSlug, ns, sipProd));
+      const st = dr.station;
       const wantRedemet = hasRedemetFallback(st.slug) && productType === 'reflectividade';
       const area = wantRedemet ? getRedemetArea(st.slug) : null;
       if (area) {
@@ -238,21 +221,52 @@ export async function collectRadarPreloadUrls(
     return urls.map(proxied);
   }
 
+  if (radarSourceMode !== 'hd') {
+    if (!(isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam')) {
+      pushIf(buildNowcastingPngUrl(dr.station, exactTs12, productType, true));
+      if (dr.type === 'cptec') {
+        const st = dr.station as CptecRadarStation;
+        if (st.org === 'funceme' && !isPast) {
+          const funcemeId = st.funcemeId || st.id;
+          pushIf(`/api/funceme/image?radar=${encodeURIComponent(funcemeId)}&produto=${productType}&timestamp=${exactTs12}`);
+        }
+        const wantRedemet = hasRedemetFallback(st.slug) && productType === 'reflectividade';
+        const area = wantRedemet ? getRedemetArea(st.slug) : null;
+        if (area) {
+          const tsRed = getNearestRadarTimestamp(nominalTs12, st);
+          try {
+            const res = await fetch(
+              `/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`,
+              { signal }
+            );
+            const data = await res.json().catch(() => null);
+            if (data?.url) pushIf(data.url);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+    return urls.map(proxied);
+  }
+
   if (dr.type === 'cptec') {
-    const st = dr.station as CptecRadarStation;
-    const wantRedemet = radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
-    const area = wantRedemet ? getRedemetArea(st.slug) : null;
-    if (area) {
-      const tsRed = getNearestRadarTimestamp(nominalTs12, st);
-      try {
-        const res = await fetch(
-          `/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`,
-          { signal }
-        );
-        const data = await res.json().catch(() => null);
-        if (data?.url) pushIf(data.url);
-      } catch {
-        /* ignore */
+    if (!(isPast && (dr.station as CptecRadarStation).org === 'sipam')) {
+      const st = dr.station as CptecRadarStation;
+      const wantRedemet = radarSourceMode === 'hd' || (hasRedemetFallback(st.slug) && productType === 'reflectividade');
+      const area = wantRedemet ? getRedemetArea(st.slug) : null;
+      if (area) {
+        const tsRed = getNearestRadarTimestamp(nominalTs12, st);
+        try {
+          const res = await fetch(
+            `/api/radar-redemet-find?area=${encodeURIComponent(area)}&ts12=${encodeURIComponent(tsRed)}`,
+            { signal }
+          );
+          const data = await res.json().catch(() => null);
+          if (data?.url) pushIf(data.url);
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -299,6 +313,7 @@ export async function preloadRadarAnimationFrames(opts: PreloadAnimationOptions)
     const nominal = getNominalTimestampForAnimationFrameStatic(m, historicalTimestampOverride);
     for (const dr of displayRadars) {
       for (const product of products) {
+    const isPast = m > 0 || !!historicalTimestampOverride;
         const urls = await collectRadarPreloadUrls(dr, nominal, product, radarSourceMode, signal, isPast);
         for (const u of urls) {
           if (!seen.has(u)) {
