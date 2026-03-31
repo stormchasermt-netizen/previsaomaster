@@ -40,6 +40,17 @@ function formatValidDateTime(name: string) {
   return name.replace(/\.\w+$/, '');
 }
 
+function getValidDateStr(name: string) {
+  const match = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\./);
+  if (match) {
+    const [, y, m, d] = match;
+    const date = new Date(Date.UTC(+y, +m - 1, +d));
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    return `${days[date.getUTCDay()]} ${d}/${m}`;
+  }
+  return '';
+}
+
 function getForecastHour(run: string, name: string, idx: number) {
   const matchRun = run.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
   const matchName = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\./);
@@ -169,7 +180,15 @@ export default function NumericModelPage() {
     return () => clearInterval(interval);
   }, [isPlaying, images.length, playSpeed]);
 
-  if (!isMounted) return <div className="min-h-screen bg-neutral-900" />;
+  // Preload approach for images to avoid flickering quando altera src ou oculta
+  useEffect(() => {
+    images.forEach(img => {
+      const i = new window.Image();
+      i.src = img.url;
+    });
+  }, [images]);
+
+  if (!isMounted) return <div className="min-h-screen bg-white" />;
 
   const togglePlay = () => setIsPlaying(!isPlaying);
   const nextFrame = () => { setIsPlaying(false); setCurrentIndex(prev => (prev + 1) % images.length); };
@@ -179,17 +198,6 @@ export default function NumericModelPage() {
   const uncategorizedVariables = availableVariables.filter(v => 
     !Object.values(VARIABLE_CATEGORIES).flat().includes(v)
   );
-
-  // Renderiza de forma sincrona sem delay de opacity
-  // Preload approach for images to avoid flickering quando altera src ou oculta
-  useEffect(() => {
-    images.forEach(img => {
-      const i = new window.Image();
-      i.src = img.url;
-    });
-  }, [images]);
-
-  if (!isMounted) return null;
 
   return (
     <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
@@ -323,33 +331,62 @@ export default function NumericModelPage() {
 
           {/* TOP SPC-STYLE TIMELINE */}
           {images.length > 0 && (
-            <div className="w-full flex bg-gray-100 border-b border-gray-300 text-[10px] sm:text-xs font-mono select-none overflow-x-auto custom-scrollbar shrink-0 shadow-sm z-20">
-              <div className="flex items-center px-2 py-1.5 text-gray-500 font-bold border-r border-gray-300 shrink-0 bg-gray-200">
-                F+
+            <div className="w-full flex flex-col bg-gray-100 border-b border-gray-300 text-[9px] sm:text-[10px] font-mono select-none overflow-x-auto custom-scrollbar shrink-0 shadow-sm z-20">
+              
+              {/* DATE MARKERS ROW */}
+              <div className="flex w-max min-w-full bg-gray-200 border-b border-gray-300 text-gray-700 font-bold sticky top-0 left-0">
+                <div className="w-[28px] shrink-0 border-r border-gray-300 bg-gray-200 sticky left-0 z-10"></div>
+                {(() => {
+                  const days: { label: string, count: number }[] = [];
+                  images.forEach(img => {
+                    const label = getValidDateStr(img.name);
+                    if (days.length === 0 || days[days.length - 1].label !== label) {
+                      days.push({ label, count: 1 });
+                    } else {
+                      days[days.length - 1].count++;
+                    }
+                  });
+                  return days.map((day, i) => (
+                    <div 
+                      key={i} 
+                      className="border-r border-gray-400 px-1 py-0.5" 
+                      style={{ width: `${day.count * 20}px`, minWidth: `${day.count * 20}px` }}
+                    >
+                      {day.label}
+                    </div>
+                  ));
+                })()}
               </div>
-              {images.map((img, idx) => {
-                const fHour = getForecastHour(selectedRun, img.name, idx);
-                return (
-                  <div
-                    key={idx}
-                    className={`flex-1 min-w-[28px] text-center py-1.5 cursor-crosshair border-r border-gray-300 last:border-0 hover:bg-blue-100 hover:text-blue-900 transition-colors ${
-                      idx === currentIndex ? 'bg-blue-800 text-white font-bold hover:bg-blue-700' : 'text-gray-600 font-medium'
-                    }`}
-                    onMouseEnter={() => {
-                      if (currentIndex !== idx) {
+
+              {/* FORECAST HOUR ROW */}
+              <div className="flex w-max min-w-full">
+                <div className="w-[28px] flex items-center justify-center py-0.5 text-gray-500 font-bold border-r border-gray-300 shrink-0 bg-gray-200 sticky left-0 z-10">
+                  F+
+                </div>
+                {images.map((img, idx) => {
+                  const fHour = getForecastHour(selectedRun, img.name, idx);
+                  return (
+                    <div
+                      key={idx}
+                      className={`w-[20px] shrink-0 text-center py-0.5 cursor-crosshair border-r border-gray-300 last:border-0 hover:bg-blue-100 hover:text-blue-900 transition-colors ${
+                        idx === currentIndex ? 'bg-blue-800 text-white font-bold hover:bg-blue-700' : 'text-gray-600 font-medium'
+                      }`}
+                      onMouseEnter={() => {
+                        if (currentIndex !== idx) {
+                          setCurrentIndex(idx);
+                          setIsPlaying(false);
+                        }
+                      }}
+                      onClick={() => {
                         setCurrentIndex(idx);
                         setIsPlaying(false);
-                      }
-                    }}
-                    onClick={() => {
-                      setCurrentIndex(idx);
-                      setIsPlaying(false);
-                    }}
-                  >
-                    {String(fHour).padStart(2, '0')}
-                  </div>
-                );
-              })}
+                      }}
+                    >
+                      {String(fHour).padStart(2, '0')}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
           
