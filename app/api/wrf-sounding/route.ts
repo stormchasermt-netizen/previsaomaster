@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const VM_FETCH_MS = 60000;
+const RENDER_FETCH_MS = 120000;
+
+function stripDataUrlBase64(raw: string): string {
+  const s = String(raw).trim();
+  const m = /^data:image\/[^;]+;base64,(.+)$/is.exec(s);
+  return m ? m[1] : s;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -9,65 +18,129 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
-    // O IP da VM que roda o backend do WRF (conforme fornecido pelo usuário)
-    const vmUrl = 'http://34.41.194.43:8095/generate-wrf-sounding';
+    // URL da VM (CSV) — use env no App Hosting para não depender de IP fixo no código.
+    // Doc: o SSR do Firebase roda no Google Cloud; o IP de origem NÃO é o seu PC.
+    // Se a regra de firewall da VM só permitir o seu IP, o servidor não alcança a VM e o log não atualiza.
+    const vmUrl =
+      process.env.WRF_SOUNDING_VM_URL ||
+      'http://34.57.94.181:8095/generate-wrf-sounding';
 
-    // Passo 1: Pega o CSV da VM
-    const vmResponse = await fetch(vmUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ lat, lon, fileName }),
-      cache: 'no-store',
-    });
+    const renderUrl =
+      process.env.SOUNDING_ENGINE_URL ||
+      'https://sounding-engine-303740989273.us-central1.run.app/process';
+
+    // Passo 1: CSV da VM
+    let vmResponse: Response;
+    try {
+      vmResponse = await fetch(vmUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ lat, lon, fileName }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(VM_FETCH_MS),
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[wrF-sounding] VM fetch failed:', msg);
+      return NextResponse.json(
+        {
+          step: 'vm_fetch',
+          error:
+            'Não foi possível conectar à VM do WRF (rede/firewall). O site roda no Google Cloud; o IP de origem não é o seu PC. Libere a porta 8095 na VM para ingresso do Google Cloud (ex.: 0.0.0.0/0 em TCP 8095) ou use um túnel/HTTPS.',
+          details: msg,
+        },
+        { status: 502 },
+      );
+    }
 
     if (!vmResponse.ok) {
       const errorText = await vmResponse.text();
       console.error('Error from VM:', errorText);
-      return NextResponse.json({ error: `Error generating sounding CSV: ${errorText}` }, { status: vmResponse.status });
+      return NextResponse.json(
+        {
+          step: 'vm_http',
+          error: `HTTP ${vmResponse.status} ao gerar CSV na VM`,
+          details: errorText,
+        },
+        { status: vmResponse.status >= 500 ? 502 : vmResponse.status },
+      );
     }
 
     const vmData = await vmResponse.json();
-    
+
     if (vmData.status !== 'success' || !vmData.csv_data) {
-      return NextResponse.json({ error: 'Invalid response from WRF VM' }, { status: 500 });
+      return NextResponse.json(
+        {
+          step: 'vm_payload',
+          error: 'Resposta inválida da VM WRF (sem csv_data)',
+        },
+        { status: 500 },
+      );
     }
 
-    // Passo 2: Envia o CSV para o python-service hospedado no Cloud Run
-    // Removendo o localhost e usando a URL pública da sua API de Sondagens que foi feito deploy
-    const renderUrl = 'https://sounding-engine-303740989273.us-central1.run.app/process'; 
-    
-    // Log do tamanho do CSV recebido para debug
-    console.log(`[WRF Sondagem] CSV recebido da VM com sucesso, tamanho: ${vmData.csv_data.length} caracteres`);
+    console.log(
+      `[WRF Sondagem] CSV recebido da VM, tamanho: ${vmData.csv_data.length} caracteres`,
+    );
 
-    const renderResponse = await fetch(renderUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        csv: vmData.csv_data,
-        title: `WRF Sounding - Lat: ${lat.toFixed(2)} Lon: ${lon.toFixed(2)}`
-      }),
-      cache: 'no-store',
-    });
+    // Passo 2: render SHARPpy no Cloud Run
+    let renderResponse: Response;
+    try {
+      renderResponse = await fetch(renderUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          csv: vmData.csv_data,
+          title: `WRF Sounding - Lat: ${lat.toFixed(2)} Lon: ${lon.toFixed(2)}`,
+        }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(RENDER_FETCH_MS),
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[wrf-sounding] Cloud Run fetch failed:', msg);
+      return NextResponse.json(
+        {
+          step: 'render_fetch',
+          error: 'Falha ao chamar o serviço de renderização (Cloud Run)',
+          details: msg,
+        },
+        { status: 502 },
+      );
+    }
 
     if (!renderResponse.ok) {
       const errorText = await renderResponse.text();
-      console.error('Error from local python-service:', errorText);
-      return NextResponse.json({ error: `Error rendering sounding image: ${errorText}` }, { status: renderResponse.status });
+      console.error('Error from sounding-engine:', errorText);
+      return NextResponse.json(
+        {
+          step: 'render_http',
+          error: 'Erro ao renderizar sondagem',
+          details: errorText,
+        },
+        { status: renderResponse.status },
+      );
     }
 
-    // Passo 3: Retorna a imagem final para o frontend
     const responseJson = await renderResponse.json();
-    
+
     if (!responseJson.success || !responseJson.base64_img) {
-       console.error('Render failure:', responseJson);
-       return NextResponse.json({ error: `Render failed: ${responseJson.error || 'No image'}` }, { status: 500 });
+      console.error('Render failure:', responseJson);
+      return NextResponse.json(
+        {
+          step: 'render_payload',
+          error: `Render failed: ${responseJson.error || 'No image'}`,
+          trace: responseJson.trace,
+        },
+        { status: 500 },
+      );
     }
 
-    const imageBuffer = Buffer.from(responseJson.base64_img, 'base64');
+    const b64 = stripDataUrlBase64(responseJson.base64_img);
+    const imageBuffer = Buffer.from(b64, 'base64');
 
     return new NextResponse(imageBuffer, {
       status: 200,
@@ -75,8 +148,12 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'image/png',
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error('Error in wrf-sounding proxy:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json(
+      { step: 'unexpected', error: msg || 'Internal Server Error' },
+      { status: 500 },
+    );
   }
 }

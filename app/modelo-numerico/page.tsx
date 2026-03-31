@@ -135,16 +135,34 @@ export default function NumericModelPage() {
       });
 
       if (!res.ok) {
-        throw new Error('Falha ao gerar sondagem');
+        let detail = '';
+        try {
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            const j = (await res.json()) as {
+              step?: string;
+              error?: string;
+              details?: string;
+            };
+            detail = [j.step, j.error, j.details].filter(Boolean).join(' — ');
+          }
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail || `Falha ao gerar sondagem (${res.status})`);
       }
 
-      // Recebemos a imagem renderizada como blob (via api interna -> python-service local)
+      // Recebemos a imagem renderizada como blob (via api interna -> Cloud Run)
       const blob = await res.blob();
       const imageUrl = URL.createObjectURL(blob);
       setSoundingImageUrl(imageUrl);
     } catch (err) {
       console.error(err);
-      alert('Erro ao buscar ou renderizar sondagem do WRF.');
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Erro ao buscar ou renderizar sondagem do WRF.';
+      alert(msg);
     } finally {
       setIsSoundingLoading(false);
     }
