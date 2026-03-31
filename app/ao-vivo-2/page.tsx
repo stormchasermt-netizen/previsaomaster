@@ -1016,9 +1016,6 @@ export default function AoVivoPage() {
         parseInt(ts12.substring(10, 12), 10)
       ));
     };
-    const formatLocal = (d: Date) => {
-      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    };
     return displayRadars.map((dr) => {
       const radarKey = `cptec:${dr.station.slug}`;
       const source = radarEffectiveSource[radarKey];
@@ -1026,6 +1023,9 @@ export default function AoVivoPage() {
         return { name: dr.station.name, hhmm: 'sem imagem', source: undefined as any };
       }
       const anchorTs = radarEffectiveTimestamps[radarKey];
+      const formatLocal = (d: Date) => {
+        return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      };
       if (anchorTs) {
         let currentFrameTs = anchorTs;
         if (sliderMinutesAgo > 0) {
