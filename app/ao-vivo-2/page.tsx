@@ -1080,9 +1080,10 @@ export default function AoVivoPage() {
 
   const getDefaultUrlTemplate = useCallback((dr: DisplayRadar): string => {
     const ts12 = getNowMinusMinutesTimestamp12UTC(3);
-    const url = buildNowcastingPngUrl(dr.station, ts12, 'reflectividade');
+    const product = radarProductType || 'reflectividade';
+    const url = buildNowcastingPngUrl(dr.station, ts12, product);
     return url.replace(/\d{4}\/\d{2}\//, '{year}/{month}/').replace(/_\d{12}(\.png)/, '_{ts12}$1');
-  }, []);
+  }, [radarProductType]);
 
   const handleOpenEditRadar = useCallback((dr: DisplayRadar) => {
     if (user?.type !== 'admin') {
