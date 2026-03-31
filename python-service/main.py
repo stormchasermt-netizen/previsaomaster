@@ -126,6 +126,8 @@ def process_average():
     })
 
 if __name__ == '__main__':
-    # Porta alterada para 8095 a pedido do usuário
-    app.run(host='0.0.0.0', port=8095, debug=False)
+    # Cloud Run usa a variável de ambiente PORT (padrão 8080)
+    # Se não encontrar, tenta 8080 (padrão Cloud Run/Google) ou 8095 (fallback)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
     
