@@ -346,16 +346,76 @@ async function filterValidSliderMinutesAgo(
     const batch = candidates.slice(i, i + BATCH);
     const checks = await Promise.all(
       batch.map(async (minutesAgo) => {
+        // Agora usamos a nova API de radar-find-first-valid para testar a espiral
+        const urlsToTest: string[] = [];
         for (let windowOffset = 0; windowOffset < 10; windowOffset++) {
           const searchMin = minutesAgo + windowOffset;
           const ts12 = subtractMinutesFromTimestamp12UTC(referenceTs12, searchMin);
-          try {
-            if (await probeRadarImageExists(dr, ts12, productType, slugParam, signal, isHistorical)) return true;
-          } catch {
-            /* próximo offset */
+          
+          if (dr.type === 'cptec') {
+            if (isHistorical) {
+              // Histórico Redemet não entra na espiral simples de CDN
+              const area = getRedemetArea((dr.station as CptecRadarStation).slug);
+              if (area) {
+                 urlsToTest.push(`https://estatico-redemet.decea.mil.br/api/radar-url-mock?area=${area}&ts12=${ts12}`); // Não vamos resolver redemet aqui por ora para simplificar
+              }
+            } else {
+              urlsToTest.push(buildNowcastingPngUrl(dr.station, ts12, productType, true));
+            }
+          } else {
+            const nominalDate = new Date(
+              Date.UTC(
+                parseInt(ts12.slice(0, 4), 10),
+                parseInt(ts12.slice(4, 6), 10) - 1,
+                parseInt(ts12.slice(6, 8), 10),
+                parseInt(ts12.slice(8, 10), 10),
+                parseInt(ts12.slice(10, 12), 10)
+              )
+            );
+            const argTs = getArgentinaRadarTimestamp(nominalDate, dr.station);
+            urlsToTest.push(buildArgentinaRadarPngUrl(dr.station, argTs, productType));
           }
-          if (signal?.aborted) break;
         }
+        
+        // Vamos checar o Storage primeiro. Se não achar, roda a espiral
+        try {
+          const st = await fetch(
+            `/api/radar-storage-fallback?radarId=${encodeURIComponent(slugParam)}&ts12=${encodeURIComponent(subtractMinutesFromTimestamp12UTC(referenceTs12, minutesAgo))}&productType=${productType}&maxDiff=10`,
+            { signal, cache: 'no-store' }
+          );
+          if (st.ok) {
+            const j = await st.json().catch(() => ({}));
+            if (j?.url) return true;
+          }
+        } catch { }
+
+        if (urlsToTest.length > 0 && !urlsToTest[0].includes('radar-url-mock')) {
+          try {
+            const res = await fetch('/api/radar-find-first-valid', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ urls: urlsToTest }),
+              signal,
+              cache: 'no-store'
+            });
+            if (res.ok) {
+              const j = await res.json().catch(() => ({}));
+              if (j?.exists) return true;
+            }
+          } catch { }
+        } else if (urlsToTest.length > 0) {
+           // Fallback antigo para casos complexos (Redemet)
+           for (let windowOffset = 0; windowOffset < 10; windowOffset++) {
+            const searchMin = minutesAgo + windowOffset;
+            const ts12 = subtractMinutesFromTimestamp12UTC(referenceTs12, searchMin);
+            try {
+              if (await probeRadarImageExists(dr, ts12, productType, slugParam, signal, isHistorical)) return true;
+            } catch {}
+            if (signal?.aborted) break;
+          }
+          return false;
+        }
+
         return false;
       })
     );

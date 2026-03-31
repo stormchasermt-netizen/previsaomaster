@@ -129,6 +129,7 @@ export async function collectRadarPreloadUrls(
   storageUrls.forEach((u) => pushIf(u));
 
   if (['usp-starnet', 'ipmet-bauru', 'climatempo-poa'].includes(slug) && dr.type === 'cptec') {
+    // Para esses radares que não têm histórico na URL direta, confiamos no storageUrls buscado acima
     if (!isPast) pushIf(buildNowcastingPngUrl(dr.station, exactTs12, productType, true));
     return urls.map(proxied);
   }

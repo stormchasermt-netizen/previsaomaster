@@ -59,7 +59,11 @@ export function getArgentinaRadarTimestamp(
   station: ArgentinaRadarStation
 ): string {
   const d = new Date(nominalDate);
-  d.setUTCHours(d.getUTCHours() + 3); // O nominalDate está em local time (UTC-3), então +3 converte para UTC
+  // O nominalDate já é em local time (UTC-3), e o nome do arquivo da Argentina 
+  // usa o horário local mas com sufixo Z. Portanto, NÃO devemos somar 3 horas.
+  // Vamos usar getUTCHours() porque o nominalDate foi construído com Date.UTC
+  // a partir do ts12 (que já é o tempo correto desejado).
+  
   const interval = station.updateIntervalMinutes;
   const totalMin = d.getUTCHours() * 60 + d.getUTCMinutes();
   const snapped = Math.floor(totalMin / interval) * interval;
