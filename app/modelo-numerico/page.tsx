@@ -181,26 +181,55 @@ export default function NumericModelPage() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-900 text-white font-sans overflow-hidden">
+    <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
       {/* HEADER */}
-      <header className="flex items-center justify-between px-6 py-3 bg-neutral-950 border-b border-neutral-800 shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold tracking-tight text-blue-400">Modelo WRF 3km</h1>
-          <div className="h-6 w-px bg-neutral-700"></div>
+      <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 shrink-0">
+        <div className="flex items-center w-full relative">
           
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-neutral-400 font-medium">Rodada:</span>
-            <select 
-              className="bg-neutral-800 border border-neutral-700 text-sm rounded-md px-3 py-1.5 outline-none focus:border-blue-500 transition-colors"
-              value={selectedRun}
-              onChange={e => setSelectedRun(e.target.value)}
-              disabled={isLoading || runs.length === 0}
-            >
-              {runs.map(run => (
-                <option key={run} value={run}>{formatRunDateTime(run)}</option>
-              ))}
-              {runs.length === 0 && <option>Carregando...</option>}
-            </select>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 font-bold">Data:</span>
+              <select 
+                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium"
+                value={selectedRun}
+                onChange={e => setSelectedRun(e.target.value)}
+                disabled={isLoading || runs.length === 0}
+              >
+                {runs.map(run => (
+                  <option key={run} value={run}>{formatRunDateTime(run).split(' ')[0]}</option>
+                ))}
+                {runs.length === 0 && <option>Carregando...</option>}
+              </select>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 font-bold">Rodada:</span>
+              <select 
+                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium"
+                value={selectedRun}
+                onChange={e => setSelectedRun(e.target.value)}
+                disabled={isLoading || runs.length === 0}
+              >
+                {runs.map(run => (
+                  <option key={run} value={run}>{formatRunDateTime(run).split(' ').slice(1).join(' ')}</option>
+                ))}
+                {runs.length === 0 && <option>Carregando...</option>}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 font-bold">Domínio:</span>
+              <select 
+                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium"
+                defaultValue="Centro-Sul"
+              >
+                <option value="Centro-Sul">Centro-Sul</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="absolute right-0 top-0 bg-[#00174b] text-white px-6 py-2 rounded-bl-lg font-bold shadow-md text-lg tracking-wider border-b border-l border-blue-800">
+            WRF3km
           </div>
         </div>
       </header>
@@ -326,12 +355,12 @@ export default function NumericModelPage() {
                     key={img.url}
                     src={img.url} 
                     alt={`Forecast frame ${idx}`}
-                    className={`absolute max-w-full max-h-full object-contain ease-in-out ${
+                    className={`absolute max-w-full max-h-full object-contain will-change-opacity pointer-events-none transition-opacity ${
                       isCurrent 
-                        ? (isPlaying && playSpeed <= 100 ? 'opacity-100 z-10 duration-0' : 'opacity-100 z-10 transition-opacity duration-200')
+                        ? (isPlaying && playSpeed <= 100 ? 'opacity-100 z-10 duration-0 ease-linear' : 'opacity-100 z-10 duration-150 ease-in')
                         : isPrev 
-                          ? 'opacity-100 z-0' 
-                          : 'opacity-0 z-0'
+                          ? 'opacity-100 z-0 duration-300 ease-out' 
+                          : 'opacity-0 z-0 duration-0 ease-linear'
                     }`}
                   />
                 );
