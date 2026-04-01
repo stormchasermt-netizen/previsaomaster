@@ -11,6 +11,7 @@ import { filterClimatempoRadarImage } from '@/lib/radarImageFilter';
 const MAPTILER_KEY = 'WyOGmI7ufyBLH3G7aX9o';
 const SAT_STYLE = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`;
 
+/** Mesmos URLs que em app/ao-vivo/page.tsx */
 const RADAR_ICON_AVAILABLE =
   'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/7e352d326e59aa65efc40ce2979d5a078a393dc4/radar-icon-svg-download-png-8993769.webp';
 const RADAR_ICON_UNAVAILABLE =
@@ -64,19 +65,139 @@ function collectSortedTimesFromImages(
   return Array.from(set).sort();
 }
 
-/** Mosaico: união de todos os instantes em que pelo menos um radar tem ficheiro. */
-function buildUnionTimes(
-  imagesByStation: Record<string, { name: string; url: string }[]>,
-  product: RadarProductMode
-): string[] {
-  const set = new Set<string>();
-  for (const imgs of Object.values(imagesByStation)) {
-    for (const im of imgs) {
-      const ts = extractTsFromFilename(im.name, product);
-      if (ts) set.add(ts);
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const SYNC_TOLERANCE_MS = 10 * 60 * 1000;
+
+function ts12ToUtcMs(ts: string): number {
+  const y = +ts.slice(0, 4);
+  const mo = +ts.slice(4, 6) - 1;
+  const d = +ts.slice(6, 8);
+  const h = +ts.slice(8, 10);
+  const mi = +ts.slice(10, 12);
+  return Date.UTC(y, mo, d, h, mi, 0, 0);
+}
+
+/** Último ts (ordenado asc) com tsMs <= targetMs; null se não houver. */
+function lastTsAtOrBefore(sortedTs: string[], targetMs: number): string | null {
+  let best: string | null = null;
+  let bestMs = -Infinity;
+  for (const ts of sortedTs) {
+    const ms = ts12ToUtcMs(ts);
+    if (ms <= targetMs && ms >= bestMs) {
+      bestMs = ms;
+      best = ts;
     }
   }
-  return Array.from(set).sort();
+  return best;
+}
+
+/** Entre os ts ordenados, escolhe o mais próximo de targetMs dentro de ±tolMs. */
+function pickClosestWithinTolerance(sortedTs: string[], targetMs: number, tolMs: number): string | null {
+  let best: string | null = null;
+  let bestDiff = Infinity;
+  for (const ts of sortedTs) {
+    const ms = ts12ToUtcMs(ts);
+    const diff = Math.abs(ms - targetMs);
+    if (diff <= tolMs && diff < bestDiff) {
+      bestDiff = diff;
+      best = ts;
+    }
+  }
+  return best;
+}
+
+type MosaicSyncFrame = {
+  masterTs: string;
+  /** URL da imagem a mostrar por radar (já com sticky / hold aplicados). */
+  urlBySlug: Record<string, string>;
+};
+
+type MosaicSyncPlan = {
+  leaderSlug: string;
+  masterTimes: string[];
+  frames: MosaicSyncFrame[];
+};
+
+/**
+ * Mosaico: última hora de dados (até o ts mais recente no bucket), timeline = instantes do radar com mais imagens nessa janela;
+ * outros radares: match ±10 min ao instante líder; senão mantêm a imagem já mostrada (ou a mais recente ≤ instante no 1.º frame).
+ */
+function buildMosaicSyncPlan(
+  imagesByStation: Record<string, { name: string; url: string }[]>,
+  slugs: string[],
+  product: RadarProductMode
+): MosaicSyncPlan | null {
+  const lookups: Record<string, Map<string, { name: string; url: string }>> = {};
+  const allTs: string[] = [];
+  for (const slug of slugs) {
+    lookups[slug] = buildTsLookup(imagesByStation[slug] || [], product);
+    for (const ts of lookups[slug].keys()) allTs.push(ts);
+  }
+  if (allTs.length === 0) return null;
+
+  const tMaxMs = Math.max(...allTs.map(ts12ToUtcMs));
+  const tMinMs = tMaxMs - ONE_HOUR_MS;
+
+  const tsInHour: Record<string, string[]> = {};
+  let bestSlug = slugs[0];
+  let bestCount = -1;
+  for (const slug of slugs) {
+    const sorted = Array.from(lookups[slug].keys()).sort();
+    const inWin = sorted.filter((ts) => {
+      const ms = ts12ToUtcMs(ts);
+      return ms >= tMinMs && ms <= tMaxMs;
+    });
+    tsInHour[slug] = inWin;
+    if (inWin.length > bestCount) {
+      bestCount = inWin.length;
+      bestSlug = slug;
+    }
+  }
+
+  const masterTimes = tsInHour[bestSlug] || [];
+  if (masterTimes.length === 0) return null;
+
+  const lastUrl: Record<string, string> = {};
+  const frames: MosaicSyncFrame[] = [];
+
+  for (const masterTs of masterTimes) {
+    const targetMs = ts12ToUtcMs(masterTs);
+    const urlBySlug: Record<string, string> = {};
+
+    for (const slug of slugs) {
+      const map = lookups[slug];
+      const sorted = tsInHour[slug];
+
+      if (slug === bestSlug) {
+        const img = map.get(masterTs);
+        if (img) {
+          urlBySlug[slug] = img.url;
+          lastUrl[slug] = img.url;
+        }
+        continue;
+      }
+
+      const match = pickClosestWithinTolerance(sorted, targetMs, SYNC_TOLERANCE_MS);
+      if (match !== null) {
+        const img = map.get(match)!;
+        urlBySlug[slug] = img.url;
+        lastUrl[slug] = img.url;
+      } else if (lastUrl[slug]) {
+        urlBySlug[slug] = lastUrl[slug];
+      } else {
+        const holdTs = lastTsAtOrBefore(sorted, targetMs);
+        if (holdTs !== null) {
+          const img = map.get(holdTs)!;
+          urlBySlug[slug] = img.url;
+          lastUrl[slug] = img.url;
+        }
+      }
+    }
+
+    frames.push({ masterTs, urlBySlug });
+  }
+
+  return { leaderSlug: bestSlug, masterTimes, frames };
 }
 
 function buildTsLookup(
@@ -153,19 +274,35 @@ export default function AoVivo2Content() {
     return out;
   }, [imagesByStation, product]);
 
+  /** Mosaico: última hora + sincronização (radar líder, ±10 min, sticky). */
+  const mosaicSync = useMemo(() => {
+    if (focusedSlug) return null;
+    return buildMosaicSyncPlan(imagesByStation, stationsWithBounds, product);
+  }, [focusedSlug, imagesByStation, product, stationsWithBounds]);
+
   /**
-   * Slider só com instantes que têm ficheiro no cache (nome válido).
-   * Foco num radar: só os horários daquele radar. Mosaico: união dos horários de todos.
+   * Slider: foco = todos os instantes daquele radar; mosaico = instantes do radar líder na última hora.
    */
   const timelineTimes = useMemo(() => {
     if (focusedSlug) {
       return collectSortedTimesFromImages(imagesByStation[focusedSlug] || [], product);
     }
-    return buildUnionTimes(imagesByStation, product);
-  }, [focusedSlug, imagesByStation, product]);
+    return mosaicSync?.masterTimes ?? [];
+  }, [focusedSlug, imagesByStation, product, mosaicSync]);
 
   const safeIndex = timelineTimes.length > 0 ? Math.min(currentIndex, timelineTimes.length - 1) : 0;
   const currentTs = timelineTimes[safeIndex] ?? null;
+
+  const mosaicFrameAtIndex = useMemo(() => {
+    if (focusedSlug || !mosaicSync?.frames.length) return null;
+    const i = Math.min(safeIndex, mosaicSync.frames.length - 1);
+    return mosaicSync.frames[i] ?? null;
+  }, [focusedSlug, mosaicSync, safeIndex]);
+
+  const hasAnyStationImages = useMemo(
+    () => Object.values(imagesByStation).some((imgs) => imgs.length > 0),
+    [imagesByStation]
+  );
 
   const displaySlugs = useMemo(() => {
     if (focusedSlug) return [focusedSlug].filter((s) => stationsWithBounds.includes(s));
@@ -298,21 +435,20 @@ export default function AoVivo2Content() {
       const st = findCptecBySlug(slug);
       if (!st) continue;
       const hasAny = (imagesByStation[slug]?.length ?? 0) > 0;
-      const isFocused = focusedSlug === slug;
 
       const el = document.createElement('div');
       el.className = 'w-8 h-8 cursor-pointer';
       if (hasAny) {
         el.innerHTML = `
           <div class="relative flex items-center justify-center w-full h-full transition-transform hover:scale-125">
-            <div class="absolute inset-0 rounded-full ${isFocused ? 'bg-amber-400/40' : 'bg-cyan-500/20'} animate-ping" style="animation-duration: 2.5s;"></div>
-            <img src="${RADAR_ICON_AVAILABLE}" alt="Radar" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+            <div class="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping" style="animation-duration: 2.5s;"></div>
+            <img src="${RADAR_ICON_AVAILABLE}" alt="Radar On" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
           </div>
         `;
       } else {
         el.innerHTML = `
           <div class="relative flex items-center justify-center w-full h-full opacity-50 transition-transform hover:scale-110 grayscale">
-            <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar" class="w-8 h-8 object-contain" />
+            <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar Off" class="w-8 h-8 object-contain" />
           </div>
         `;
       }
@@ -334,7 +470,9 @@ export default function AoVivo2Content() {
   /** Camadas raster por radar — troca com raster-fade-duration para transição suave */
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !currentTs) return;
+    if (!map || !mapReady) return;
+    if (focusedSlug && !currentTs) return;
+    if (!focusedSlug && !mosaicFrameAtIndex) return;
 
     const gen = ++layerUpdateGenerationRef.current;
 
@@ -402,23 +540,36 @@ export default function AoVivo2Content() {
         if (map.getLayer(lid)) map.setPaintProperty(lid, 'raster-opacity', 0);
         continue;
       }
-      const img = lookups[slug]?.get(currentTs);
-      applyLayer(slug, img?.url ?? null);
+      const rawUrl = focusedSlug
+        ? lookups[slug]?.get(currentTs!)?.url
+        : mosaicFrameAtIndex?.urlBySlug[slug];
+      applyLayer(slug, rawUrl ?? null);
     }
-  }, [mapReady, currentTs, lookups, displaySlugs, stationsWithBounds]);
+  }, [mapReady, currentTs, lookups, displaySlugs, stationsWithBounds, focusedSlug, mosaicFrameAtIndex]);
 
   /** Pré-carrega frames vizinhos (como modelo numérico — menos flicker) */
   useEffect(() => {
     if (timelineTimes.length === 0) return;
     const si = safeIndex;
-    const indices = [si, (si + 1) % timelineTimes.length, (si - 1 + timelineTimes.length) % timelineTimes.length];
+    const n = timelineTimes.length;
+    const indices = [si, (si + 1) % n, (si - 1 + n) % n];
     const urls = new Set<string>();
-    for (const idx of indices) {
-      const ts = timelineTimes[idx];
-      if (!ts) continue;
-      for (const slug of displaySlugs) {
-        const u = lookups[slug]?.get(ts)?.url;
-        if (u) urls.add(absoluteUrl(u));
+    if (focusedSlug) {
+      for (const idx of indices) {
+        const ts = timelineTimes[idx];
+        if (!ts) continue;
+        for (const slug of displaySlugs) {
+          const u = lookups[slug]?.get(ts)?.url;
+          if (u) urls.add(absoluteUrl(u));
+        }
+      }
+    } else if (mosaicSync?.frames.length) {
+      for (const idx of indices) {
+        const f = mosaicSync.frames[idx];
+        if (!f) continue;
+        for (const u of Object.values(f.urlBySlug)) {
+          urls.add(absoluteUrl(u));
+        }
       }
     }
     urls.forEach((u) => {
@@ -427,7 +578,7 @@ export default function AoVivo2Content() {
       const im = new window.Image();
       im.src = u;
     });
-  }, [safeIndex, timelineTimes, displaySlugs, lookups]);
+  }, [safeIndex, timelineTimes, displaySlugs, lookups, focusedSlug, mosaicSync?.frames]);
 
   useEffect(() => {
     if (!isPlaying || timelineTimes.length < 2) return;
@@ -558,7 +709,15 @@ export default function AoVivo2Content() {
 
         {timelineTimes.length === 0 && stationsWithBounds.length > 0 && !isLoading && !error && (
           <div className="absolute bottom-16 left-4 right-4 z-10 rounded-lg bg-black/70 border border-slate-600 p-4 text-sm text-slate-200">
-            Nenhuma imagem {product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} nas pastas do bucket para os radares listados.
+            {!focusedSlug && hasAnyStationImages ? (
+              <>
+                Nenhuma imagem {product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} na <strong className="text-white">última hora</strong> (relativa ao ficheiro mais recente no bucket) para montar o mosaico sincronizado.
+              </>
+            ) : (
+              <>
+                Nenhuma imagem {product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} nas pastas do bucket para os radares listados.
+              </>
+            )}
           </div>
         )}
       </div>
