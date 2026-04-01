@@ -1,8 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, CloudLightning, Layers } from 'lucide-react';
+import {
+  parseWrfRunFolder,
+  formatRodadaDropdownLabel,
+  getForecastHourFromRun,
+  domainLabel,
+} from '@/lib/wrfModelRuns';
+import { getMapBoundsForRunFolder, imagePixelToLatLonParana, isParanaRun } from '@/lib/wrfDomainBounds';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl'],
@@ -40,15 +47,6 @@ const VARIABLE_LABELS: Record<string, string> = {
   Thetae_2m: 'Theta-e (2m)'
 };
 
-function formatRunDateTime(run: string) {
-  const match = run.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
-  if (match) {
-    const [, y, m, d, H, M] = match;
-    return `${d}/${m}/${y} ${H}:${M} UTC`;
-  }
-  return run;
-}
-
 function formatValidDateTime(name: string) {
   const match = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\./);
   if (match) {
@@ -68,26 +66,6 @@ function getValidDateStr(name: string) {
   }
   return '';
 }
-
-function getForecastHour(run: string, name: string, idx: number) {
-  const matchRun = run.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
-  const matchName = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\./);
-  
-  if (matchRun && matchName) {
-    const d1 = Date.UTC(+matchRun[1], +matchRun[2] - 1, +matchRun[3], +matchRun[4], +matchRun[5]);
-    const d2 = Date.UTC(+matchName[1], +matchName[2] - 1, +matchName[3], +matchName[4], +matchName[5]);
-    const diffHrs = Math.round((d2 - d1) / 3600000);
-    return diffHrs;
-  }
-  return idx;
-}
-
-const WRF_BOUNDS = { 
-  north: -17.9648, 
-  south: -35.7217, 
-  east: -41.3680, 
-  west: -62.6320 
-};
 
 export default function NumericModelPage() {
   const [isMounted, setIsMounted] = useState(false);
@@ -116,32 +94,67 @@ export default function NumericModelPage() {
   // Premium Popup State
   const [showPremiumPopup, setShowPremiumPopup] = useState(false);
 
+  const parsedSelectedRun = useMemo(() => parseWrfRunFolder(selectedRun), [selectedRun]);
+  const selectedDateYmd = parsedSelectedRun?.dateYmd ?? '';
+
+  const uniqueDates = useMemo(() => {
+    const set = new Set<string>();
+    runs.forEach((r) => {
+      const p = parseWrfRunFolder(r);
+      if (p) set.add(p.dateYmd);
+    });
+    return Array.from(set).sort().reverse();
+  }, [runs]);
+
+  const domainsForSelectedDate = useMemo(() => {
+    const set = new Set<string>();
+    runs.forEach((r) => {
+      const p = parseWrfRunFolder(r);
+      if (p?.dateYmd === selectedDateYmd) set.add(p.domain);
+    });
+    return Array.from(set).sort((a, b) => {
+      const rank = (d: string) => (d === 'centro-sul' ? 0 : d === 'parana' ? 1 : 2);
+      return rank(a) - rank(b) || a.localeCompare(b);
+    });
+  }, [runs, selectedDateYmd]);
+
+  const runsForRodadaDropdown = useMemo(() => {
+    const dom = parsedSelectedRun?.domain;
+    if (!selectedDateYmd || !dom) return [];
+    return runs.filter((r) => {
+      const p = parseWrfRunFolder(r);
+      return p?.dateYmd === selectedDateYmd && p.domain === dom;
+    });
+  }, [runs, selectedDateYmd, parsedSelectedRun?.domain]);
+
   useEffect(() => {
     // Show popup immediately when component mounts
     setShowPremiumPopup(true);
   }, []);
   const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
-    // Pegar dimensões da imagem real vs exibida
     const rect = e.currentTarget.getBoundingClientRect();
-    const xRatio = e.nativeEvent.offsetX / rect.width;
-    const yRatio = e.nativeEvent.offsetY / rect.height;
+    const ox = e.nativeEvent.offsetX;
+    const oy = e.nativeEvent.offsetY;
 
-    // Calcular Lat/Lon aproximada baseada no bounding box do WRF
-    // (Presumindo que a imagem mapeia linearmente. WRF pode ter curvatura, mas isso é uma boa aproximação inicial)
-    const latSpan = WRF_BOUNDS.north - WRF_BOUNDS.south;
-    const lonSpan = WRF_BOUNDS.east - WRF_BOUNDS.west;
-
-    // O eixo Y de uma imagem normalmente cresce para baixo, então yRatio=0 é o Norte, yRatio=1 é o Sul
-    const lat = WRF_BOUNDS.north - (yRatio * latSpan);
-    
-    // O eixo X cresce para a direita, então xRatio=0 é o Oeste, xRatio=1 é o Leste
-    const lon = WRF_BOUNDS.west + (xRatio * lonSpan);
+    let lat: number;
+    let lon: number;
+    if (selectedRun && isParanaRun(selectedRun)) {
+      const ll = imagePixelToLatLonParana(ox, oy, rect.width, rect.height);
+      lat = ll.lat;
+      lon = ll.lon;
+    } else {
+      const b = getMapBoundsForRunFolder(selectedRun || '');
+      const latSpan = b.north - b.south;
+      const lonSpan = b.east - b.west;
+      lat = b.north - (oy / rect.height) * latSpan;
+      lon = b.west + (ox / rect.width) * lonSpan;
+    }
 
     setHoverPos({
-      x: e.nativeEvent.offsetX,
-      y: e.nativeEvent.offsetY,
+      x: ox,
+      y: oy,
       lat,
-      lon
+      lon,
     });
   };
 
@@ -361,34 +374,41 @@ export default function NumericModelPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-white text-black font-sans overflow-hidden">
-      {/* HEADER */}
-      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 py-2 sm:py-3 bg-white border-b border-gray-200 shrink-0 relative z-20">
-        <div className="flex items-center justify-between w-full relative sm:mb-0 pb-2 sm:pb-0 border-b border-gray-100 sm:border-b-0">
-          <Link href="/" className="text-gray-500 hover:text-blue-800 transition-colors flex items-center gap-1" title="Voltar">
-            <ChevronLeft size={24} />
-            <span className="sm:hidden font-bold text-sm">Voltar</span>
-          </Link>
-          <div className="bg-[#00174b] text-white px-4 sm:px-6 py-1.5 sm:py-2 rounded-lg sm:rounded-bl-lg sm:rounded-tr-none sm:absolute sm:right-0 sm:top-0 font-bold shadow-md text-sm sm:text-lg tracking-wider sm:border-b sm:border-l border-blue-800 -mr-2 sm:mr-0">
-            <CloudLightning size={18} className="hidden sm:inline mr-1" />WRF3km
+      {/* HEADER — WRF 3km no canto superior esquerdo; pastas do bucket: YYYYMMDD[_domínio]_HHMMSS */}
+      <header className="flex flex-col px-4 sm:px-6 py-2 sm:py-3 bg-white border-b border-gray-200 shrink-0 relative z-20 gap-3">
+        <div className="flex flex-wrap items-center gap-3 w-full">
+          <div className="bg-[#00174b] text-white px-4 sm:px-5 py-1.5 sm:py-2 rounded-lg font-bold shadow-md text-sm sm:text-base tracking-wider border border-blue-800 shrink-0">
+            <CloudLightning size={18} className="hidden sm:inline mr-1 align-text-bottom" />
+            WRF 3km
           </div>
+          <Link
+            href="/"
+            className="text-gray-500 hover:text-blue-800 transition-colors flex items-center gap-1 text-sm font-medium"
+            title="Voltar"
+          >
+            <ChevronLeft size={22} />
+            <span className="hidden sm:inline">Voltar</span>
+          </Link>
         </div>
 
-        <div className="flex w-full mt-2 sm:mt-0">
+        <div className="flex w-full">
           <div className="flex gap-2 sm:gap-4 items-center flex-wrap sm:flex-nowrap w-full">
-            <div className="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none">
-              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline">Data:</span>
-              <select 
-                className="w-full sm:w-auto bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
-                value={selectedRun ? selectedRun.substring(0, 8) : ''}
-                onChange={e => {
+            <div className="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none min-w-0">
+              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline shrink-0">Data:</span>
+              <select
+                className="w-full min-w-0 sm:w-auto bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
+                value={selectedDateYmd}
+                onChange={(e) => {
                   const newDate = e.target.value;
-                  const firstRunOfDate = runs.find(r => r.startsWith(newDate));
-                  if (firstRunOfDate) setSelectedRun(firstRunOfDate);
+                  const candidates = runs.filter((r) => parseWrfRunFolder(r)?.dateYmd === newDate);
+                  const curDom = parseWrfRunFolder(selectedRun)?.domain;
+                  const sameDom = candidates.find((r) => parseWrfRunFolder(r)?.domain === curDom);
+                  setSelectedRun(sameDom ?? candidates[0] ?? '');
                 }}
                 disabled={isLoading || runs.length === 0}
                 suppressHydrationWarning
               >
-                {Array.from(new Set(runs.map(run => run.substring(0, 8)))).map(dateStr => (
+                {uniqueDates.map((dateStr) => (
                   <option key={dateStr} value={dateStr}>
                     {`${dateStr.substring(6, 8)}/${dateStr.substring(4, 6)}/${dateStr.substring(0, 4)}`}
                   </option>
@@ -396,35 +416,53 @@ export default function NumericModelPage() {
                 {runs.length === 0 && <option value="">Carregando...</option>}
               </select>
             </div>
-            
-            <div className="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none">
-              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline">Rodada:</span>
-              <select 
-                className="w-full sm:w-auto bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
-                value={selectedRun}
-                onChange={e => setSelectedRun(e.target.value)}
-                disabled={isLoading || runs.length === 0}
+
+            <div className="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none min-w-0">
+              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline shrink-0">Domínio:</span>
+              <select
+                className="w-full min-w-0 sm:w-auto bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
+                value={
+                  parsedSelectedRun && domainsForSelectedDate.includes(parsedSelectedRun.domain)
+                    ? parsedSelectedRun.domain
+                    : domainsForSelectedDate[0] ?? ''
+                }
+                onChange={(e) => {
+                  const newDom = e.target.value;
+                  const candidates = runs.filter((r) => {
+                    const p = parseWrfRunFolder(r);
+                    return p?.dateYmd === selectedDateYmd && p.domain === newDom;
+                  });
+                  if (candidates[0]) setSelectedRun(candidates[0]);
+                }}
+                disabled={isLoading || runs.length === 0 || domainsForSelectedDate.length === 0}
                 suppressHydrationWarning
               >
-                {runs
-                  .filter(run => selectedRun && run.startsWith(selectedRun.substring(0, 8)))
-                  .map(run => (
-                  <option key={run} value={run}>
-                    {`${run.substring(9, 11)}:${run.substring(11, 13)} UTC`}
+                {domainsForSelectedDate.map((d) => (
+                  <option key={d} value={d}>
+                    {domainLabel(d)}
                   </option>
                 ))}
-                {runs.length === 0 && <option value="">Carregando...</option>}
+                {domainsForSelectedDate.length === 0 && runs.length > 0 && (
+                  <option value="">—</option>
+                )}
               </select>
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto mt-1 sm:mt-0">
-              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline">Domínio:</span>
-              <select 
-                className="w-full sm:w-auto bg-gray-100 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none font-medium cursor-not-allowed text-gray-500 flex-1 w-full"
-                defaultValue="Centro-Sul"
-                disabled
+            <div className="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none min-w-0">
+              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline shrink-0">Rodada:</span>
+              <select
+                className="w-full min-w-0 sm:w-auto bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
+                value={selectedRun}
+                onChange={(e) => setSelectedRun(e.target.value)}
+                disabled={isLoading || runs.length === 0 || runsForRodadaDropdown.length === 0}
+                suppressHydrationWarning
               >
-                <option value="Centro-Sul">Centro-Sul</option>
+                {runsForRodadaDropdown.map((run) => (
+                  <option key={run} value={run}>
+                    {formatRodadaDropdownLabel(run)}
+                  </option>
+                ))}
+                {runs.length === 0 && <option value="">Carregando...</option>}
               </select>
             </div>
           </div>
@@ -564,7 +602,7 @@ export default function NumericModelPage() {
                   F+
                 </div>
                 {images.map((img, idx) => {
-                  const fHour = getForecastHour(selectedRun, img.name, idx);
+                  const fHour = getForecastHourFromRun(selectedRun, img.name, idx);
                   return (
                     <div
                       key={idx}
@@ -597,8 +635,8 @@ export default function NumericModelPage() {
                 <div className="pointer-events-none font-mono text-[10px] sm:text-sm">
                   <div className="flex gap-1 sm:gap-2 items-baseline justify-end">
                     <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Run:</span>
-                    <span className="font-bold text-[10px] sm:text-sm bg-gray-100 px-1 sm:px-2 border border-gray-200 rounded">
-                      {formatRunDateTime(selectedRun)}
+                    <span className="font-bold text-[10px] sm:text-sm bg-gray-100 px-1 sm:px-2 border border-gray-200 rounded break-all text-left">
+                      {selectedRun || '—'}
                     </span>
                   </div>
                   <div className="flex gap-1 sm:gap-2 items-baseline justify-end mt-0.5 sm:mt-1">
