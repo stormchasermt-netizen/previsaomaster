@@ -206,9 +206,12 @@ export default function NumericModelPage() {
       }
 
       // Recebemos a imagem renderizada como blob (via api interna -> Cloud Run)
-      const blob = await res.blob();
-      const imageUrl = URL.createObjectURL(blob);
-      setSoundingImageUrl(imageUrl);
+      const data = await res.json();
+        if (data.image) {
+          setSoundingImageUrl(data.image);
+        } else {
+          throw new Error('A imagem não retornou em Base64 válida da API.');
+        }
     } catch (err) {
       console.error(err);
       const msg =
