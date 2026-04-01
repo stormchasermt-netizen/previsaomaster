@@ -15,6 +15,7 @@ export const CLIMATEMPO_POA_LATEST = 'https://statics.climatempo.com.br/radar_po
  */
 export const DEFAULT_SYNC_SLUGS = [
     'almeirim',
+    'almenara',
     'belem',
     'boavista',
     'cangucu',
@@ -36,6 +37,7 @@ export const DEFAULT_SYNC_SLUGS = [
     'morroigreja',
     'natal',
     'petrolina',
+    'picocouto',
     'picos',
     'portovelho',
     'riobranco',
@@ -65,6 +67,7 @@ export const CPTEC_STATIONS = {
     chapeco: { id: 'R12137761', dopplerId: 'R12137762', slug: 'chapeco', org: 'sdcsc', server: 's2' },
     lontras: { id: 'R12227759', dopplerId: 'R12227760', slug: 'lontras', org: 'sdcsc', server: 's1' },
     morroigreja: { id: 'R12544957', dopplerId: 'R12544956', slug: 'morroigreja', org: 'decea', server: 's2' },
+    picocouto: { id: 'R12567564', dopplerId: 'R12567537', slug: 'picocouto', org: 'decea', server: 's1' },
     saoroque: { id: 'R12537563', dopplerId: 'R12537536', slug: 'saoroque', org: 'decea', server: 's1' },
     gama: { id: 'R12507565', dopplerId: 'R12507562', slug: 'gama', org: 'decea', server: 's1' },
     guaratiba: { id: 'R12957397', dopplerId: 'R12957398', slug: 'guaratiba', org: 'inea', server: 's1' },
@@ -77,6 +80,7 @@ export const CPTEC_STATIONS = {
     maceio: { id: 'R12447385', dopplerId: 'R12447386', slug: 'maceio', org: 'cemaden', server: 's1' },
     salvador: { id: 'R12467389', dopplerId: 'R12467390', slug: 'salvador', org: 'cemaden', server: 's1' },
     petrolina: { id: 'R12257381', dopplerId: 'R12257382', slug: 'petrolina', org: 'cemaden', server: 's1' },
+    almenara: { id: 'R12897395', dopplerId: 'R12897396', slug: 'almenara', org: 'cemaden', server: 's1' },
     vilhena: { id: 'R102', slug: 'vilhena', org: 'redemet', server: 's1' },
     /** Pasta GCS `riobranco` — segmento de URL no CDN é `rio-branco`. */
     riobranco: { id: 'R104', slug: 'rio-branco', org: 'redemet', server: 's1' },
@@ -111,6 +115,7 @@ export const NOWCASTING_RADAR_MAP = {
     macapa: { id: 1377, nome: 'Macapá' },
     santatereza: { id: 2169, nome: 'Santa Tereza' },
     tresmarias: { id: 5984, nome: 'Três Marias' },
+    picocouto: { id: 4963, nome: 'Pico do Couto' },
     saoroque: { id: 4960, nome: 'São Roque' },
     santarem: { id: 1380, nome: 'Santarém' },
     guaratiba: { id: 2238, nome: 'Guaratiba' },
@@ -125,6 +130,7 @@ export const NOWCASTING_RADAR_MAP = {
     manaus: { id: 1378, nome: 'Manaus' },
     cruzeirodosul: { id: 1376, nome: 'Cruzeiro do Sul' },
     cangucu: { id: 4962, nome: 'Canguçu' },
+    almenara: { id: 4966, nome: 'Almenara' },
     tefe: { id: 1383, nome: 'Tefé' },
     macae: { id: 2241, nome: 'Macaé' },
     belem: { id: 1374, nome: 'Belém' },
@@ -147,11 +153,13 @@ export const CPTEC_PRIMARY_INTERVAL_MIN = {
     santatereza: 10,
     saofrancisco: 10,
     tresmarias: 10,
+    picocouto: 10,
     jaraguari: 10,
     natal: 10,
     maceio: 10,
     salvador: 10,
     petrolina: 10,
+    almenara: 10,
     vilhena: 10,
     riobranco: 10,
     portovelho: 10,
@@ -238,8 +246,8 @@ export async function fetchCptecPngFromCdn(station, ts12, layer) {
     return null;
 }
 export function normalizeCptecImageUrl(url) {
-    if (url.startsWith('http://'))
-        return `https://${url.slice(7)}`;
+    // Não reescrever HTTP para HTTPS no CPTEC, os certificados deles no s0..s3 
+    // dão Timeout/Error frequentemente a partir do Cloud Run
     return url;
 }
 export async function fetchPngBuffer(url) {
@@ -308,13 +316,38 @@ function fileDateTimeToTs12(fileDate, fileTime) {
         return null;
     return d + t.slice(0, 4);
 }
-function pickNowcastingImageUrl(img) {
-    if (img.urls && img.urls.length > 0) {
-        const u = img.urls.find((x) => x.startsWith('https://')) || img.urls[0];
-        return normalizeCptecImageUrl(u);
+function ts12FromCptecFilename(pathOrUrl) {
+    const m = /_(\d{12})\.png$/i.exec(pathOrUrl);
+    return m ? m[1] : null;
+}
+/**
+ * A API Nowcasting devolve `fileDate`/`fileTime` corretos, mas o array `urls` pode repetir um PNG antigo
+ * (ex.: todos `..._202604011500.png` quando o `filePath` é `..._202604011606.png`). Preferir `url` e `filePath`.
+ */
+function pickNowcastingImageUrl(img, expectedTs12) {
+    const matchesTs = (raw) => {
+        if (!raw)
+            return null;
+        const u = normalizeCptecImageUrl(raw);
+        const ts = ts12FromCptecFilename(u);
+        return ts === expectedTs12 ? u : null;
+    };
+    const fromDirect = matchesTs(img.url);
+    if (fromDirect)
+        return fromDirect;
+    if (img.filePath) {
+        const cdnFromPath = img.filePath.replace(/^\/oper\/share/, 'https://s0.cptec.inpe.br');
+        const fromPath = matchesTs(cdnFromPath);
+        if (fromPath)
+            return fromPath;
     }
-    if (img.url)
-        return normalizeCptecImageUrl(img.url);
+    if (img.urls?.length) {
+        for (const u of img.urls) {
+            const ok = matchesTs(u);
+            if (ok)
+                return ok;
+        }
+    }
     return null;
 }
 /**
@@ -323,7 +356,7 @@ function pickNowcastingImageUrl(img) {
  */
 export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMinutes, options) {
     const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
-    const quantidade = Math.min(200, Math.max(40, windowMinutes + 40));
+    const quantidade = 12; // Busca sempre só as últimas 12 da API (cobre a última 1 hora para radares de 5 min)
     const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/${nw.id}/imagens?quantidade=${quantidade}&nome=${encodeURIComponent(nw.nome)}`;
     let data;
     try {
@@ -338,8 +371,10 @@ export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMi
     catch {
         return [];
     }
-    const endMs = Date.now();
-    const startMs = endMs - windowMinutes * 60 * 1000;
+    // A janela deve ser calculada a partir do momento "agora" para não falhar com radares atrasados
+    // Se quisermos ser lenientes, podemos considerar desde a imagem mais nova ATÉ X minutos atrás da imagem mais nova.
+    // Contudo, se a imagem mais nova for muito antiga, talvez não queiramos varrer tudo. O bucket já tem.
+    // Vamos apenas descarregar todas as imagens que estão dentro do JSON retornado e não estão no GCS.
     const seen = new Set();
     const out = [];
     for (const prod of data) {
@@ -356,15 +391,6 @@ export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMi
             const ts12 = fileDateTimeToTs12(img.fileDate, img.fileTime);
             if (!ts12 || ts12.length !== 12)
                 continue;
-            let tms;
-            if (typeof img.horario === 'number' && Number.isFinite(img.horario)) {
-                tms = img.horario;
-            }
-            else {
-                tms = ts12ToUtcMs(ts12);
-            }
-            if (tms < startMs || tms > endMs + 120_000)
-                continue;
             const key = `${layer}:${ts12}`;
             if (seen.has(key))
                 continue;
@@ -374,7 +400,7 @@ export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMi
             if (options?.checkExists && await options.checkExists(fileName)) {
                 continue;
             }
-            const imgUrl = pickNowcastingImageUrl(img);
+            const imgUrl = pickNowcastingImageUrl(img, ts12);
             if (!imgUrl)
                 continue;
             const buffer = await fetchPngBuffer(imgUrl);

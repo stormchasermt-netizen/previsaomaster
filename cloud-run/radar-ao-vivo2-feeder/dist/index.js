@@ -14,7 +14,7 @@ const AUTO_JOB_INTERVAL_MS = Math.max(60_000, parseInt(process.env.AUTO_JOB_INTE
 /** Espera antes do 1.º ciclo (ms), para o health check do Cloud Run. */
 const AUTO_JOB_START_DELAY_MS = Math.max(0, parseInt(process.env.AUTO_JOB_START_DELAY_MS || '8000', 10) || 0);
 const SYNC_SLUGS = process.env.SYNC_SLUGS
-    ? process.env.SYNC_SLUGS.split(',')
+    ? process.env.SYNC_SLUGS.split(/[,^;]/)
         .map((s) => s.trim())
         .filter(Boolean)
     : [...DEFAULT_SYNC_SLUGS];
@@ -60,13 +60,14 @@ async function saveIfNotExists(bucket, slug, fileName, buffer, sourceUrl) {
         return { status: 'failed', reason: 'GCS save failed', path: objectPath };
     }
 }
-async function executeSync() {
+async function executeSync(targetSlug) {
     const bucket = storage.bucket(GCS_BUCKET);
     const nominalTs12 = getNowTimestamp12UTC();
     const results = [];
     let okCount = 0;
     let failCount = 0;
-    for (const slug of SYNC_SLUGS) {
+    const slugsToProcess = targetSlug ? [targetSlug] : SYNC_SLUGS;
+    for (const slug of slugsToProcess) {
         if (SLUGS_WITHOUT_CDN_SYNC.has(slug)) {
             results.push({
                 slug,
@@ -145,7 +146,6 @@ async function executeSync() {
 }
 async function executeCleanup() {
     const bucket = storage.bucket(GCS_BUCKET);
-    const now = Date.now();
     const retentionMs = RETENTION_MINUTES * 60 * 1000;
     const deleted = [];
     const skipped = [];
@@ -153,16 +153,28 @@ async function executeCleanup() {
     for (const slug of SYNC_SLUGS) {
         const prefix = `${slug}/`;
         const [files] = await bucket.getFiles({ prefix });
-        for (const f of files) {
+        // Primeiro encontramos o timestamp mais recente nesta pasta,
+        // para não apagar as imagens de radares que estejam atrasados (ex: 6 horas offline).
+        let maxTsMs = 0;
+        const fileData = files.map(f => {
             const base = f.name.split('/').pop() || '';
             const m = /^(\d{12})(?:-ppivr)?\.(png|jpg|jpeg|gif)$/i.exec(base);
-            if (!m) {
+            if (!m)
+                return { f, valid: false, t: 0 };
+            const ts12 = m[1];
+            const t = ts12ToUtcMs(ts12);
+            if (t > maxTsMs)
+                maxTsMs = t;
+            return { f, valid: true, t };
+        });
+        // Se a pasta estiver vazia ou sem imagens válidas, usamos Date.now()
+        const referenceTimeMs = maxTsMs > 0 ? maxTsMs : Date.now();
+        for (const { f, valid, t } of fileData) {
+            if (!valid) {
                 skipped.push(f.name);
                 continue;
             }
-            const ts12 = m[1];
-            const t = ts12ToUtcMs(ts12);
-            const ageMs = now - t;
+            const ageMs = referenceTimeMs - t;
             if (!Number.isFinite(ageMs) || ageMs > retentionMs) {
                 try {
                     await f.delete();
@@ -228,7 +240,8 @@ app.get('/health', (req, res) => {
 });
 app.all('/sync', requireSecret, async (req, res) => {
     try {
-        const out = await executeSync();
+        const targetSlug = req.query.slug;
+        const out = await executeSync(targetSlug);
         lastSyncAt = new Date().toISOString();
         res.json(out);
     }
