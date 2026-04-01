@@ -128,72 +128,60 @@ type MosaicSyncPlan = {
  * Mosaico: última hora de dados (até o ts mais recente no bucket), timeline = instantes do radar com mais imagens nessa janela;
  * outros radares: match ±10 min ao instante líder; senão mantêm a imagem já mostrada (ou a mais recente ≤ instante no 1.º frame).
  */
-function buildMosaicSyncPlan(
-  imagesByStation: Record<string, { name: string; url: string }[]>,
-  slugs: string[],
-  product: RadarProductMode
-): MosaicSyncPlan | null {
-  const lookups: Record<string, Map<string, { name: string; url: string }>> = {};
-  const allTs: string[] = [];
-  for (const slug of slugs) {
-    lookups[slug] = buildTsLookup(imagesByStation[slug] || [], product);
-    for (const ts of lookups[slug].keys()) allTs.push(ts);
-  }
-  if (allTs.length === 0) return null;
-
-  const tMaxMs = Math.max(...allTs.map(ts12ToUtcMs));
-  const tMinMs = tMaxMs - ONE_HOUR_MS;
-
-  const tsInHour: Record<string, string[]> = {};
-  let bestSlug = slugs[0];
-  let bestCount = -1;
-  for (const slug of slugs) {
-    const sorted = Array.from(lookups[slug].keys()).sort();
-    const inWin = sorted.filter((ts) => {
-      const ms = ts12ToUtcMs(ts);
-      return ms >= tMinMs && ms <= tMaxMs;
-    });
-    tsInHour[slug] = inWin;
-    if (inWin.length > bestCount) {
-      bestCount = inWin.length;
-      bestSlug = slug;
-    }
-  }
-
-  const masterTimes = tsInHour[bestSlug] || [];
-  if (masterTimes.length === 0) return null;
-
-  const lastUrl: Record<string, string> = {};
-  const frames: MosaicSyncFrame[] = [];
-
-  for (const masterTs of masterTimes) {
-    const targetMs = ts12ToUtcMs(masterTs);
-    const urlBySlug: Record<string, string> = {};
+  function buildMosaicSyncPlan(
+    imagesByStation: Record<string, { name: string; url: string }[]>,
+    slugs: string[],
+    product: RadarProductMode
+  ): MosaicSyncPlan | null {
+    const lookups: Record<string, Map<string, { name: string; url: string }>> = {};
+    const allTsSet = new Set<string>();
 
     for (const slug of slugs) {
-      const map = lookups[slug];
-      const sorted = tsInHour[slug];
+      lookups[slug] = buildTsLookup(imagesByStation[slug] || [], product);
+      for (const ts of lookups[slug].keys()) {
+        allTsSet.add(ts);
+      }
+    }
+    
+    if (allTsSet.size === 0) return null;
+  
+    // Timeline contendo TODOS os timestamps únicos encontrados na última hora em todos os radares
+    const allTs = Array.from(allTsSet);
+    const tMaxMs = Math.max(...allTs.map(ts12ToUtcMs));
+    const tMinMs = tMaxMs - ONE_HOUR_MS;
+  
+    const masterTimes = allTs
+      .filter((ts) => {
+        const ms = ts12ToUtcMs(ts);
+        return ms >= tMinMs && ms <= tMaxMs;
+      })
+      .sort();
 
-      if (slug === bestSlug) {
-        const img = map.get(masterTs);
-        if (img) {
+    if (masterTimes.length === 0) return null;
+  
+    const lastUrl: Record<string, string> = {};
+    const frames: MosaicSyncFrame[] = [];
+  
+    for (const masterTs of masterTimes) {
+      const targetMs = ts12ToUtcMs(masterTs);
+      const urlBySlug: Record<string, string> = {};
+  
+      for (const slug of slugs) {
+        const map = lookups[slug];
+        const allSlugTs = Array.from(map.keys()).sort();
+        
+        // Verifica se há correspondência exata ou próxima (dentro da tolerância)
+        const match = pickClosestWithinTolerance(allSlugTs, targetMs, SYNC_TOLERANCE_MS);
+        
+        if (match !== null) {
+          const img = map.get(match)!;
           urlBySlug[slug] = img.url;
           lastUrl[slug] = img.url;
-        }
-        continue;
-      }
-
-      const match = pickClosestWithinTolerance(sorted, targetMs, SYNC_TOLERANCE_MS);
-      if (match !== null) {
-        const img = map.get(match)!;
-        urlBySlug[slug] = img.url;
-        lastUrl[slug] = img.url;
         } else if (lastUrl[slug]) {
+          // Mantém a última imagem exibida para este radar neste passe de animação
           urlBySlug[slug] = lastUrl[slug];
         } else {
-          // Se não encontrou no histórico recente, busca em TODOS os frames do radar 
-          // (para radares atrasados que têm a última imagem > 1h atrás)
-          const allSlugTs = Array.from(map.keys()).sort();
+          // Busca a última imagem historicamente válida antes do targetMs
           const holdTs = lastTsAtOrBefore(allSlugTs, targetMs);
           if (holdTs !== null) {
             const img = map.get(holdTs)!;
@@ -201,13 +189,13 @@ function buildMosaicSyncPlan(
             lastUrl[slug] = img.url;
           }
         }
+      }
+  
+      frames.push({ masterTs, urlBySlug });
     }
-
-    frames.push({ masterTs, urlBySlug });
+  
+    return { leaderSlug: 'union', masterTimes, frames };
   }
-
-  return { leaderSlug: bestSlug, masterTimes, frames };
-}
 
 function buildTsLookup(
   imgs: { name: string; url: string }[],
