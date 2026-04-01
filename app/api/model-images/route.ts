@@ -11,6 +11,9 @@ if (!admin.apps.length) {
 
 const BUCKET_NAME = 'wrf-3km-imagens-diarias';
 
+/** Pastas usadas só como overlay (ex.: contornos) — não são produtos selecionáveis na UI */
+const OVERLAY_ONLY_VARIABLE_PREFIXES = new Set(['mlcape_contorno', 'mlcape_contornos']);
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const action = searchParams.get('action');
@@ -32,7 +35,11 @@ export async function GET(req: NextRequest) {
       
       const [files, , apiResponse] = await bucket.getFiles({ prefix: `${run}/`, delimiter: '/' });
       let variables = apiResponse.prefixes || [];
-      variables = variables.map((p: string) => p.replace(`${run}/`, '').replace(/\/$/, '')).filter(Boolean).sort();
+      variables = variables
+        .map((p: string) => p.replace(`${run}/`, '').replace(/\/$/, ''))
+        .filter(Boolean)
+        .filter((v) => !OVERLAY_ONLY_VARIABLE_PREFIXES.has(v))
+        .sort();
       return NextResponse.json({ variables });
     }
 

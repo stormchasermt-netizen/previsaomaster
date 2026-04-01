@@ -10,6 +10,23 @@ const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Sinótico': ['T2m', 'Td_2m', 'Thetae_2m']
 };
 
+/** Pastas no bucket que são só overlay — nunca aparecem na lista lateral / Outros */
+const OVERLAY_ONLY_VARIABLE_KEYS = new Set(['mlcape_contorno', 'mlcape_contornos']);
+
+function isOverlayOnlyVariableKey(v: string) {
+  return OVERLAY_ONLY_VARIABLE_KEYS.has(v);
+}
+
+/** Emparelha frame base com overlay pelo timestamp YYYYMMDD_HHMMSS do nome do arquivo */
+function findOverlayForBaseName(
+  baseFileName: string,
+  overlays: { name: string; url: string }[]
+): { name: string; url: string } | undefined {
+  const ts = baseFileName.match(/^(\d{8}_\d{6})/)?.[1];
+  if (!ts) return undefined;
+  return overlays.find((o) => o.name.startsWith(ts));
+}
+
 const VARIABLE_LABELS: Record<string, string> = {
   hrt01km: 'Helicidade Relativa à Tempestade (Sfc - 1km)',
   hrt03km: 'Helicidade Relativa à Tempestade (Sfc - 3km)',
@@ -240,8 +257,8 @@ export default function NumericModelPage() {
       .then(r => r.json())
       .then(data => {
         if (data.variables) {
-          // Remover variáveis que são estritamente overlays e não devem aparecer como opção principal
-          const filteredVars = data.variables.filter((v: string) => v !== 'mlcape_contorno');
+          // Remover pastas que são estritamente overlays (nunca produto principal na sidebar)
+          const filteredVars = data.variables.filter((v: string) => !isOverlayOnlyVariableKey(v));
           setAvailableVariables(filteredVars);
           if (!filteredVars.includes(selectedVariable) && filteredVars.length > 0) {
             setSelectedVariable(filteredVars[0]);
@@ -335,22 +352,12 @@ export default function NumericModelPage() {
   const nextFrame = () => { setIsPlaying(false); setCurrentIndex(prev => (prev + 1) % images.length); };
   const prevFrame = () => { setIsPlaying(false); setCurrentIndex(prev => (prev - 1 + images.length) % images.length); };
   
-  // Categorize available variables
-  const uncategorizedVariables = availableVariables.filter(v => 
-    !Object.values(VARIABLE_CATEGORIES).flat().includes(v)
+  // Categorize available variables (nunca incluir pastas só-overlay)
+  const uncategorizedVariables = availableVariables.filter(
+    (v) =>
+      !isOverlayOnlyVariableKey(v) &&
+      !Object.values(VARIABLE_CATEGORIES).flat().includes(v)
   );
-
-  return (
-    <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
-      {/* HEADER */}
-      <header className="flex items-center justify-between px-2 sm:px-6 py-3 bg-white border-b border-gray-200 shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center w-full relative gap-2 sm:gap-0">
-          
-          <div className="flex items-center absolute left-0 top-0 sm:static mb-2 sm:mb-0 z-10">
-            <Link href="/" className="text-gray-500 hover:text-blue-800 transition-colors p-1" title="Voltar ao Menu">
-              <ChevronLeft size={24} />
-            </Link>
-          </div>
 
   return (
     <div className="flex flex-col h-[100dvh] bg-white text-black font-sans overflow-hidden">
@@ -565,10 +572,8 @@ export default function NumericModelPage() {
                         idx === currentIndex ? 'bg-blue-800 text-white font-bold' : 'text-gray-600 font-medium hover:bg-blue-100 hover:text-blue-900'
                       }`}
                       onClick={() => {
-                        if (currentIndex !== idx) {
-                          setCurrentIndex(idx);
-                          setIsPlaying(false);
-                        }
+                        setCurrentIndex(idx);
+                        setIsPlaying(false);
                       }}
                       onPointerEnter={(e) => {
                         // Só troca no hover se não for touch
@@ -576,10 +581,6 @@ export default function NumericModelPage() {
                           setCurrentIndex(idx);
                           setIsPlaying(false);
                         }
-                      }}
-                      onClick={() => {
-                        setCurrentIndex(idx);
-                        setIsPlaying(false);
                       }}
                     >
                       {String(fHour).padStart(2, '0')}
@@ -592,37 +593,41 @@ export default function NumericModelPage() {
           
           <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-white p-0 sm:p-2">
             {images.length > 0 && (
-              <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-0.5 font-mono text-[10px] sm:text-base text-gray-800 pointer-events-none bg-white/80 p-1 sm:p-0 rounded-md sm:bg-transparent">
-                <div className="flex gap-1 sm:gap-2 items-baseline">
-                  <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Run:</span> 
-                  <span className="font-bold text-[10px] sm:text-sm bg-gray-100 px-1 sm:px-2 border border-gray-200 rounded">{formatRunDateTime(selectedRun)}</span>
-                </div>
-                <div className="flex gap-1 sm:gap-2 items-baseline mt-0.5 sm:mt-1">
-                  <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Valid:</span> 
-                  <span className="font-bold text-[10px] sm:text-sm bg-blue-100 text-blue-900 px-1 sm:px-2 border border-blue-200 rounded">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
+              <div className="absolute top-2 right-2 z-20 flex flex-col items-stretch gap-0 w-[min(100%,220px)] sm:w-auto sm:max-w-[260px] text-gray-900">
+                <div className="pointer-events-none font-mono text-[10px] sm:text-sm">
+                  <div className="flex gap-1 sm:gap-2 items-baseline justify-end">
+                    <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Run:</span>
+                    <span className="font-bold text-[10px] sm:text-sm bg-gray-100 px-1 sm:px-2 border border-gray-200 rounded">
+                      {formatRunDateTime(selectedRun)}
+                    </span>
+                  </div>
+                  <div className="flex gap-1 sm:gap-2 items-baseline justify-end mt-0.5 sm:mt-1">
+                    <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Valid:</span>
+                    <span className="font-bold text-[10px] sm:text-sm bg-blue-100 text-blue-900 px-1 sm:px-2 border border-blue-200 rounded">
+                      {formatValidDateTime(images[currentIndex]?.name || '')}
+                    </span>
+                  </div>
                 </div>
 
-                {/* OVERLAYS CONTROL */}
+                {/* Estilo SPC: Controle de camadas (só em HRT 1km / 3km) */}
                 {(selectedVariable === 'hrt01km' || selectedVariable === 'hrt03km') && (
-                  <div className="mt-2 pointer-events-auto bg-white/95 border border-gray-200 shadow-sm rounded-md p-2 flex flex-col items-end text-xs sm:text-sm w-full min-w-[180px]">
-                    <div className="text-gray-500 font-bold uppercase tracking-wider text-[9px] sm:text-xs mb-1 border-b border-gray-100 w-full text-right pb-1">
-                      Product Overlays
+                  <div className="mt-2 pointer-events-auto w-full border border-black border-dotted bg-white text-[11px] sm:text-xs shadow-sm">
+                    <div className="px-1.5 py-1 border-b border-gray-400 font-sans">
+                      <span className="font-bold text-black">Controle de camadas</span>
+                      <span className="text-[10px] text-gray-700 font-normal"> [Drag to rearrange order]</span>
                     </div>
-                    <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 w-full justify-end rounded transition-colors group">
-                      <span className="font-medium text-gray-700 group-hover:text-blue-800 transition-colors">ml-CAPE (Contorno)</span>
-                      <div className="relative flex items-center">
-                        <input 
-                          type="checkbox" 
-                          className="peer sr-only"
-                          checked={showOverlayCape}
-                          onChange={(e) => setShowOverlayCape(e.target.checked)}
-                        />
-                        <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-gray-300 rounded peer-checked:bg-blue-600 peer-checked:border-blue-600 transition-colors flex items-center justify-center">
-                          <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      </div>
+                    <label
+                      className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer font-sans font-bold text-black border-t border-dotted border-black select-none ${
+                        showOverlayCape ? 'bg-[#d8f0dc]' : 'bg-[#c0c0c0]'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 shrink-0 accent-blue-700"
+                        checked={showOverlayCape}
+                        onChange={(e) => setShowOverlayCape(e.target.checked)}
+                      />
+                      <span>ml-CAPE (contorno)</span>
                     </label>
                   </div>
                 )}
@@ -636,6 +641,8 @@ export default function NumericModelPage() {
                 // NO SPC, a troca é SECA E DIRETA (flicker free porque o browser cacheia e renderiza na hora)
                 // Não usamos transition-opacity para drag/hover, pois isso causa o "fade preto" indesejado em trocas rápidas.
                 
+                const overlayPair = findOverlayForBaseName(img.name, overlayImages);
+
                 return (
                   <div key={img.url} className={`absolute w-full h-full ${isCurrent ? 'block z-10' : 'hidden z-0'}`}>
                     <img 
@@ -647,12 +654,12 @@ export default function NumericModelPage() {
                       className="w-full h-full object-contain sm:object-scale-down cursor-crosshair"
                     />
                     
-                    {/* OVERLAY LAYER (ML-CAPE CONTORNO) */}
-                    {showOverlayCape && overlayImages[idx] && (
+                    {/* OVERLAY: mlcape_contorno (mesmo timestamp do frame base) */}
+                    {showOverlayCape && overlayPair && (
                       <img 
-                        src={overlayImages[idx].url} 
-                        alt={`Overlay frame ${idx}`}
-                        className="absolute inset-0 w-full h-full object-contain sm:object-scale-down pointer-events-none mix-blend-multiply opacity-90"
+                        src={overlayPair.url} 
+                        alt={`Overlay ml-CAPE ${idx}`}
+                        className="absolute inset-0 w-full h-full object-contain sm:object-scale-down pointer-events-none"
                       />
                     )}
                   </div>
