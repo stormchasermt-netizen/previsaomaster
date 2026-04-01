@@ -1,6 +1,6 @@
 import express from 'express';
 import { Storage } from '@google-cloud/storage';
-import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
+import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, downloadArgentinaImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
 const storage = new Storage();
 const PORT = process.env.PORT || '8080';
 const GCS_BUCKET = process.env.GCS_BUCKET || 'radar_ao_vivo_2';
@@ -104,19 +104,27 @@ async function executeSync(targetSlug) {
             await delay(400);
             continue;
         }
-        const station = CPTEC_STATIONS[slug];
-        if (!station) {
-            results.push({ slug, status: 'error', error: 'Slug not supported' });
-            failCount++;
-            continue;
-        }
         const checkExists = async (fileName) => {
             const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
             return exists;
         };
-        const found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES, {
-            checkExists,
-        });
+        let found;
+        if (slug.startsWith('argentina-')) {
+            found = await downloadArgentinaImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+                checkExists,
+            });
+        }
+        else {
+            const station = CPTEC_STATIONS[slug];
+            if (!station) {
+                results.push({ slug, status: 'error', error: 'Slug not supported' });
+                failCount++;
+                continue;
+            }
+            found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+                checkExists,
+            });
+        }
         const slugResults = [];
         for (const { ts12, layer, fileName, url, buffer } of found) {
             const r2 = await saveIfNotExists(bucket, slug, fileName, buffer, url);

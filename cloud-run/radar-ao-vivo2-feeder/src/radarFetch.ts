@@ -69,6 +69,29 @@ export const DEFAULT_SYNC_SLUGS = [
   'tresmarias',
   'usp-itaituba',
   'vilhena',
+  // --- Argentina (WebMET) ---
+  'argentina-AR5',
+  'argentina-AR7',
+  'argentina-AR8',
+  'argentina-RMA00',
+  'argentina-RMA1',
+  'argentina-RMA2',
+  'argentina-RMA3',
+  'argentina-RMA4',
+  'argentina-RMA5',
+  'argentina-RMA6',
+  'argentina-RMA7',
+  'argentina-RMA8',
+  'argentina-RMA9',
+  'argentina-RMA10',
+  'argentina-RMA11',
+  'argentina-RMA12',
+  'argentina-RMA13',
+  'argentina-RMA14',
+  'argentina-RMA15',
+  'argentina-RMA16',
+  'argentina-RMA17',
+  'argentina-RMA18',
 ] as const;
 
 /**
@@ -585,4 +608,64 @@ export async function fetchClimatempoPoa(nominalTs12: string): Promise<{ buffer:
   const buf = await fetchPngBuffer(url);
   if (!buf) return null;
   return { buffer: buf, ts12: nominalTs12 };
+}
+
+export async function downloadArgentinaImagesInWindow(
+  slug: string,
+  nowTs12: string,
+  windowMinutes: number,
+  options?: { fetchDoppler?: boolean; checkExists?: (fileName: string) => Promise<boolean> }
+): Promise<CptecSyncedFile[]> {
+  const code = slug.replace('argentina-', '');
+  const out: CptecSyncedFile[] = [];
+  const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
+
+  // Gerar array de timestamps de 10 em 10 minutos para trs
+  const nowMs = ts12ToUtcMs(nowTs12);
+  const endMs = nowMs - windowMinutes * 60 * 1000;
+  
+  // Arredondar "now" para bloco de 10 min nativo (18:13 vira 18:10)
+  const m = parseInt(nowTs12.slice(10, 12), 10);
+  const offset = m % 10;
+  const snappedNowMs = nowMs - offset * 60 * 1000;
+
+  for (let t = snappedNowMs; t >= endMs; t -= 10 * 60 * 1000) {
+    const d = new Date(t);
+    const y = d.getUTCFullYear().toString();
+    const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const h = String(d.getUTCHours()).padStart(2, '0');
+    const min = String(d.getUTCMinutes()).padStart(2, '0');
+
+    const ts12 = `${y}${mo}${day}${h}${min}`;
+    const tsArgUrl = `${y}${mo}${day}T${h}${min}00Z`;
+
+    const checkAndDownload = async (prodType: 'COLMAX' | 'VRAD', suffix: string, layer: CptecLayer) => {
+      const fileName = layer === 'ppi' ? `${ts12}.png` : `${ts12}-ppivr.png`;
+      if (options?.checkExists && await options.checkExists(fileName)) {
+        return; 
+      }
+      
+      const url = `https://webmet.ohmc.ar/media/radares/images/${code}/${y}/${mo}/${day}/${code}_${tsArgUrl}_${prodType}_00.png`;
+      const buffer = await fetchPngBuffer(url);
+      if (buffer && buffer.length > 0) {
+        out.push({
+          ts12,
+          layer,
+          fileName,
+          url,
+          buffer,
+        });
+      }
+    };
+
+    // REFLETIVIDADE - PPI (COLMAX)
+    await checkAndDownload('COLMAX', '.png', 'ppi');
+    // DOPPLER (VRAD)
+    if (fetchDoppler) {
+      await checkAndDownload('VRAD', '-ppivr.png', 'doppler');
+    }
+  }
+
+  return out.sort((a, b) => b.ts12.localeCompare(a.ts12));
 }

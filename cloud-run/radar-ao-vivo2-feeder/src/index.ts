@@ -8,6 +8,7 @@ import {
   fetchIpmetImage,
   fetchClimatempoPoa,
   downloadCptecImagesInWindow,
+  downloadArgentinaImagesInWindow,
   ts12ToUtcMs,
 } from './radarFetch.js';
 
@@ -142,21 +143,27 @@ async function executeSync(targetSlug?: string): Promise<{
       continue;
     }
 
-    const station = CPTEC_STATIONS[slug];
-    if (!station) {
-      results.push({ slug, status: 'error', error: 'Slug not supported' });
-      failCount++;
-      continue;
-    }
-
     const checkExists = async (fileName: string) => {
       const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
       return exists;
     };
 
-    const found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES, {
-      checkExists,
-    });
+    let found;
+    if (slug.startsWith('argentina-')) {
+      found = await downloadArgentinaImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+        checkExists,
+      });
+    } else {
+      const station = CPTEC_STATIONS[slug];
+      if (!station) {
+        results.push({ slug, status: 'error', error: 'Slug not supported' });
+        failCount++;
+        continue;
+      }
+      found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+        checkExists,
+      });
+    }
 
     const slugResults: { ts12: string; layer?: string; status: string; path?: string; reason?: string }[] =
       [];
