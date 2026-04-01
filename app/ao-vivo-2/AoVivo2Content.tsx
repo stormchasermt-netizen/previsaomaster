@@ -188,16 +188,19 @@ function buildMosaicSyncPlan(
         const img = map.get(match)!;
         urlBySlug[slug] = img.url;
         lastUrl[slug] = img.url;
-      } else if (lastUrl[slug]) {
-        urlBySlug[slug] = lastUrl[slug];
-      } else {
-        const holdTs = lastTsAtOrBefore(sorted, targetMs);
-        if (holdTs !== null) {
-          const img = map.get(holdTs)!;
-          urlBySlug[slug] = img.url;
-          lastUrl[slug] = img.url;
+        } else if (lastUrl[slug]) {
+          urlBySlug[slug] = lastUrl[slug];
+        } else {
+          // Se não encontrou no histórico recente, busca em TODOS os frames do radar 
+          // (para radares atrasados que têm a última imagem > 1h atrás)
+          const allSlugTs = Array.from(map.keys()).sort();
+          const holdTs = lastTsAtOrBefore(allSlugTs, targetMs);
+          if (holdTs !== null) {
+            const img = map.get(holdTs)!;
+            urlBySlug[slug] = img.url;
+            lastUrl[slug] = img.url;
+          }
         }
-      }
     }
 
     frames.push({ masterTs, urlBySlug });
