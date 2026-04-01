@@ -369,6 +369,11 @@ export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMi
             if (seen.has(key))
                 continue;
             seen.add(key);
+            const fileName = layer === 'ppi' ? `${ts12}.png` : `${ts12}-ppivr.png`;
+            // Evitar download se já existir no bucket
+            if (options?.checkExists && await options.checkExists(fileName)) {
+                continue;
+            }
             const imgUrl = pickNowcastingImageUrl(img);
             if (!imgUrl)
                 continue;
@@ -378,7 +383,7 @@ export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMi
             out.push({
                 ts12,
                 layer,
-                fileName: layer === 'ppi' ? `${ts12}.png` : `${ts12}-ppivr.png`,
+                fileName,
                 url: imgUrl,
                 buffer,
             });
@@ -394,33 +399,45 @@ export async function downloadCptecImagesInWindow(station, slug, nowTs12, window
     const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
     const nw = NOWCASTING_RADAR_MAP[slug];
     if (nw && process.env.CPTEC_SKIP_NOWCASTING_API !== 'true') {
-        const fromApi = await downloadCptecImagesFromNowcastingApi(station, nw, windowMinutes, { fetchDoppler });
+        const fromApi = await downloadCptecImagesFromNowcastingApi(station, nw, windowMinutes, { fetchDoppler, checkExists: options?.checkExists });
         if (fromApi.length > 0)
             return fromApi;
     }
     const candidates = enumerateMinuteTs12InWindow(nowTs12, windowMinutes);
     const out = [];
     for (const ts12 of candidates) {
-        const ppi = await fetchCptecPngFromCdn(station, ts12, 'ppi');
-        if (ppi) {
-            out.push({
-                ts12,
-                layer: 'ppi',
-                fileName: `${ts12}.png`,
-                url: ppi.url,
-                buffer: ppi.buffer,
-            });
+        const ppiFileName = `${ts12}.png`;
+        if (options?.checkExists && await options.checkExists(ppiFileName)) {
+            // Já existe, não precisamos sacar o PPI
         }
-        if (fetchDoppler && station.dopplerId) {
-            const dop = await fetchCptecPngFromCdn(station, ts12, 'doppler');
-            if (dop) {
+        else {
+            const ppi = await fetchCptecPngFromCdn(station, ts12, 'ppi');
+            if (ppi) {
                 out.push({
                     ts12,
-                    layer: 'doppler',
-                    fileName: `${ts12}-ppivr.png`,
-                    url: dop.url,
-                    buffer: dop.buffer,
+                    layer: 'ppi',
+                    fileName: ppiFileName,
+                    url: ppi.url,
+                    buffer: ppi.buffer,
                 });
+            }
+        }
+        if (fetchDoppler && station.dopplerId) {
+            const dopFileName = `${ts12}-ppivr.png`;
+            if (options?.checkExists && await options.checkExists(dopFileName)) {
+                // Já existe
+            }
+            else {
+                const dop = await fetchCptecPngFromCdn(station, ts12, 'doppler');
+                if (dop) {
+                    out.push({
+                        ts12,
+                        layer: 'doppler',
+                        fileName: dopFileName,
+                        url: dop.url,
+                        buffer: dop.buffer,
+                    });
+                }
             }
         }
     }

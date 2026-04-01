@@ -147,7 +147,14 @@ async function executeSync(): Promise<{
       continue;
     }
 
-    const found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES);
+    const checkExists = async (fileName: string) => {
+      const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
+      return exists;
+    };
+
+    const found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+      checkExists,
+    });
 
     const slugResults: { ts12: string; layer?: string; status: string; path?: string; reason?: string }[] =
       [];

@@ -109,7 +109,13 @@ async function executeSync() {
             failCount++;
             continue;
         }
-        const found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES);
+        const checkExists = async (fileName) => {
+            const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
+            return exists;
+        };
+        const found = await downloadCptecImagesInWindow(station, slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+            checkExists,
+        });
         const slugResults = [];
         for (const { ts12, layer, fileName, url, buffer } of found) {
             const r2 = await saveIfNotExists(bucket, slug, fileName, buffer, url);
