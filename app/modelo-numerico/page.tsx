@@ -91,6 +91,13 @@ export default function NumericModelPage() {
   const [soundingPos, setSoundingPos] = useState<{lat: number, lon: number} | null>(null);
   const [soundingIndex, setSoundingIndex] = useState<number | null>(null);
   
+  // Premium Popup State
+  const [showPremiumPopup, setShowPremiumPopup] = useState(false);
+
+  useEffect(() => {
+    // Show popup immediately when component mounts
+    setShowPremiumPopup(true);
+  }, []);
   const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
     // Pegar dimensões da imagem real vs exibida
     const rect = e.currentTarget.getBoundingClientRect();
@@ -308,14 +315,20 @@ export default function NumericModelPage() {
   return (
     <div className="flex flex-col h-screen bg-white text-black font-sans overflow-hidden">
       {/* HEADER */}
-      <header className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 shrink-0">
-        <div className="flex items-center w-full relative">
+      <header className="flex items-center justify-between px-2 sm:px-6 py-3 bg-white border-b border-gray-200 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center w-full relative gap-2 sm:gap-0">
           
-          <div className="flex gap-4 items-center flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 font-bold">Data:</span>
+          <div className="flex items-center absolute left-0 top-0 sm:static mb-2 sm:mb-0 z-10">
+            <Link href="/" className="text-gray-500 hover:text-blue-800 transition-colors p-1" title="Voltar ao Menu">
+              <ChevronLeft size={24} />
+            </Link>
+          </div>
+
+          <div className="flex gap-2 sm:gap-4 items-center flex-wrap sm:ml-4 mt-8 sm:mt-0">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline">Data:</span>
               <select 
-                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium cursor-pointer"
+                className="bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1 outline-none focus:border-blue-500 font-medium cursor-pointer"
                 value={selectedRun ? selectedRun.substring(0, 8) : ''}
                 onChange={e => {
                   const newDate = e.target.value;
@@ -430,7 +443,7 @@ export default function NumericModelPage() {
         </aside>
 
         {/* MAIN VIEWER */}
-        <main className="flex-1 bg-white relative flex flex-col">
+        <main className="flex-1 bg-white relative flex flex-col h-[calc(100vh-180px)] sm:h-full">
           {isLoading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-400 border-t-blue-800"></div>
@@ -439,7 +452,7 @@ export default function NumericModelPage() {
 
           {/* TOP SPC-STYLE TIMELINE */}
           {images.length > 0 && (
-            <div className="w-full flex flex-col bg-gray-100 border-b border-gray-300 text-[9px] sm:text-[10px] font-mono select-none overflow-x-auto custom-scrollbar shrink-0 shadow-sm z-20">
+            <div className="w-full flex flex-col bg-gray-100 border-b border-gray-300 text-[9px] sm:text-[10px] font-mono select-none overflow-x-auto custom-scrollbar shrink-0 shadow-sm z-20 touch-pan-x">
               
               {/* DATE MARKERS ROW */}
               <div className="flex w-max min-w-full bg-gray-200 border-b border-gray-300 text-gray-700 font-bold sticky top-0 left-0">
@@ -476,11 +489,18 @@ export default function NumericModelPage() {
                   return (
                     <div
                       key={idx}
-                      className={`w-[20px] shrink-0 text-center py-0.5 cursor-crosshair border-r border-gray-300 last:border-0 hover:bg-blue-100 hover:text-blue-900 transition-colors ${
-                        idx === currentIndex ? 'bg-blue-800 text-white font-bold hover:bg-blue-700' : 'text-gray-600 font-medium'
+                      className={`w-[20px] shrink-0 text-center py-0.5 cursor-crosshair border-r border-gray-300 last:border-0 transition-colors ${
+                        idx === currentIndex ? 'bg-blue-800 text-white font-bold' : 'text-gray-600 font-medium hover:bg-blue-100 hover:text-blue-900'
                       }`}
-                      onMouseEnter={() => {
+                      onClick={() => {
                         if (currentIndex !== idx) {
+                          setCurrentIndex(idx);
+                          setIsPlaying(false);
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        // Só troca no hover se não for touch
+                        if (e.pointerType !== 'touch' && currentIndex !== idx) {
                           setCurrentIndex(idx);
                           setIsPlaying(false);
                         }
@@ -634,8 +654,8 @@ export default function NumericModelPage() {
 
               <div className="flex-1"></div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-500 font-bold uppercase tracking-wider">Velocidade:</span>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-xs text-gray-500 font-bold uppercase tracking-wider hidden sm:inline">Velocidade:</span>
                 <select 
                   className="bg-white border border-gray-300 text-xs rounded px-2 py-1 outline-none text-gray-800 focus:border-blue-500 font-medium shadow-sm"
                   value={playSpeed}
@@ -651,6 +671,50 @@ export default function NumericModelPage() {
           )}
         </main>
       </div>
+
+      {/* PREMIUM POPUP MODAL */}
+      {showPremiumPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="bg-gradient-to-r from-blue-800 to-cyan-600 p-6 text-center text-white relative">
+              <button 
+                onClick={() => setShowPremiumPopup(false)}
+                className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors"
+              >
+                <span className="sr-only">Fechar</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+              <div className="mx-auto w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-3 shadow-inner">
+                <span className="text-2xl font-black">!</span>
+              </div>
+              <h2 className="text-2xl font-black mb-1">Recurso Premium</h2>
+            </div>
+            
+            <div className="p-6 text-center">
+              <p className="text-gray-700 text-lg mb-4 font-medium">
+                Não perca a oportunidade de assinar com desconto.
+              </p>
+              
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4">
+                <p className="text-blue-900 text-sm">
+                  Os 150 primeiros usuários terão desconto de <span className="font-bold">R$ 10</span> em cada mês por 3 meses.
+                </p>
+              </div>
+              
+              <div className="text-xs text-gray-500 mb-6 font-medium">
+                * Valor do Plano: R$ 29,99
+              </div>
+              
+              <button 
+                onClick={() => setShowPremiumPopup(false)}
+                className="w-full bg-blue-800 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-md hover:shadow-lg active:scale-95"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar {

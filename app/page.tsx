@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import { CloudLightning, Gamepad2, Wind, Radio, Download, HelpCircle, BookOpen, Mail } from 'lucide-react';
+import { CloudLightning, Gamepad2, Wind, Radio, Download, HelpCircle, BookOpen, Mail, Layers } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ParticleBackground } from '@/components/ParticleBackground';
 import { useTranslation } from 'react-i18next';
@@ -74,7 +74,11 @@ export default function Home() {
                         <Radio className="w-5 h-5" /> Modo Ao Vivo
                     </button>
                 </Link>
-
+                <Link href="/modelo-numerico">
+                    <button className="bg-black text-white px-8 py-4 rounded-full font-bold flex items-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.15)] group">
+                        <Layers className="w-5 h-5 group-hover:-translate-y-1 transition-transform" /> Modelo Numérico
+                    </button>
+                </Link>
             </div>
         </motion.div>
 
