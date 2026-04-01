@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       process.env.SOUNDING_ENGINE_URL ||
       'https://sounding-engine-303740989273.us-central1.run.app/process';
 
-    // Passo 1: CSV da VM (via proxy na Cloud Run ou direto)
+    // Passo 1: Imagem da VM gerada pelo Python `plot_skewt` do colega
     let vmResponse: Response;
     try {
       vmResponse = await fetch(vmUrl, {
@@ -49,12 +49,20 @@ export async function POST(req: NextRequest) {
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('[wrF-sounding] VM fetch failed:', msg);
+      if (msg.includes('Timeout') || msg.includes('aborted')) {
+        return NextResponse.json(
+          {
+            step: 'vm_fetch',
+            error: 'Tempo esgotado ao aguardar o servidor Python na VM gerar a sondagem. Tente outra vez ou verifique o script wrf_sounding_server.py.',
+            details: msg,
+          },
+          { status: 504 },
+        );
+      }
       return NextResponse.json(
         {
           step: 'vm_fetch',
-          error:
-            'Não foi possível conectar à VM do WRF (rede/firewall). O site roda no Google Cloud; o IP de origem não é o seu PC. Libere a porta 8095 na VM para ingresso do Google Cloud (ex.: 0.0.0.0/0 em TCP 8095) ou use um túnel/HTTPS.',
+          error: 'Nao foi possivel conectar a VM do WRF. O IP / porta deve estar fechado.',
           details: msg,
         },
         { status: 502 },
@@ -62,12 +70,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (!vmResponse.ok) {
-      const errorText = await vmResponse.text();
-      console.error('Error from VM:', errorText);
+      const errorText = await vmResponse.text().catch(() => 'No text');
       return NextResponse.json(
         {
           step: 'vm_http',
-          error: `HTTP ${vmResponse.status} ao obter CSV (VM via proxy Cloud Run ou direto)`,
+          error: `HTTP ${vmResponse.status} erro a gerar a imagem na VM`,
           details: errorText,
         },
         { status: vmResponse.status >= 500 ? 502 : vmResponse.status },
@@ -76,89 +83,26 @@ export async function POST(req: NextRequest) {
 
     const vmData = await vmResponse.json();
 
-    if (vmData.status !== 'success' || !vmData.csv_data) {
+    if (vmData.error || !vmData.image) {
       return NextResponse.json(
         {
           step: 'vm_payload',
-          error: 'Resposta inválida da VM WRF (sem csv_data)',
+          error: vmData.error || 'Resposta invalida da VM WRF (sem key image)',
         },
         { status: 500 },
       );
     }
 
-    console.log(
-      `[WRF Sondagem] CSV recebido da VM, tamanho: ${vmData.csv_data.length} caracteres`,
-    );
+    console.log(`[WRF Sondagem] Imagem Skew-T devolvida pela VM, tamanho: ${vmData.image.length} caracteres`);
 
-    // Passo 2: render SHARPpy no Cloud Run
-    let renderResponse: Response;
-    try {
-      renderResponse = await fetch(renderUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          csv: vmData.csv_data,
-          title: `WRF Sounding - Lat: ${lat.toFixed(2)} Lon: ${lon.toFixed(2)}`,
-        }),
-        cache: 'no-store',
-        signal: AbortSignal.timeout(RENDER_FETCH_MS),
-      });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error('[wrf-sounding] Cloud Run fetch failed:', msg);
-      return NextResponse.json(
-        {
-          step: 'render_fetch',
-          error: 'Falha ao chamar o serviço de renderização (Cloud Run)',
-          details: msg,
-        },
-        { status: 502 },
-      );
-    }
+    // Retorna a imagem final Base64 da VM como manda a API do site (esperando "image")
+    return NextResponse.json({ image: vmData.image });
 
-    if (!renderResponse.ok) {
-      const errorText = await renderResponse.text();
-      console.error('Error from sounding-engine:', errorText);
-      return NextResponse.json(
-        {
-          step: 'render_http',
-          error: 'Erro ao renderizar sondagem',
-          details: errorText,
-        },
-        { status: renderResponse.status },
-      );
-    }
-
-    const responseJson = await renderResponse.json();
-
-    if (!responseJson.success || !responseJson.base64_img) {
-      console.error('Render failure:', responseJson);
-      return NextResponse.json(
-        {
-          step: 'render_payload',
-          error: `Render failed: ${responseJson.error || 'No image'}`,
-          trace: responseJson.trace,
-        },
-        { status: 500 },
-      );
-    }
-
-    const b64 = stripDataUrlBase64(responseJson.base64_img);
-    const imageBuffer = Buffer.from(b64, 'base64');
-
-    return new NextResponse(imageBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': 'image/png',
-      },
-    });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('Error in wrf-sounding proxy:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Erro /api/wrf-sounding geral:', error);
     return NextResponse.json(
-      { step: 'unexpected', error: msg || 'Internal Server Error' },
+      { step: 'general', error: message },
       { status: 500 },
     );
   }
