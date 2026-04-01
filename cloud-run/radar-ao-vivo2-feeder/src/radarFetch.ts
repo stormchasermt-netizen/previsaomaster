@@ -116,6 +116,43 @@ export const CPTEC_STATIONS: Record<string, CptecStation> = {
 /**
  * Intervalo de atualização típico (minutos) para snap na grelha CPTEC — alinhado a lib/cptecRadarStations.
  */
+/**
+ * IDs do portal Nowcasting (`/api/camadas/radar/{id}/imagens?nome=…`) — ver docs/radaresv2.txt.
+ * Permite descarregar os timestamps reais (ex.: 09:11, 09:06) em vez de adivinhar com snap à grelha.
+ */
+export const NOWCASTING_RADAR_MAP: Record<string, { id: number; nome: string }> = {
+  saofrancisco: { id: 8345, nome: 'São Francisco' },
+  jaraguari: { id: 8344, nome: 'Jaraguari' },
+  chapeco: { id: 2247, nome: 'Chapecó' },
+  morroigreja: { id: 4964, nome: 'Morro da Igreja' },
+  portovelho: { id: 1379, nome: 'Porto Velho' },
+  macapa: { id: 1377, nome: 'Macapá' },
+  santatereza: { id: 2169, nome: 'Santa Tereza' },
+  tresmarias: { id: 5984, nome: 'Três Marias' },
+  saoroque: { id: 4960, nome: 'São Roque' },
+  santarem: { id: 1380, nome: 'Santarém' },
+  guaratiba: { id: 2238, nome: 'Guaratiba' },
+  natal: { id: 8343, nome: 'Natal' },
+  'funceme-quixeramobim': { id: 7011, nome: 'Quixeramobim' },
+  salvador: { id: 8346, nome: 'Salvador' },
+  maceio: { id: 8325, nome: 'Maceió' },
+  boavista: { id: 1375, nome: 'Boa Vista' },
+  tabatinga: { id: 1382, nome: 'Tabatinga' },
+  gama: { id: 1250, nome: 'Gama' },
+  santiago: { id: 4965, nome: 'Santiago' },
+  manaus: { id: 1378, nome: 'Manaus' },
+  cruzeirodosul: { id: 1376, nome: 'Cruzeiro do Sul' },
+  cangucu: { id: 4962, nome: 'Canguçu' },
+  tefe: { id: 1383, nome: 'Tefé' },
+  macae: { id: 2241, nome: 'Macaé' },
+  belem: { id: 1374, nome: 'Belém' },
+  petrolina: { id: 8342, nome: 'Petrolina' },
+  'funceme-fortaleza': { id: 1136, nome: 'Fortaleza' },
+  saogabriel: { id: 1381, nome: 'São Gabriel' },
+  lontras: { id: 4961, nome: 'Lontras' },
+  saoluis: { id: 1390, nome: 'São Luiz' },
+};
+
 export const CPTEC_PRIMARY_INTERVAL_MIN: Record<string, number> = {
   chapeco: 6,
   lontras: 10,
@@ -207,6 +244,14 @@ function snapToInterval(ts12: string, interval: number, offset: number): string 
 
 export type CptecLayer = 'ppi' | 'doppler';
 
+export type CptecSyncedFile = {
+  ts12: string;
+  layer: CptecLayer;
+  fileName: string;
+  url: string;
+  buffer: Buffer;
+};
+
 /** CDN CPTEC: pastas YYYY/MM e ficheiro R{identificador}_{YYYYMMDDHHmm}.png — PPI usa ppicz, Doppler ppivr. */
 export function buildCptecPngUrl(station: CptecStation, ts12: string, layer: CptecLayer = 'ppi'): string {
   const y = ts12.slice(0, 4);
@@ -245,9 +290,14 @@ export async function fetchCptecPngFromCdn(
   return null;
 }
 
+export function normalizeCptecImageUrl(url: string): string {
+  if (url.startsWith('http://')) return `https://${url.slice(7)}`;
+  return url;
+}
+
 export async function fetchPngBuffer(url: string): Promise<Buffer | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    const res = await fetch(normalizeCptecImageUrl(url), { signal: AbortSignal.timeout(20000) });
     if (!res.ok) return null;
     const arrayBuffer = await res.arrayBuffer();
     const buf = Buffer.from(arrayBuffer);
@@ -282,7 +332,7 @@ export async function findWorkingCptecUrl(
 
 /**
  * Gera candidatos ts12 únicos: percorre cada minuto até `windowMinutes` atrás e aplica snap ao intervalo do radar.
- * (Passo 1 minuto evita buracos que o passo 5 min + 4 snaps criavam.)
+ * @deprecated Preferir enumerateMinuteTs12InWindow para CDN — o snap falha quando o CPTEC publica fora da grelha.
  */
 export function enumerateCptecTs12InWindow(
   nowTs12: string,
@@ -299,17 +349,119 @@ export function enumerateCptecTs12InWindow(
   return [...seen].sort((a, b) => b.localeCompare(a));
 }
 
-export type CptecSyncedFile = {
-  ts12: string;
-  layer: CptecLayer;
-  fileName: string;
-  url: string;
-  buffer: Buffer;
+/** Um minuto por passo (UTC), sem snap — alinha com ficheiros reais no CDN quando a API Nowcasting não está mapeada. */
+export function enumerateMinuteTs12InWindow(nowTs12: string, windowMinutes: number): string[] {
+  const out: string[] = [];
+  for (let back = 0; back <= windowMinutes; back++) {
+    out.push(subtractMinutesFromTs12(nowTs12, back));
+  }
+  return out;
+}
+
+type NowcastingImagem = {
+  fileDate?: string;
+  fileTime?: string;
+  url?: string;
+  urls?: string[];
+  horario?: number;
 };
+
+type NowcastingProduto = {
+  id: string;
+  produto?: string;
+  imagens?: NowcastingImagem[];
+};
+
+function fileDateTimeToTs12(fileDate: string, fileTime: string): string | null {
+  const d = fileDate.replace(/-/g, '');
+  if (d.length !== 8) return null;
+  const t = fileTime.replace(/:/g, '');
+  if (t.length < 4) return null;
+  return d + t.slice(0, 4);
+}
+
+function pickNowcastingImageUrl(img: NowcastingImagem): string | null {
+  if (img.urls && img.urls.length > 0) {
+    const u = img.urls.find((x) => x.startsWith('https://')) || img.urls[0];
+    return normalizeCptecImageUrl(u);
+  }
+  if (img.url) return normalizeCptecImageUrl(img.url);
+  return null;
+}
+
+/**
+ * Lista de imagens a partir da API oficial (mesmos URLs que o site).
+ * Filtra por janela temporal e pelos IDs PPI / Doppler do catálogo.
+ */
+export async function downloadCptecImagesFromNowcastingApi(
+  station: CptecStation,
+  nw: { id: number; nome: string },
+  windowMinutes: number,
+  options?: { fetchDoppler?: boolean }
+): Promise<CptecSyncedFile[]> {
+  const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
+  const quantidade = Math.min(200, Math.max(40, windowMinutes + 40));
+  const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/${nw.id}/imagens?quantidade=${quantidade}&nome=${encodeURIComponent(nw.nome)}`;
+  let data: NowcastingProduto[];
+  try {
+    const res = await fetch(apiUrl, { signal: AbortSignal.timeout(25000) });
+    if (!res.ok) return [];
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json)) return [];
+    data = json as NowcastingProduto[];
+  } catch {
+    return [];
+  }
+
+  const endMs = Date.now();
+  const startMs = endMs - windowMinutes * 60 * 1000;
+  const seen = new Set<string>();
+  const out: CptecSyncedFile[] = [];
+
+  for (const prod of data) {
+    let layer: CptecLayer | null = null;
+    if (prod.id === station.id) layer = 'ppi';
+    else if (fetchDoppler && station.dopplerId && prod.id === station.dopplerId) layer = 'doppler';
+    else continue;
+
+    for (const img of prod.imagens || []) {
+      if (!img.fileDate || !img.fileTime) continue;
+      const ts12 = fileDateTimeToTs12(img.fileDate, img.fileTime);
+      if (!ts12 || ts12.length !== 12) continue;
+
+      let tms: number;
+      if (typeof img.horario === 'number' && Number.isFinite(img.horario)) {
+        tms = img.horario;
+      } else {
+        tms = ts12ToUtcMs(ts12);
+      }
+      if (tms < startMs || tms > endMs + 120_000) continue;
+
+      const key = `${layer}:${ts12}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const imgUrl = pickNowcastingImageUrl(img);
+      if (!imgUrl) continue;
+      const buffer = await fetchPngBuffer(imgUrl);
+      if (!buffer || buffer.length === 0) continue;
+
+      out.push({
+        ts12,
+        layer,
+        fileName: layer === 'ppi' ? `${ts12}.png` : `${ts12}-ppivr.png`,
+        url: imgUrl,
+        buffer,
+      });
+    }
+  }
+
+  return out.sort((a, b) => b.ts12.localeCompare(a.ts12));
+}
 
 /**
  * Para cada ts12 na janela: descarrega PPI (ppicz) e, se ativo, Doppler (ppivr) com ID próprio.
- * Usa fallback de hosts s1/s2/s3/s0 no CDN.
+ * Usa fallback de hosts s1/s2/s3/s0 no CDN. Candidatos = um minuto por passo (sem snap).
  */
 export async function downloadCptecImagesInWindow(
   station: CptecStation,
@@ -319,8 +471,13 @@ export async function downloadCptecImagesInWindow(
   options?: { fetchDoppler?: boolean }
 ): Promise<CptecSyncedFile[]> {
   const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
-  const primaryInterval = CPTEC_PRIMARY_INTERVAL_MIN[slug] ?? 6;
-  const candidates = enumerateCptecTs12InWindow(nowTs12, windowMinutes, primaryInterval, 0);
+  const nw = NOWCASTING_RADAR_MAP[slug];
+  if (nw && process.env.CPTEC_SKIP_NOWCASTING_API !== 'true') {
+    const fromApi = await downloadCptecImagesFromNowcastingApi(station, nw, windowMinutes, { fetchDoppler });
+    if (fromApi.length > 0) return fromApi;
+  }
+
+  const candidates = enumerateMinuteTs12InWindow(nowTs12, windowMinutes);
   const out: CptecSyncedFile[] = [];
 
   for (const ts12 of candidates) {
