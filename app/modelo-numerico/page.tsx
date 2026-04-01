@@ -12,7 +12,7 @@ import {
 import { getMapBoundsForRunFolder, imagePixelToLatLonParana, isParanaRun } from '@/lib/wrfDomainBounds';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
-  'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl'],
+  'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl', 'scp', 'stp'],
   'Atributos da Tempestade': ['mdbz'],
   'Sinótico': ['T2m', 'Td_2m', 'Thetae_2m']
 };
@@ -34,18 +34,20 @@ function findOverlayForBaseName(
   return overlays.find((o) => o.name.startsWith(ts));
 }
 
-const VARIABLE_LABELS: Record<string, string> = {
-  hrt01km: 'Helicidade Relativa à Tempestade (Sfc - 1km)',
-  hrt03km: 'Helicidade Relativa à Tempestade (Sfc - 3km)',
-  mdbz: 'Refletividade Máxima',
-  mlcape: 'ml-CAPE',
-  mllr: 'ml-Lapse-rate',
-  mucape: 'mu-CAPE',
-  sblcl: 'sb-LCL',
-  T2m: 'Temperatura (2m)',
-  Td_2m: 'Temperatura do Ponto de Orvalho',
-  Thetae_2m: 'Theta-e (2m)'
-};
+  const VARIABLE_LABELS: Record<string, string> = {
+    hrt01km: 'Helicidade Relativa à Tempestade (Sfc - 1km)',
+    hrt03km: 'Helicidade Relativa à Tempestade (Sfc - 3km)',
+    mdbz: 'Refletividade Máxima',
+    mlcape: 'ml-CAPE',
+    mllr: 'ml-Lapse-rate',
+    mucape: 'mu-CAPE',
+    sblcl: 'sb-LCL',
+    scp: 'Parâmetro Composto de Supercélula (SCP)',
+    stp: 'Parâmetro de Tornado Significativo (STP)',
+    T2m: 'Temperatura (2m)',
+    Td_2m: 'Temperatura do Ponto de Orvalho',
+    Thetae_2m: 'Theta-e (2m)'
+  };
 
 function formatValidDateTime(name: string) {
   const match = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\./);
