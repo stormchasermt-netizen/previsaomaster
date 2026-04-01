@@ -325,11 +325,26 @@ export default function NumericModelPage() {
             </Link>
           </div>
 
-          <div className="flex gap-2 sm:gap-4 items-center flex-wrap sm:ml-4 mt-8 sm:mt-0">
-            <div className="flex items-center gap-1 sm:gap-2">
+  return (
+    <div className="flex flex-col h-[100dvh] bg-white text-black font-sans overflow-hidden">
+      {/* HEADER */}
+      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 sm:px-6 py-2 sm:py-3 bg-white border-b border-gray-200 shrink-0 relative z-20">
+        <div className="flex items-center justify-between w-full relative sm:mb-0 pb-2 sm:pb-0 border-b border-gray-100 sm:border-b-0">
+          <Link href="/" className="text-gray-500 hover:text-blue-800 transition-colors flex items-center gap-1" title="Voltar">
+            <ChevronLeft size={24} />
+            <span className="sm:hidden font-bold text-sm">Voltar</span>
+          </Link>
+          <div className="bg-[#00174b] text-white px-4 sm:px-6 py-1.5 sm:py-2 rounded-lg sm:rounded-bl-lg sm:rounded-tr-none sm:absolute sm:right-0 sm:top-0 font-bold shadow-md text-sm sm:text-lg tracking-wider sm:border-b sm:border-l border-blue-800 -mr-2 sm:mr-0">
+            <CloudLightning size={18} className="hidden sm:inline mr-1" />WRF3km
+          </div>
+        </div>
+
+        <div className="flex w-full mt-2 sm:mt-0">
+          <div className="flex gap-2 sm:gap-4 items-center flex-wrap sm:flex-nowrap w-full">
+            <div className="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none">
               <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline">Data:</span>
               <select 
-                className="bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1 outline-none focus:border-blue-500 font-medium cursor-pointer"
+                className="w-full sm:w-auto bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
                 value={selectedRun ? selectedRun.substring(0, 8) : ''}
                 onChange={e => {
                   const newDate = e.target.value;
@@ -348,10 +363,10 @@ export default function NumericModelPage() {
               </select>
             </div>
             
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 font-bold">Rodada:</span>
+            <div className="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none">
+              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline">Rodada:</span>
               <select 
-                className="bg-gray-50 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none focus:border-blue-500 font-medium cursor-pointer"
+                className="w-full sm:w-auto bg-gray-50 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none focus:border-blue-500 font-medium cursor-pointer"
                 value={selectedRun}
                 onChange={e => setSelectedRun(e.target.value)}
                 disabled={isLoading || runs.length === 0}
@@ -368,10 +383,10 @@ export default function NumericModelPage() {
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 font-bold">Domínio:</span>
+            <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto mt-1 sm:mt-0">
+              <span className="text-xs sm:text-sm text-gray-600 font-bold hidden sm:inline">Domínio:</span>
               <select 
-                className="bg-gray-100 border border-gray-300 text-sm rounded-md px-3 py-1 outline-none font-medium cursor-not-allowed text-gray-500"
+                className="w-full sm:w-auto bg-gray-100 border border-gray-300 text-xs sm:text-sm rounded-md px-2 sm:px-3 py-1.5 outline-none font-medium cursor-not-allowed text-gray-500 flex-1 w-full"
                 defaultValue="Centro-Sul"
                 disabled
               >
@@ -379,16 +394,45 @@ export default function NumericModelPage() {
               </select>
             </div>
           </div>
-          
-          <div className="absolute right-0 top-0 bg-[#00174b] text-white px-6 py-2 rounded-bl-lg font-bold shadow-md text-lg tracking-wider border-b border-l border-blue-800">
-            WRF3km
-          </div>
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* SIDEBAR */}
-        <aside className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto custom-scrollbar shrink-0">
+      <div className="flex flex-col sm:flex-row flex-1 overflow-hidden relative h-full">
+        {/* MOBILE VARIABLE SELECTOR (Dropdown) */}
+        <div className="sm:hidden w-full bg-white border-b border-gray-200 p-2 shrink-0 z-10">
+           <select 
+              className="w-full bg-blue-50 border border-blue-200 text-blue-900 text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500 font-bold appearance-none text-center shadow-sm"
+              value={selectedVariable}
+              onChange={(e) => setSelectedVariable(e.target.value)}
+            >
+              {Object.entries(VARIABLE_CATEGORIES).map(([category, vars]) => {
+                const activeVars = vars.filter(v => availableVariables.includes(v));
+                if (activeVars.length === 0) return null;
+                
+                return (
+                  <optgroup key={category} label={category}>
+                    {activeVars.map(v => (
+                      <option key={v} value={v}>
+                        {VARIABLE_LABELS[v] || v}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+              {uncategorizedVariables.length > 0 && (
+                <optgroup label="Outros">
+                  {uncategorizedVariables.map(v => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+        </div>
+
+        {/* DESKTOP SIDEBAR */}
+        <aside className="hidden sm:flex w-72 bg-gray-50 border-r border-gray-200 flex-col overflow-y-auto custom-scrollbar shrink-0">
           <div className="p-4">
             <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Variáveis (Produtos)</h2>
             
@@ -444,7 +488,7 @@ export default function NumericModelPage() {
         </aside>
 
         {/* MAIN VIEWER */}
-        <main className="flex-1 bg-white relative flex flex-col h-[calc(100vh-180px)] sm:h-full">
+        <main className="flex-1 bg-white relative flex flex-col h-full min-h-0">
           {isLoading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50 backdrop-blur-sm">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-400 border-t-blue-800"></div>
@@ -519,16 +563,16 @@ export default function NumericModelPage() {
             </div>
           )}
           
-          <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-white p-2">
+          <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-white p-0 sm:p-2">
             {images.length > 0 && (
-              <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-0.5 font-mono text-sm sm:text-base text-gray-800 pointer-events-none">
-                <div className="flex gap-2 items-baseline">
-                  <span className="text-gray-500 font-bold text-xs uppercase tracking-wide">Run:</span> 
-                  <span className="font-bold text-sm bg-gray-100 px-2 border border-gray-200 rounded">{formatRunDateTime(selectedRun)}</span>
+              <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-0.5 font-mono text-[10px] sm:text-base text-gray-800 pointer-events-none bg-white/80 p-1 sm:p-0 rounded-md sm:bg-transparent">
+                <div className="flex gap-1 sm:gap-2 items-baseline">
+                  <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Run:</span> 
+                  <span className="font-bold text-[10px] sm:text-sm bg-gray-100 px-1 sm:px-2 border border-gray-200 rounded">{formatRunDateTime(selectedRun)}</span>
                 </div>
-                <div className="flex gap-2 items-baseline mt-1">
-                  <span className="text-gray-500 font-bold text-xs uppercase tracking-wide">Valid:</span> 
-                  <span className="font-bold text-sm bg-blue-100 text-blue-900 px-2 border border-blue-200 rounded">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
+                <div className="flex gap-1 sm:gap-2 items-baseline mt-0.5 sm:mt-1">
+                  <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Valid:</span> 
+                  <span className="font-bold text-[10px] sm:text-sm bg-blue-100 text-blue-900 px-1 sm:px-2 border border-blue-200 rounded">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
                 </div>
               </div>
             )}
@@ -548,7 +592,7 @@ export default function NumericModelPage() {
                     onMouseMove={isCurrent ? mapImageToCoords : undefined}
                     onMouseLeave={isCurrent ? () => setHoverPos(null) : undefined}
                     onClick={isCurrent ? handleImageClick : undefined}
-                    className={`absolute max-w-full max-h-full object-contain cursor-crosshair ${
+                    className={`absolute w-full h-full object-contain sm:object-scale-down cursor-crosshair ${
                       isCurrent ? 'block z-10' : 'hidden z-0'
                     }`}
                   />
