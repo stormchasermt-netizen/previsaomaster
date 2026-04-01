@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 import { getRadarAoVivo2BucketName, isValidRadarAoVivo2StationSlug } from '@/lib/radarAoVivo2Bucket';
 
+export const dynamic = 'force-dynamic';
+
 if (!admin.apps.length) {
   try {
     admin.initializeApp();

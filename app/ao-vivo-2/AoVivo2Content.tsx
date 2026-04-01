@@ -13,9 +13,9 @@ const SAT_STYLE = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPT
 
 /** Mesmos URLs que em app/ao-vivo/page.tsx */
 const RADAR_ICON_AVAILABLE =
-  'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/7e352d326e59aa65efc40ce2979d5a078a393dc4/radar-icon-svg-download-png-8993769.webp';
+  'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/78c82d9eb9f723ed65805e819046d598ace4a36e/radar-icon-svg-download-png-8993769.webp';
 const RADAR_ICON_UNAVAILABLE =
-  'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/7e352d326e59aa65efc40ce2979d5a078a393dc4/radar-icon-svg-download-png-8993769.webp';
+  'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/78c82d9eb9f723ed65805e819046d598ace4a36e/radar-icon-svg-download-png-8993769.webp';
 
 export type RadarProductMode = 'ppi' | 'doppler';
 
@@ -246,6 +246,24 @@ function layerId(slug: string) {
 }
 
 export default function AoVivo2Content() {
+  // Injectar CSS para renderização "crocante" dos radares (pixel-perfect zoom)
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      /* Renderização pixelada no canvas do mapa */
+      .maplibregl-canvas, .mapboxgl-canvas {
+        image-rendering: pixelated !important;
+        image-rendering: crisp-edges !important;
+        image-rendering: -moz-crisp-edges !important;
+        -ms-interpolation-mode: nearest-neighbor !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   const [stations, setStations] = useState<string[]>([]);
   const [product, setProduct] = useState<RadarProductMode>('ppi');
   const [imagesByStation, setImagesByStation] = useState<Record<string, { name: string; url: string }[]>>({});
