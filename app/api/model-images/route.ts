@@ -59,15 +59,20 @@ export async function GET(req: NextRequest) {
       const images = await Promise.all(
         imageFiles.map(async (file) => {
           const fileName = file.name.split('/').pop() || '';
-          
-          // Fallback seguro: Em vez de usar getSignedUrl (que pode falhar em VMs sem permissão iam.signBlob),
-          // Usamos um proxy interno ou retornamos a URL do proxy.
-          // Aqui, vamos montar a rota do nosso próprio proxy
-          const url = `/api/model-image-proxy?file=${encodeURIComponent(file.name)}`;
-          
+          // generation muda quando o objeto é sobrescrito no bucket — incluir na URL invalida cache (CDN/navegador)
+          let gen = '';
+          try {
+            const [meta] = await file.getMetadata();
+            gen = meta.generation != null ? String(meta.generation) : '';
+          } catch {
+            /* ignore */
+          }
+          const v = gen ? `&v=${encodeURIComponent(gen)}` : '';
+          const url = `/api/model-image-proxy?file=${encodeURIComponent(file.name)}${v}`;
+
           return {
             name: fileName,
-            url
+            url,
           };
         })
       );

@@ -33,12 +33,19 @@ export async function GET(req: NextRequest) {
 
     const [buffer] = await file.download();
 
+    const gen = metadata.generation != null ? String(metadata.generation) : '';
+    // URL com &v=generation muda quando o objeto é substituído → cache seguro por longo prazo
+    const hasVersion = searchParams.has('v') && searchParams.get('v') === gen;
+    const cacheControl = hasVersion
+      ? 'public, max-age=31536000, immutable'
+      : 'public, max-age=300, s-maxage=300, stale-while-revalidate=60';
+
     return new NextResponse(buffer, {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        // Cache na borda por um longo periodo para economizar requests no Storage
-        'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400',
+        ...(gen ? { ETag: `"g${gen}"` } : {}),
+        'Cache-Control': cacheControl,
       },
     });
   } catch (error: any) {
