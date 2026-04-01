@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Radio, Users, X, Home, MapPin, Layers, Radar, Check, Menu, Play, Pause, SkipBack, SkipForward, LayoutGrid, Square, AlertTriangle, Send, Link2, Upload, Search, Crosshair, Loader2, Save, Calendar, Info, Video, Maximize2, Minimize2, Instagram, Twitter, Zap, Eye, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -176,68 +177,15 @@ async function probeRadarImageExists(
 }
 
 /** Filtra minutos atrás usando hora de referência (ao vivo ou histórico) + Storage / CPTEC. */
-async function filterValidSliderMinutesAgo(
-  dr: DisplayRadar,
-  productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel',
-  maxMinutes: number,
-  radarConfigs: RadarConfig[],
-  referenceTs12: string,
-  isHistorical: boolean,
-  signal?: AbortSignal
-): Promise<number[]> {
+async function filterValidSliderMinutesAgo(dr: DisplayRadar, productType: 'reflectividade' | 'velocidade' | 'vil' | 'waldvogel', maxMinutes: number, radarConfigs: RadarConfig[], referenceTs12: string, isHistorical: boolean, signal?: AbortSignal): Promise<number[]> {
   const configSlug = dr.type === 'cptec' ? dr.station.slug : `argentina:${dr.station.id}`;
   const cfg = radarConfigs.find((c) => c.stationSlug === configSlug);
-
   const radarInterval = cfg?.updateIntervalMinutes ?? (dr.type === 'cptec' ? (dr.station.updateIntervalMinutes ?? 10) : 10);
   const step = Math.max(1, radarInterval);
   const candidates: number[] = [];
   for (let m = 0; m <= maxMinutes; m += step) candidates.push(m);
-  if (candidates.length === 0) return [0];
-
-  /** IPMET */
-  if (dr.type === 'cptec' && dr.station.slug === 'ipmet-bauru' && !isHistorical) {
-    const baseTs12 = referenceTs12;
-    const result: number[] = [0];
-
-    try {
-      const res = await fetch(`/api/ipmet-available-timestamps?ts12=${encodeURIComponent(baseTs12)}`, { cache: 'no-store', signal });
-      const data = await res.json().catch(() => ({}));
-      
-      const timestamps: string[] = data.timestamps || [];
-      if (timestamps.length > 0) {
-        const y = parseInt(baseTs12.slice(0, 4), 10);
-        const m = parseInt(baseTs12.slice(4, 6), 10) - 1;
-        const d = parseInt(baseTs12.slice(6, 8), 10);
-        const hh = parseInt(baseTs12.slice(8, 10), 10);
-        const mm = parseInt(baseTs12.slice(10, 12), 10);
-        const baseDateMs = Date.UTC(y, m, d, hh, mm);
-        
-        timestamps.forEach(ts => {
-           const fy = parseInt(ts.slice(0, 4), 10);
-           const fm = parseInt(ts.slice(4, 6), 10) - 1;
-           const fd = parseInt(ts.slice(6, 8), 10);
-           const fhh = parseInt(ts.slice(8, 10), 10);
-           const fmm = parseInt(ts.slice(10, 12), 10);
-           const fileDateMs = Date.UTC(fy, fm, fd, fhh, fmm);
-           
-           const diffMin = Math.round((baseDateMs - fileDateMs) / 60000);
-           // Como estamos lidando com imagens históricas de até maxMinutes, filtramos:
-           if (diffMin > 0 && diffMin <= maxMinutes) {
-             result.push(diffMin);
-           }
-        });
-      }
-    } catch {
-       // Se der erro, só exibe o Ao Vivo (0)
-    }
-
-    // A API retorna do mais recente pro mais antigo (diffMin será 14, 25, 36, ...)
-    // Então o vetor "result" fica [0, 14, 25, 36]
-    // A interface genérica espera que idx=0 seja o mais ANTIGO, e o final seja 0 (recente).
-    // Ou seja: [60, 50, ..., 0]. Precisamos reverter.
-    result.reverse();
-    return result;
-  }
+  return candidates.length > 0 ? candidates : [0];
+}
 
   /** FUNCEME: busca frames reais da API ao invés de sondar URLs */
   if (dr.type === 'cptec' && dr.station.org === 'funceme' && !isHistorical) {
@@ -426,11 +374,11 @@ async function filterValidSliderMinutesAgo(
   return result.length > 0 ? result : [0];
 }
 
-  /** Ícone radar disponível: verde forte com símbolo de antena (modelo imagem 1). */
-  const RADAR_ICON_AVAILABLE = 'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/78c82d9eb9f723ed65805e819046d598ace4a36e/radar-icon-svg-download-png-8993769.webp';
-  
-  /** Ícone radar indisponível: verde apagado com barra diagonal (sem imagem no horário). */
-  const RADAR_ICON_UNAVAILABLE = 'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/78c82d9eb9f723ed65805e819046d598ace4a36e/radar-icon-svg-download-png-8993769.webp';
+/** Ícone radar disponível: verde forte com símbolo de antena (modelo imagem 1). */
+const RADAR_ICON_AVAILABLE = 'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/78c82d9eb9f723ed65805e819046d598ace4a36e/radar-icon-svg-download-png-8993769.webp';
+
+/** Ícone radar indisponível: verde apagado com barra diagonal (sem imagem no horário). */
+const RADAR_ICON_UNAVAILABLE = 'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/78c82d9eb9f723ed65805e819046d598ace4a36e/radar-icon-svg-download-png-8993769.webp';
 
 const dBZ_COLORS = [
   { hex: '#8B8589', val: -30 },
@@ -490,13 +438,6 @@ export default function AoVivoPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { addToast } = useToast();
-
-  useEffect(() => {
-    if (user !== undefined && (!user || (user.type !== 'admin' && user.type !== 'superadmin'))) {
-      window.location.href = '/';
-    }
-  }, [user]);
-
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const recentNowcastingSuccessRef = useRef<number>(0);
@@ -2205,7 +2146,7 @@ export default function AoVivoPage() {
                 'raster-opacity': 0,
                 'raster-fade-duration': 0,
                 'raster-opacity-transition': { duration: 450, delay: 0 },
-                'raster-resampling': 'nearest'
+                  'raster-resampling': 'nearest'
               },
             });
           }
@@ -2382,12 +2323,12 @@ export default function AoVivoPage() {
           return;
         }
 
-          if (isHistorical) {
-            if (dr.type === 'argentina') {
-              const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
-              const argUrl = \`/api/radar-ao-vivo2-image?file=\${encodeURIComponent('argentina-' + dr.station.id + '/' + exactTs12 + (productType === 'velocidade' ? '-ppivr' : '') + '.png')}\`;
-              void tryStorageThen(() => processWithWorker(argUrl, 'argentina', exactTs12, markFailed));
-            } else if (dr.type === 'cptec' && getRedemetArea(slug)) {
+        if (isHistorical) {
+          if (dr.type === 'argentina') {
+            const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
+            const argUrl = `/api/radar-ao-vivo2-image?file=${encodeURIComponent('argentina-' + dr.station.id + '/' + exactTs12 + (productType === 'velocidade' ? '-ppivr' : '') + '.png')}`;
+            void tryStorageThen(() => processWithWorker(argUrl, 'argentina', argTs, markFailed));
+          } else if (dr.type === 'cptec' && getRedemetArea(slug)) {
             void tryStorageThen(() => void tryHDFallbackAfterStorage());
           } else {
             void tryStorageThen(() => markFailed());
@@ -2395,12 +2336,12 @@ export default function AoVivoPage() {
           return;
         }
 
-          if (dr.type === 'argentina') {
-            const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
-            const argUrl = \`/api/radar-ao-vivo2-image?file=\${encodeURIComponent('argentina-' + dr.station.id + '/' + exactTs12 + (productType === 'velocidade' ? '-ppivr' : '') + '.png')}\`;
-            void tryStorageThen(() => processWithWorker(argUrl, 'argentina', exactTs12, markFailed));
-            return;
-          }
+        if (dr.type === 'argentina') {
+          const argTs = getArgentinaRadarTimestamp(targetDate, dr.station);
+          const argUrl = buildArgentinaRadarPngUrl(dr.station, argTs, productType);
+          void tryStorageThen(() => processWithWorker(argUrl, 'argentina', argTs, markFailed));
+          return;
+        }
 
         // Se o modo for HD, tenta o fallback diretamente (Sipam, Funceme, Redemet)
         if (radarSourceMode === 'hd') {
@@ -2422,13 +2363,14 @@ export default function AoVivoPage() {
         }
 
         // Modo Super Res (Nowcasting)
-        const cptecUrl = \`/api/radar-ao-vivo2-image?file=\${encodeURIComponent((dr.station as CptecRadarStation).slug + '/' + exactTs12 + (productType === 'velocidade' ? '-ppivr' : '') + '.png')}\`;
+        const slug = (dr.station as CptecRadarStation).slug;
+        const cptecUrl = `/api/radar-ao-vivo2-image?file=${encodeURIComponent(slug + '/' + exactTs12 + (productType === 'velocidade' ? '-ppivr' : '') + '.png')}`;
         void tryStorageThen(() => {
           if (isPast && dr.type === 'cptec' && (dr.station as CptecRadarStation).org === 'sipam') {
             markFailed();
             return;
           }
-          processWithWorker(cptecUrl, 'cptec', exactTs12, () => markFailed());
+          processWithWorker(cptecUrl, 'cptec', exactTs12, () => void tryHDFallbackAfterStorage());
         });
       });
     },
