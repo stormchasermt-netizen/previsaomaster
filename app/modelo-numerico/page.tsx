@@ -91,6 +91,10 @@ export default function NumericModelPage() {
   const [soundingImageUrl, setSoundingImageUrl] = useState<string | null>(null);
   const [soundingPos, setSoundingPos] = useState<{lat: number, lon: number} | null>(null);
   const [soundingIndex, setSoundingIndex] = useState<number | null>(null);
+
+  // Overlay State (ML-CAPE Contorno)
+  const [showOverlayCape, setShowOverlayCape] = useState(false);
+  const [overlayImages, setOverlayImages] = useState<{name: string, url: string}[]>([]);
   
   // Premium Popup State
   const [showPremiumPopup, setShowPremiumPopup] = useState(false);
@@ -272,6 +276,27 @@ export default function NumericModelPage() {
         setImages([]);
       })
       .finally(() => setIsLoading(false));
+      
+    // Fetch Overlay Images se for o caso
+    if (selectedVariable === 'hrt01km' || selectedVariable === 'hrt03km') {
+      fetch(`/api/model-images?action=getImages&run=${selectedRun}&variable=mlcape_contorno`)
+        .then(r => r.ok ? r.json() : { images: [] })
+        .then(data => {
+          if (data.images) {
+            setOverlayImages(data.images);
+            preloadImages(data.images.map((i: any) => i.url));
+          } else {
+            setOverlayImages([]);
+          }
+        })
+        .catch(err => {
+          console.error("Erro ao buscar overlay:", err);
+          setOverlayImages([]);
+        });
+    } else {
+      setShowOverlayCape(false); // Reseta se mudar pra outra variável
+      setOverlayImages([]);
+    }
   }, [selectedRun, selectedVariable]);
 
   const preloadImages = (urls: string[]) => {
@@ -543,7 +568,7 @@ export default function NumericModelPage() {
                           setIsPlaying(false);
                         }
                       }}
-                      onMouseEnter={(e) => {
+                      onPointerEnter={(e) => {
                         // Só troca no hover se não for touch
                         if (e.pointerType !== 'touch' && currentIndex !== idx) {
                           setCurrentIndex(idx);
@@ -574,6 +599,31 @@ export default function NumericModelPage() {
                   <span className="text-gray-500 font-bold text-[8px] sm:text-xs uppercase tracking-wide">Valid:</span> 
                   <span className="font-bold text-[10px] sm:text-sm bg-blue-100 text-blue-900 px-1 sm:px-2 border border-blue-200 rounded">{formatValidDateTime(images[currentIndex]?.name || '')}</span>
                 </div>
+
+                {/* OVERLAYS CONTROL */}
+                {(selectedVariable === 'hrt01km' || selectedVariable === 'hrt03km') && (
+                  <div className="mt-2 pointer-events-auto bg-white/95 border border-gray-200 shadow-sm rounded-md p-2 flex flex-col items-end text-xs sm:text-sm w-full min-w-[180px]">
+                    <div className="text-gray-500 font-bold uppercase tracking-wider text-[9px] sm:text-xs mb-1 border-b border-gray-100 w-full text-right pb-1">
+                      Product Overlays
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 w-full justify-end rounded transition-colors group">
+                      <span className="font-medium text-gray-700 group-hover:text-blue-800 transition-colors">ml-CAPE (Contorno)</span>
+                      <div className="relative flex items-center">
+                        <input 
+                          type="checkbox" 
+                          className="peer sr-only"
+                          checked={showOverlayCape}
+                          onChange={(e) => setShowOverlayCape(e.target.checked)}
+                        />
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-gray-300 rounded peer-checked:bg-blue-600 peer-checked:border-blue-600 transition-colors flex items-center justify-center">
+                          <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white opacity-0 peer-checked:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
 
@@ -585,17 +635,25 @@ export default function NumericModelPage() {
                 // Não usamos transition-opacity para drag/hover, pois isso causa o "fade preto" indesejado em trocas rápidas.
                 
                 return (
-                  <img 
-                    key={img.url}
-                    src={img.url} 
-                    alt={`Forecast frame ${idx}`}
-                    onMouseMove={isCurrent ? mapImageToCoords : undefined}
-                    onMouseLeave={isCurrent ? () => setHoverPos(null) : undefined}
-                    onClick={isCurrent ? handleImageClick : undefined}
-                    className={`absolute w-full h-full object-contain sm:object-scale-down cursor-crosshair ${
-                      isCurrent ? 'block z-10' : 'hidden z-0'
-                    }`}
-                  />
+                  <div key={img.url} className={`absolute w-full h-full ${isCurrent ? 'block z-10' : 'hidden z-0'}`}>
+                    <img 
+                      src={img.url} 
+                      alt={`Forecast frame ${idx}`}
+                      onMouseMove={isCurrent ? mapImageToCoords : undefined}
+                      onMouseLeave={isCurrent ? () => setHoverPos(null) : undefined}
+                      onClick={isCurrent ? handleImageClick : undefined}
+                      className="w-full h-full object-contain sm:object-scale-down cursor-crosshair"
+                    />
+                    
+                    {/* OVERLAY LAYER (ML-CAPE CONTORNO) */}
+                    {showOverlayCape && overlayImages[idx] && (
+                      <img 
+                        src={overlayImages[idx].url} 
+                        alt={`Overlay frame ${idx}`}
+                        className="absolute inset-0 w-full h-full object-contain sm:object-scale-down pointer-events-none mix-blend-multiply opacity-90"
+                      />
+                    )}
+                  </div>
                 );
               })
             ) : (
