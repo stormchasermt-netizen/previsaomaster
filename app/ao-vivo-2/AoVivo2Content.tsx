@@ -51,7 +51,21 @@ function extractTsFromFilename(name: string, product: RadarProductMode): string 
   return m ? m[1] : null;
 }
 
-function buildGlobalTimes(
+/** Horários extraídos só de nomes de ficheiro válidos (o que existe no cache listado). */
+function collectSortedTimesFromImages(
+  imgs: { name: string; url: string }[],
+  product: RadarProductMode
+): string[] {
+  const set = new Set<string>();
+  for (const im of imgs) {
+    const ts = extractTsFromFilename(im.name, product);
+    if (ts) set.add(ts);
+  }
+  return Array.from(set).sort();
+}
+
+/** Mosaico: união de todos os instantes em que pelo menos um radar tem ficheiro. */
+function buildUnionTimes(
   imagesByStation: Record<string, { name: string; url: string }[]>,
   product: RadarProductMode
 ): string[] {
@@ -108,7 +122,6 @@ export default function AoVivo2Content() {
   const [stations, setStations] = useState<string[]>([]);
   const [product, setProduct] = useState<RadarProductMode>('ppi');
   const [imagesByStation, setImagesByStation] = useState<Record<string, { name: string; url: string }[]>>({});
-  const [globalTimes, setGlobalTimes] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +137,8 @@ export default function AoVivo2Content() {
   const radarMarkersRef = useRef<maplibregl.Marker[]>([]);
   const preloadedUrlsRef = useRef<Set<string>>(new Set());
   const layerUpdateGenerationRef = useRef(0);
+  const timelineJumpToLatestRef = useRef(true);
+  const prevTimelineLenRef = useRef(0);
 
   const stationsWithBounds = useMemo(
     () => stations.filter((s) => Boolean(findCptecBySlug(s))).sort(),
@@ -138,8 +153,19 @@ export default function AoVivo2Content() {
     return out;
   }, [imagesByStation, product]);
 
-  const safeIndex = globalTimes.length > 0 ? Math.min(currentIndex, globalTimes.length - 1) : 0;
-  const currentTs = globalTimes[safeIndex] ?? null;
+  /**
+   * Slider só com instantes que têm ficheiro no cache (nome válido).
+   * Foco num radar: só os horários daquele radar. Mosaico: união dos horários de todos.
+   */
+  const timelineTimes = useMemo(() => {
+    if (focusedSlug) {
+      return collectSortedTimesFromImages(imagesByStation[focusedSlug] || [], product);
+    }
+    return buildUnionTimes(imagesByStation, product);
+  }, [focusedSlug, imagesByStation, product]);
+
+  const safeIndex = timelineTimes.length > 0 ? Math.min(currentIndex, timelineTimes.length - 1) : 0;
+  const currentTs = timelineTimes[safeIndex] ?? null;
 
   const displaySlugs = useMemo(() => {
     if (focusedSlug) return [focusedSlug].filter((s) => stationsWithBounds.includes(s));
@@ -162,13 +188,14 @@ export default function AoVivo2Content() {
   useEffect(() => {
     if (stationsWithBounds.length === 0) {
       setImagesByStation({});
-      setGlobalTimes([]);
       setCurrentIndex(0);
+      timelineJumpToLatestRef.current = true;
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    timelineJumpToLatestRef.current = true;
 
     const productParam = product === 'doppler' ? 'doppler' : 'ppi';
 
@@ -187,13 +214,44 @@ export default function AoVivo2Content() {
         const next: Record<string, { name: string; url: string }[]> = {};
         for (const { slug, images } of rows) next[slug] = images;
         setImagesByStation(next);
-        const times = buildGlobalTimes(next, product);
-        setGlobalTimes(times);
-        setCurrentIndex(times.length > 0 ? times.length - 1 : 0);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setIsLoading(false));
   }, [stationsWithBounds, product]);
+
+  /** Novo produto ou dados recarregados: ir para o último frame disponível na timeline derivada. */
+  useEffect(() => {
+    if (!timelineJumpToLatestRef.current) return;
+    if (timelineTimes.length === 0) {
+      setCurrentIndex(0);
+      return;
+    }
+    setCurrentIndex(timelineTimes.length - 1);
+    timelineJumpToLatestRef.current = false;
+  }, [timelineTimes]);
+
+  /** Ao mudar o foco (ou voltar ao mosaico), alinha no último instante da timeline atual (derivada por radar ou união). */
+  useEffect(() => {
+    if (timelineTimes.length === 0) {
+      setCurrentIndex(0);
+      return;
+    }
+    setCurrentIndex(timelineTimes.length - 1);
+  }, [focusedSlug]);
+
+  /** Só ajusta índice quando a timeline encolhe (evita sobrescrever “último frame” ao passar de 0 → N). */
+  useEffect(() => {
+    const len = timelineTimes.length;
+    if (len === 0) {
+      setCurrentIndex(0);
+      prevTimelineLenRef.current = 0;
+      return;
+    }
+    if (prevTimelineLenRef.current > len) {
+      setCurrentIndex((i) => Math.min(i, len - 1));
+    }
+    prevTimelineLenRef.current = len;
+  }, [timelineTimes.length]);
 
   /** Mapa: uma vez com vista Brasil; depois fit bounds */
   useEffect(() => {
@@ -351,12 +409,12 @@ export default function AoVivo2Content() {
 
   /** Pré-carrega frames vizinhos (como modelo numérico — menos flicker) */
   useEffect(() => {
-    if (globalTimes.length === 0) return;
+    if (timelineTimes.length === 0) return;
     const si = safeIndex;
-    const indices = [si, (si + 1) % globalTimes.length, (si - 1 + globalTimes.length) % globalTimes.length];
+    const indices = [si, (si + 1) % timelineTimes.length, (si - 1 + timelineTimes.length) % timelineTimes.length];
     const urls = new Set<string>();
     for (const idx of indices) {
-      const ts = globalTimes[idx];
+      const ts = timelineTimes[idx];
       if (!ts) continue;
       for (const slug of displaySlugs) {
         const u = lookups[slug]?.get(ts)?.url;
@@ -369,25 +427,25 @@ export default function AoVivo2Content() {
       const im = new window.Image();
       im.src = u;
     });
-  }, [safeIndex, globalTimes, displaySlugs, lookups]);
+  }, [safeIndex, timelineTimes, displaySlugs, lookups]);
 
   useEffect(() => {
-    if (!isPlaying || globalTimes.length < 2) return;
+    if (!isPlaying || timelineTimes.length < 2) return;
     const t = setInterval(() => {
       setCurrentIndex((i) => {
-        const n = globalTimes.length;
+        const n = timelineTimes.length;
         const si = Math.min(i, n - 1);
         return (si + 1) % n;
       });
     }, playSpeed);
     return () => clearInterval(t);
-  }, [isPlaying, globalTimes.length, playSpeed]);
+  }, [isPlaying, timelineTimes.length, playSpeed]);
 
   const togglePlay = () => setIsPlaying((p) => !p);
   const prevFrame = () => {
     setIsPlaying(false);
     setCurrentIndex((i) => {
-      const n = globalTimes.length;
+      const n = timelineTimes.length;
       if (n === 0) return 0;
       const si = Math.min(i, n - 1);
       return (si - 1 + n) % n;
@@ -396,7 +454,7 @@ export default function AoVivo2Content() {
   const nextFrame = () => {
     setIsPlaying(false);
     setCurrentIndex((i) => {
-      const n = globalTimes.length;
+      const n = timelineTimes.length;
       if (n === 0) return 0;
       const si = Math.min(i, n - 1);
       return (si + 1) % n;
@@ -498,21 +556,21 @@ export default function AoVivo2Content() {
           </div>
         )}
 
-        {globalTimes.length === 0 && stationsWithBounds.length > 0 && !isLoading && !error && (
+        {timelineTimes.length === 0 && stationsWithBounds.length > 0 && !isLoading && !error && (
           <div className="absolute bottom-16 left-4 right-4 z-10 rounded-lg bg-black/70 border border-slate-600 p-4 text-sm text-slate-200">
             Nenhuma imagem {product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} nas pastas do bucket para os radares listados.
           </div>
         )}
       </div>
 
-      {globalTimes.length > 0 && (
+      {timelineTimes.length > 0 && (
         <div className="border-t border-slate-700 bg-slate-900 shrink-0">
           <div className="overflow-x-auto border-b border-slate-800">
             <div className="flex w-max min-w-full">
               <div className="w-9 shrink-0 flex items-center justify-center py-1 text-[9px] font-bold text-slate-500 border-r border-slate-700 bg-slate-800/80 sticky left-0 z-[1]">
                 UTC
               </div>
-              {globalTimes.map((ts, idx) => (
+              {timelineTimes.map((ts, idx) => (
                 <button
                   key={ts}
                   type="button"
@@ -547,7 +605,7 @@ export default function AoVivo2Content() {
               <SkipForward className="w-5 h-5" />
             </button>
             <span className="text-xs text-slate-500 font-mono">
-              {safeIndex + 1} / {globalTimes.length}
+              {safeIndex + 1} / {timelineTimes.length}
               {currentTs && (
                 <span className="ml-2 text-cyan-400">
                   {currentTs.replace(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/, '$3/$2 $4:$5')}
