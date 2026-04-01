@@ -44,6 +44,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir PyQt5==5.15.10 qtpy requests flask flask-cors pandas numpy gunicorn Pillow metpy matplotlib
 RUN pip install --no-cache-dir git+https://github.com/sharppy/sharppy.git
 
+# Incrementar quando main.py mudar (evita imagem antiga no Cloud Build)
+RUN echo "cachebust=20260331-wrf-proxy-v4" > /tmp/docker-cache-bust.txt
+
 COPY . .
 
 # Sobrescrever skew.py nativo do SHARPpy com nossa versão customizada local

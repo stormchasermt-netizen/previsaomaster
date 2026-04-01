@@ -18,19 +18,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
-    // CSV do WRF: por padrão usa proxy na Cloud Run (HTTPS). O App Hosting costuma falhar em
-    // fetch HTTP direto para http://IP:8095 ("fetch failed"), mesmo com firewall VPC ok.
-    // Override: WRF_SOUNDING_VM_URL = URL direta da VM | WRF_SOUNDING_VM_PROXY_URL = URL do proxy.
+    // CSV do WRF: por padrão usa Cloud Run POST /process com wrf_proxy_only (HTTPS → VM HTTP).
+    // WRF_SOUNDING_VM_URL = HTTP direto na VM (só se o SSR conseguir fetch HTTP).
+    // WRF_SOUNDING_VM_PROXY_URL = URL alternativa do proxy (ex.: outro /process).
+    const directVmUrl = process.env.WRF_SOUNDING_VM_URL;
     const vmUrl =
-      process.env.WRF_SOUNDING_VM_URL ||
+      directVmUrl ||
       process.env.WRF_SOUNDING_VM_PROXY_URL ||
-      'https://sounding-engine-303740989273.us-central1.run.app/proxy-wrf-sounding';
+      'https://sounding-engine-303740989273.us-central1.run.app/process';
+
+    const vmBody = directVmUrl
+      ? { lat, lon, fileName }
+      : { wrf_proxy_only: true, lat, lon, fileName };
 
     const renderUrl =
       process.env.SOUNDING_ENGINE_URL ||
       'https://sounding-engine-303740989273.us-central1.run.app/process';
 
-    // Passo 1: CSV da VM
+    // Passo 1: CSV da VM (via proxy na Cloud Run ou direto)
     let vmResponse: Response;
     try {
       vmResponse = await fetch(vmUrl, {
@@ -38,7 +43,7 @@ export async function POST(req: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ lat, lon, fileName }),
+        body: JSON.stringify(vmBody),
         cache: 'no-store',
         signal: AbortSignal.timeout(VM_FETCH_MS),
       });
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           step: 'vm_http',
-          error: `HTTP ${vmResponse.status} ao gerar CSV na VM`,
+          error: `HTTP ${vmResponse.status} ao obter CSV (VM via proxy Cloud Run ou direto)`,
           details: errorText,
         },
         { status: vmResponse.status >= 500 ? 502 : vmResponse.status },

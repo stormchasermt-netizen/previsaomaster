@@ -52,7 +52,7 @@ def get_csv_text(data):
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'version': 'v9.1-cloud-hub'})
+    return jsonify({'status': 'ok', 'version': 'v9.2-wrf-proxy-in-process'})
 
 
 @app.route('/proxy-wrf-sounding', methods=['POST'])
@@ -82,6 +82,25 @@ def process():
     data = request.json
     if not data:
         return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+    # Encaminha para a VM WRF (CSV). Usa o mesmo /process para não depender da rota /proxy-wrf-sounding
+    # em revisões antigas da imagem na Cloud Run.
+    if data.get('wrf_proxy_only') or data.get('wrfProxyOnly'):
+        vm_url = os.environ.get(
+            'WRF_VM_URL',
+            'http://34.57.94.181:8095/generate-wrf-sounding',
+        )
+        try:
+            forward = {
+                k: data[k]
+                for k in ('lat', 'lon', 'fileName')
+                if k in data
+            }
+            r = requests.post(vm_url, json=forward, timeout=120)
+            ct = r.headers.get('Content-Type', 'application/json')
+            return (r.text, r.status_code, {'Content-Type': ct})
+        except requests.RequestException as e:
+            return jsonify({'error': str(e), 'step': 'proxy_to_vm'}), 502
 
     csv_text = get_csv_text(data)
     if not csv_text:
