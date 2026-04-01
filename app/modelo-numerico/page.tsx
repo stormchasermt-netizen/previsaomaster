@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, CloudLightning, Layers } from 'lucide-react';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl'],
