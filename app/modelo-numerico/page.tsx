@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl'],
@@ -88,6 +88,8 @@ export default function NumericModelPage() {
   const [hoverPos, setHoverPos] = useState<{x: number, y: number, lat: number, lon: number} | null>(null);
   const [isSoundingLoading, setIsSoundingLoading] = useState(false);
   const [soundingImageUrl, setSoundingImageUrl] = useState<string | null>(null);
+  const [soundingPos, setSoundingPos] = useState<{lat: number, lon: number} | null>(null);
+  const [soundingIndex, setSoundingIndex] = useState<number | null>(null);
   
   const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
     // Pegar dimensões da imagem real vs exibida
@@ -116,21 +118,28 @@ export default function NumericModelPage() {
 
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
     if (!hoverPos || !images[currentIndex]) return;
+    await fetchSounding(hoverPos.lat, hoverPos.lon, currentIndex);
+  };
+
+  const fetchSounding = async (lat: number, lon: number, index: number) => {
+    if (!images[index]) return;
     
     setIsSoundingLoading(true);
     setSoundingImageUrl(null);
+    setSoundingPos({ lat, lon });
+    setSoundingIndex(index);
     
     try {
-      // images[currentIndex].name é o nome do arquivo que guardamos antes
+      // images[index].name é o nome do arquivo
       const res = await fetch('/api/wrf-sounding', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          lat: hoverPos.lat,
-          lon: hoverPos.lon,
-          fileName: images[currentIndex].name
+          lat,
+          lon,
+          fileName: images[index].name
         }),
       });
 
@@ -553,22 +562,53 @@ export default function NumericModelPage() {
               <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm">
                 <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-400 border-t-blue-800 mb-4"></div>
                 <div className="text-gray-800 font-bold bg-white px-4 py-2 rounded shadow">
-                  Acessando VM e gerando sondagem...
+                  Gerando sondagem...
                 </div>
               </div>
             )}
 
             {/* Sounding Result Modal */}
-            {soundingImageUrl && (
+            {soundingImageUrl && soundingPos && soundingIndex !== null && (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                <div className="relative bg-white p-2 rounded max-w-full max-h-full overflow-auto flex flex-col items-end">
-                  <button 
-                    onClick={closeSounding}
-                    className="mb-2 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded font-bold"
-                  >
-                    Fechar
-                  </button>
-                  <img src={soundingImageUrl} alt="WRF Sounding" className="max-w-full h-auto max-h-[85vh] object-contain border border-gray-300" />
+                <div className="relative bg-white p-2 rounded max-w-full max-h-full overflow-hidden flex flex-col">
+                  
+                  {/* Controles do Skew-T */}
+                  <div className="flex items-center justify-between bg-gray-100 p-2 mb-2 rounded border border-gray-300 gap-4">
+                    <button 
+                      onClick={() => soundingIndex > 0 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex - 1)}
+                      disabled={soundingIndex <= 0}
+                      className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft size={16} /> Voltar Hora
+                    </button>
+
+                    <div className="text-sm font-semibold text-gray-700 flex flex-col items-center">
+                      <span>Lat: {soundingPos.lat.toFixed(3)} | Lon: {soundingPos.lon.toFixed(3)}</span>
+                      <span className="text-blue-800 text-xs uppercase tracking-wide">
+                        Válido para: {images[soundingIndex] ? images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(9,11) + ':' + images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(11,13) + ' UTC' : ''}
+                      </span>
+                    </div>
+
+                    <button 
+                      onClick={() => soundingIndex < images.length - 1 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex + 1)}
+                      disabled={soundingIndex >= images.length - 1}
+                      className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Avançar Hora <ChevronRight size={16} />
+                    </button>
+
+                    <button 
+                      onClick={closeSounding}
+                      className="ml-4 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded font-bold flex items-center gap-1"
+                    >
+                      X Fechar
+                    </button>
+                  </div>
+
+                  {/* Imagem do Skew-T com scroll se for muito grande */}
+                  <div className="overflow-auto flex-1 flex justify-center items-start">
+                    <img src={soundingImageUrl} alt="WRF Sounding" className="max-w-full h-auto object-contain border border-gray-300" />
+                  </div>
                 </div>
               </div>
             )}
