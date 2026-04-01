@@ -34,11 +34,22 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Missing or invalid station' }, { status: 400 });
       }
 
+      /** ppi = reflectividade (YYYYMMDDHHmm.png); doppler = velocidade (YYYYMMDDHHmm-ppivr.png) */
+      const productParam = searchParams.get('product') || 'ppi';
+      const product = productParam === 'doppler' ? 'doppler' : 'ppi';
+
       const prefix = `${station}/`;
       const [files] = await bucket.getFiles({ prefix });
 
       const imageFiles = files
         .filter((f) => f.name.match(/\.(jpg|jpeg|png|gif)$/i))
+        .filter((f) => {
+          const base = f.name.split('/').pop() || '';
+          if (product === 'doppler') {
+            return /^\d{12}-ppivr\.(png|jpg|jpeg|gif)$/i.test(base);
+          }
+          return /^\d{12}\.(png|jpg|jpeg|gif)$/i.test(base) && !/-ppivr\./i.test(base);
+        })
         .sort((a, b) => a.name.localeCompare(b.name));
 
       const images = await Promise.all(
