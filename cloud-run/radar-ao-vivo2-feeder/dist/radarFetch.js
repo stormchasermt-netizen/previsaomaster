@@ -9,19 +9,55 @@ export const UNIVERSAL_FALLBACK_CONFIGS = [
 ];
 export const IPMET_URL = 'https://getradaripmet-kj7x6j3jsa-uc.a.run.app';
 export const CLIMATEMPO_POA_LATEST = 'https://statics.climatempo.com.br/radar_poa/pngs/latest/radar_poa_1.png';
-/** Slugs no bucket radar_ao_vivo_2 — mesma ordem que pastas no GCS. */
+/**
+ * Pastas no bucket `radar_ao_vivo_2` (GCS) — alinhado a lib/cptecRadarStations + ao-vivo-2.
+ * Ordem alfabética para diffs estáveis.
+ */
 export const DEFAULT_SYNC_SLUGS = [
+    'almeirim',
+    'belem',
+    'boavista',
     'cangucu',
     'chapeco',
     'climatempo-poa',
+    'cruzeirodosul',
+    'funceme-ceara',
+    'funceme-fortaleza',
+    'funceme-quixeramobim',
     'gama',
+    'guaratiba',
     'ipmet-bauru',
+    'jaraguari',
     'lontras',
+    'macae',
+    'macapa',
+    'maceio',
+    'manaus',
     'morroigreja',
-    'picocouto',
+    'natal',
+    'petrolina',
+    'picos',
+    'portovelho',
+    'riobranco',
+    'salvador',
+    'santarem',
+    'santatereza',
     'santiago',
+    'saofrancisco',
+    'saogabriel',
+    'saoluis',
     'saoroque',
+    'tabatinga',
+    'tefe',
+    'tresmarias',
+    'usp-itaituba',
+    'vilhena',
 ];
+/**
+ * Pastas no GCS sem feed CPTEC neste serviço (IDs placeholder ou fonte externa).
+ * O ciclo de sync ignora; o cleanup continua a apagar ficheiros antigos nestes prefixos.
+ */
+export const SLUGS_WITHOUT_CDN_SYNC = new Set(['almeirim', 'picos', 'usp-itaituba']);
 /** Metadados CPTEC — URL: https://{sN}.cptec.inpe.br/radar/{org}/{slug}/ppi/{ppicz|ppivr}/{YYYY}/{MM}/R{id}_{YYYYMMDDHHmm}.png */
 export const CPTEC_STATIONS = {
     santiago: { id: 'R12558322', dopplerId: 'R12558323', slug: 'santiago', org: 'decea', server: 's1' },
@@ -30,21 +66,72 @@ export const CPTEC_STATIONS = {
     lontras: { id: 'R12227759', dopplerId: 'R12227760', slug: 'lontras', org: 'sdcsc', server: 's1' },
     morroigreja: { id: 'R12544957', dopplerId: 'R12544956', slug: 'morroigreja', org: 'decea', server: 's2' },
     saoroque: { id: 'R12537563', dopplerId: 'R12537536', slug: 'saoroque', org: 'decea', server: 's1' },
-    picocouto: { id: 'R12567564', dopplerId: 'R12567537', slug: 'picocouto', org: 'decea', server: 's1' },
     gama: { id: 'R12507565', dopplerId: 'R12507562', slug: 'gama', org: 'decea', server: 's1' },
+    guaratiba: { id: 'R12957397', dopplerId: 'R12957398', slug: 'guaratiba', org: 'inea', server: 's1' },
+    macae: { id: 'R12997399', dopplerId: 'R12997758', slug: 'macae', org: 'inea', server: 's1' },
+    santatereza: { id: 'R12977393', dopplerId: 'R12977394', slug: 'santatereza', org: 'cemaden', server: 's1' },
+    saofrancisco: { id: 'R12457387', dopplerId: 'R12457388', slug: 'saofrancisco', org: 'cemaden', server: 's1' },
+    tresmarias: { id: 'R12477391', dopplerId: 'R12477392', slug: 'tresmarias', org: 'cemaden', server: 's1' },
+    jaraguari: { id: 'R12277383', dopplerId: 'R12277384', slug: 'jaraguari', org: 'cemaden', server: 's1' },
+    natal: { id: 'R12247379', dopplerId: 'R12247380', slug: 'natal', org: 'cemaden', server: 's1' },
+    maceio: { id: 'R12447385', dopplerId: 'R12447386', slug: 'maceio', org: 'cemaden', server: 's1' },
+    salvador: { id: 'R12467389', dopplerId: 'R12467390', slug: 'salvador', org: 'cemaden', server: 's1' },
+    petrolina: { id: 'R12257381', dopplerId: 'R12257382', slug: 'petrolina', org: 'cemaden', server: 's1' },
+    vilhena: { id: 'R102', slug: 'vilhena', org: 'redemet', server: 's1' },
+    /** Pasta GCS `riobranco` — segmento de URL no CDN é `rio-branco`. */
+    riobranco: { id: 'R104', slug: 'rio-branco', org: 'redemet', server: 's1' },
+    portovelho: { id: 'R12797767', dopplerId: 'R12797370', slug: 'portovelho', org: 'sipam', server: 's1' },
+    cruzeirodosul: { id: 'R12767583', dopplerId: 'R12767363', slug: 'cruzeirodosul', org: 'sipam', server: 's2' },
+    tabatinga: { id: 'R12827598', dopplerId: 'R12827378', slug: 'tabatinga', org: 'sipam', server: 's1' },
+    tefe: { id: 'R12837597', dopplerId: 'R12837377', slug: 'tefe', org: 'sipam', server: 's1' },
+    saogabriel: { id: 'R12817594', dopplerId: 'R12817374', slug: 'saogabriel', org: 'sipam', server: 's1' },
+    manaus: { id: 'R12787587', dopplerId: 'R12787367', slug: 'manaus', org: 'sipam', server: 's1' },
+    boavista: { id: 'R12757581', dopplerId: 'R12757361', slug: 'boavista', org: 'sipam', server: 's1' },
+    macapa: { id: 'R12777586', dopplerId: 'R12777366', slug: 'macapa', org: 'sipam', server: 's1' },
+    santarem: { id: 'R12807592', dopplerId: 'R12807372', slug: 'santarem', org: 'sipam', server: 's1' },
+    saoluis: { id: 'R12907765', dopplerId: 'R12907766', slug: 'saoluis', org: 'sipam', server: 's1' },
+    belem: { id: 'R12800001', slug: 'belem', org: 'sipam', server: 's1' },
+    'funceme-fortaleza': { id: 'R13851142', dopplerId: 'R13851143', slug: 'funceme-fortaleza', org: 'funceme', server: 's1' },
+    'funceme-quixeramobim': { id: 'R13967017', dopplerId: 'R13967018', slug: 'funceme-quixeramobim', org: 'funceme', server: 's1' },
+    'funceme-ceara': { id: 'RMT0100DS', slug: 'funceme-ceara', org: 'funceme', server: 's1' },
 };
 /**
- * Intervalo de atualização típico (minutos) para snap na grelha CPTEC — alinhado a lib/cptecRadarStations / backup.
+ * Intervalo de atualização típico (minutos) para snap na grelha CPTEC — alinhado a lib/cptecRadarStations.
  */
 export const CPTEC_PRIMARY_INTERVAL_MIN = {
     chapeco: 6,
-    lontras: 5,
+    lontras: 10,
     santiago: 10,
     cangucu: 10,
     morroigreja: 10,
     saoroque: 10,
-    picocouto: 10,
     gama: 10,
+    guaratiba: 10,
+    macae: 10,
+    santatereza: 10,
+    saofrancisco: 10,
+    tresmarias: 10,
+    jaraguari: 10,
+    natal: 10,
+    maceio: 10,
+    salvador: 10,
+    petrolina: 10,
+    vilhena: 10,
+    riobranco: 10,
+    portovelho: 10,
+    cruzeirodosul: 12,
+    tabatinga: 10,
+    tefe: 10,
+    saogabriel: 10,
+    manaus: 10,
+    boavista: 10,
+    macapa: 10,
+    santarem: 10,
+    saoluis: 10,
+    belem: 10,
+    'funceme-fortaleza': 10,
+    'funceme-quixeramobim': 10,
+    'funceme-ceara': 15,
 };
 export function getNowTimestamp12UTC() {
     const d = new Date();
@@ -88,7 +175,7 @@ export function buildCptecPngUrl(station, ts12, layer = 'ppi') {
     const y = ts12.slice(0, 4);
     const mo = ts12.slice(4, 6);
     const subtype = layer === 'ppi' ? 'ppicz' : 'ppivr';
-    const fileId = layer === 'ppi' ? station.id : station.dopplerId;
+    const fileId = layer === 'ppi' ? station.id : (station.dopplerId ?? station.id);
     return `https://${station.server}.cptec.inpe.br/radar/${station.org}/${station.slug}/ppi/${subtype}/${y}/${mo}/${fileId}_${ts12}.png`;
 }
 const CDN_SERVER_FALLBACKS = ['s1', 's2', 's3', 's0'];

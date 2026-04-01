@@ -74,11 +74,6 @@ export default function Home() {
                         <Radio className="w-5 h-5" /> Modo Ao Vivo
                     </button>
                 </Link>
-                <Link href="/ao-vivo-2">
-                    <button className="bg-slate-800 text-white px-6 py-4 rounded-full font-bold flex items-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.15)] group text-sm border border-slate-600">
-                        <Radio className="w-5 h-5 opacity-80" /> Ao vivo (cache v2)
-                    </button>
-                </Link>
                 <Link href="/modelo-numerico">
                     <button className="bg-black text-white px-8 py-4 rounded-full font-bold flex items-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.15)] group">
                         <Layers className="w-5 h-5 group-hover:-translate-y-1 transition-transform" /> Modelo Numérico

@@ -1,6 +1,6 @@
 import express from 'express';
 import { Storage } from '@google-cloud/storage';
-import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
+import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
 const storage = new Storage();
 const PORT = process.env.PORT || '8080';
 const GCS_BUCKET = process.env.GCS_BUCKET || 'radar_ao_vivo_2';
@@ -67,6 +67,14 @@ async function executeSync() {
     let okCount = 0;
     let failCount = 0;
     for (const slug of SYNC_SLUGS) {
+        if (SLUGS_WITHOUT_CDN_SYNC.has(slug)) {
+            results.push({
+                slug,
+                status: 'skipped_no_cdn_feed',
+                detail: 'Sem feed CPTEC neste serviço — pasta só para cleanup ou conteúdo manual',
+            });
+            continue;
+        }
         if (slug === 'ipmet-bauru') {
             const r = await fetchIpmetImage(nominalTs12);
             if (r) {

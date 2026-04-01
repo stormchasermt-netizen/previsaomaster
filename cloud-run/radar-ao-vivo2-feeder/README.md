@@ -16,12 +16,15 @@ A app Next.js lê o mesmo bucket em `/api/radar-ao-vivo2`.
 | `SYNC_WINDOW_MINUTES` | `60` | Janela de busca CPTEC (minutos para trás) |
 | `SYNC_STEP_MINUTES` | `5` | Passo ao percorrer a janela |
 | `RETENTION_MINUTES` | `60` | Idade máxima do timestamp no nome do ficheiro antes de apagar |
-| `SYNC_SLUGS` | lista fixa | CSV opcional de slugs |
+| `SYNC_SLUGS` | ver `DEFAULT_SYNC_SLUGS` em `src/radarFetch.ts` | CSV opcional de slugs (substitui a lista por defeito) |
 
 ## Slugs suportados
 
-- CPTEC: `cangucu`, `chapeco`, `gama`, `lontras`, `morroigreja`, `picocouto`, `santiago`, `saoroque`
-- Fonte única (sem histórico na API): `ipmet-bauru`, `climatempo-poa`
+A lista por defeito (`DEFAULT_SYNC_SLUGS`) cobre as pastas do bucket `radar_ao_vivo_2` alinhadas a `lib/cptecRadarStations.ts` (DECEA, SIPAM, FUNCEME, INEA, CEMADEN, REDEMET, etc.).
+
+- **Fontes especiais** (não CDN CPTEC): `ipmet-bauru` (Cloud Function), `climatempo-poa` (URL estática).
+- **Sem feed CPTEC neste serviço** (`SLUGS_WITHOUT_CDN_SYNC`): `almeirim`, `picos`, `usp-itaituba` — o **sync** ignora; o **cleanup** continua a apagar ficheiros antigos nesses prefixos se existirem.
+- **Pasta GCS ≠ URL CDN**: `riobranco` grava em `riobranco/` mas descarrega do CDN em `rio-branco`.
 
 ## Execução automática (sem comandos manuais)
 

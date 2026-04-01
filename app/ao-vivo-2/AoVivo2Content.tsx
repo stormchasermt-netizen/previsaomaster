@@ -19,8 +19,14 @@ const RADAR_ICON_UNAVAILABLE =
 
 export type RadarProductMode = 'ppi' | 'doppler';
 
+/** Pasta no GCS pode ser `riobranco`; no catálogo CPTEC o slug é `rio-branco`. */
+function bucketSlugToCatalogSlug(slug: string): string {
+  if (slug === 'riobranco') return 'rio-branco';
+  return slug;
+}
+
 function findCptecBySlug(slug: string): CptecRadarStation | undefined {
-  return CPTEC_RADAR_STATIONS.find((s) => s.slug === slug);
+  return CPTEC_RADAR_STATIONS.find((s) => s.slug === bucketSlugToCatalogSlug(slug));
 }
 
 function imageCoordinatesFromBounds(bounds: ReturnType<typeof getRadarImageBounds>): [
@@ -248,7 +254,7 @@ export default function AoVivo2Content() {
   const [error, setError] = useState<string | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playSpeed] = useState(300);
+  const [animationSpeedMultiplier, setAnimationSpeedMultiplier] = useState(1);
 
   const [focusedSlug, setFocusedSlug] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -513,6 +519,7 @@ export default function AoVivo2Content() {
               paint: {
                 'raster-opacity': 0.88,
                 'raster-fade-duration': 200,
+                'raster-resampling': 'nearest',
               },
             });
           }
@@ -588,9 +595,9 @@ export default function AoVivo2Content() {
         const si = Math.min(i, n - 1);
         return (si + 1) % n;
       });
-    }, playSpeed);
+    }, 800 / animationSpeedMultiplier);
     return () => clearInterval(t);
-  }, [isPlaying, timelineTimes.length, playSpeed]);
+  }, [isPlaying, timelineTimes.length, animationSpeedMultiplier]);
 
   const togglePlay = () => setIsPlaying((p) => !p);
   const prevFrame = () => {
@@ -634,47 +641,89 @@ export default function AoVivo2Content() {
   );
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-slate-950 text-white">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-slate-700 shrink-0 z-10">
-        <Link href="/" className="flex items-center gap-2 text-slate-300 hover:text-white text-sm font-medium">
-          <ChevronLeft className="w-5 h-5" />
-          Início
-        </Link>
-        <h1 className="text-sm font-bold tracking-wide text-cyan-400">Ao vivo — cache (v2)</h1>
-        <div className="w-20" />
+    <div className="flex flex-col h-[100dvh] bg-slate-950 text-white overflow-hidden">
+      <header className="relative z-20 flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#0F131C]/80 backdrop-blur-md border-b border-white/10 shrink-0 shadow-lg">
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          <Link
+            href="/"
+            className="p-1 sm:p-2 -ml-1 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center"
+            title="Voltar ao Início"
+          >
+            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+          </Link>
+        </div>
+        <div className="flex-1 min-w-0 text-center flex flex-col items-center justify-center -ml-2 sm:-ml-0">
+          <h1 className="text-[10px] sm:text-sm font-black tracking-wider text-cyan-400 truncate uppercase">
+            Radar Ao Vivo (Cache v2)
+          </h1>
+          <p className="text-[9px] sm:text-[10px] tracking-widest text-slate-400 uppercase font-medium mt-0 sm:mt-0.5 truncate">
+            {focusedSlug ? (
+              <span className="text-amber-300">Foco: {findCptecBySlug(focusedSlug)?.name ?? focusedSlug}</span>
+            ) : (
+              'Visão Mosaico'
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex rounded-lg border border-slate-600 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setProduct('ppi')}
+              className={`px-3 py-1 text-xs font-bold uppercase tracking-wider ${
+                product === 'ppi' ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              PPI
+            </button>
+            <button
+              type="button"
+              onClick={() => setProduct('doppler')}
+              className={`px-3 py-1 text-xs font-bold uppercase tracking-wider border-l border-slate-600 ${
+                product === 'doppler' ? 'bg-emerald-600 text-white shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              Doppler
+            </button>
+          </div>
+          {focusedSlug && (
+            <button
+              type="button"
+              onClick={() => setFocusedSlug(null)}
+              className="text-[9px] sm:text-[10px] font-bold px-2 py-1.5 rounded-lg border border-amber-500/50 text-amber-300 bg-amber-950/30 hover:bg-amber-900/50 uppercase tracking-widest"
+              title="Voltar ao mosaico"
+            >
+              <span className="hidden sm:inline">Limpar Foco</span>
+              <span className="sm:hidden">X</span>
+            </button>
+          )}
+        </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-slate-800 shrink-0 bg-slate-900/90">
-        <span className="text-xs text-slate-400 font-semibold">Produto</span>
-        <div className="flex rounded-lg border border-slate-600 overflow-hidden">
+      {/* Controlos mobile para os produtos */}
+      <div className="sm:hidden flex items-center justify-center p-2 bg-[#0F131C] border-b border-white/5 z-10 shrink-0">
+        <div className="flex w-full max-w-[200px] rounded-lg border border-slate-700 overflow-hidden">
           <button
             type="button"
             onClick={() => setProduct('ppi')}
-            className={`px-3 py-1.5 text-xs font-bold ${
-              product === 'ppi' ? 'bg-cyan-700 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            className={`flex-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
+              product === 'ppi' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400'
             }`}
           >
-            Refletividade
+            PPI
           </button>
           <button
             type="button"
             onClick={() => setProduct('doppler')}
-            className={`px-3 py-1.5 text-xs font-bold border-l border-slate-600 ${
-              product === 'doppler' ? 'bg-cyan-700 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            className={`flex-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border-l border-slate-700 ${
+              product === 'doppler' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
             }`}
           >
             Doppler
           </button>
         </div>
-        {clearFocusButton}
-        {focusedSlug && (
-          <span className="text-xs text-amber-300">
-            Foco: <strong>{findCptecBySlug(focusedSlug)?.name ?? focusedSlug}</strong> — clique no ícone de novo para voltar ao mosaico
-          </span>
-        )}
       </div>
 
-      <div className="flex-1 relative min-h-0">
+      <div className="flex-1 relative min-h-0 bg-slate-900">
         {error && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4 text-center text-red-300 text-sm max-w-lg mx-auto">
             {error}
@@ -723,54 +772,100 @@ export default function AoVivo2Content() {
       </div>
 
       {timelineTimes.length > 0 && (
-        <div className="border-t border-slate-700 bg-slate-900 shrink-0">
-          <div className="overflow-x-auto border-b border-slate-800">
-            <div className="flex w-max min-w-full">
-              <div className="w-9 shrink-0 flex items-center justify-center py-1 text-[9px] font-bold text-slate-500 border-r border-slate-700 bg-slate-800/80 sticky left-0 z-[1]">
-                UTC
-              </div>
-              {timelineTimes.map((ts, idx) => (
-                <button
-                  key={ts}
-                  type="button"
-                  onClick={() => {
-                    setCurrentIndex(idx);
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] pointer-events-auto flex flex-col gap-2 z-10">
+          <div className="w-full px-3 py-2 sm:px-4 sm:py-3 rounded-xl sm:rounded-2xl bg-[#0A0E17]/90 backdrop-blur-xl border border-cyan-500/20 shadow-[0_0_30px_rgba(6,182,212,0.15),0_8px_32px_rgba(0,0,0,0.6)] group/slider">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="text-[9px] sm:text-[10px] font-black tracking-widest text-slate-500 flex-shrink-0 w-10 sm:w-12 uppercase">
+                {timelineTimes.length - 1 - safeIndex === 0 ? '-0m' : `-${(timelineTimes.length - 1 - safeIndex) * 5}m`}
+              </span>
+              
+              <div className="flex-1 flex flex-col gap-0 relative group/slider">
+                <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 px-1 flex justify-between items-center pointer-events-none opacity-40 group-hover/slider:opacity-70 transition-opacity">
+                  {timelineTimes.map((_, idx) => (
+                    <div key={idx} className="w-[2px] h-[2px] rounded-full bg-cyan-500 shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
+                  ))}
+                </div>
+
+                <div className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-800/50 overflow-hidden pointer-events-none">
+                  <div 
+                    className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-300 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.8)] transition-all duration-150"
+                    style={{ width: `${(Math.max(0, safeIndex) / Math.max(1, timelineTimes.length - 1)) * 100}%` }}
+                  />
+                </div>
+                
+                <input
+                  type="range"
+                  min="0"
+                  max={timelineTimes.length - 1}
+                  step="1"
+                  value={safeIndex}
+                  onChange={(e) => {
                     setIsPlaying(false);
+                    setCurrentIndex(parseInt(e.target.value, 10));
                   }}
-                  className={`w-[22px] shrink-0 text-center py-1 text-[10px] font-mono border-r border-slate-700 last:border-0 transition-colors ${
-                    idx === safeIndex
-                      ? 'bg-cyan-800 text-white font-bold'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-cyan-200'
-                  }`}
-                >
-                  {formatTsLabel(ts)}
-                </button>
-              ))}
+                  className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 sm:[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-3 sm:[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-3 sm:[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
+                  title={safeIndex === timelineTimes.length - 1 ? 'Ao vivo' : `${timelineTimes.length - 1 - safeIndex} frames atrás`}
+                />
+                
+                <div className="text-center leading-none mt-1">
+                  <span className="text-[10px] sm:text-sm font-black tracking-widest text-cyan-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]">
+                    {currentTs ? (() => {
+                      const d = new Date(Date.UTC(
+                        parseInt(currentTs.slice(0, 4), 10),
+                        parseInt(currentTs.slice(4, 6), 10) - 1,
+                        parseInt(currentTs.slice(6, 8), 10),
+                        parseInt(currentTs.slice(8, 10), 10),
+                        parseInt(currentTs.slice(10, 12), 10)
+                      ));
+                      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    })() : '--:--'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAnimationSpeedMultiplier((prev) => (prev === 1 ? 2 : prev === 2 ? 5 : 1))}
+                className="px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-[9px] sm:text-[10px] font-bold text-white transition-all flex items-center justify-center shrink-0"
+              >
+                {animationSpeedMultiplier}x
+              </button>
+              
+              <span className={`text-[8px] sm:text-[10px] font-black tracking-widest flex-shrink-0 w-12 sm:w-14 text-right uppercase ${
+                safeIndex === timelineTimes.length - 1 ? 'text-emerald-400 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'text-slate-600'
+              }`}>
+                {safeIndex === timelineTimes.length - 1 ? '● LIVE' : 'Ao vivo'}
+              </span>
             </div>
           </div>
-          <div className="flex items-center justify-center gap-4 py-3 border-t border-slate-800">
-            <button type="button" onClick={prevFrame} className="p-2 rounded-full bg-slate-800 hover:bg-slate-700" aria-label="Anterior">
-              <SkipBack className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="p-3 rounded-full bg-cyan-700 hover:bg-cyan-600"
-              aria-label={isPlaying ? 'Pausar' : 'Play'}
-            >
-              {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 pl-0.5" />}
-            </button>
-            <button type="button" onClick={nextFrame} className="p-2 rounded-full bg-slate-800 hover:bg-slate-700" aria-label="Próximo">
-              <SkipForward className="w-5 h-5" />
-            </button>
-            <span className="text-xs text-slate-500 font-mono">
-              {safeIndex + 1} / {timelineTimes.length}
-              {currentTs && (
-                <span className="ml-2 text-cyan-400">
-                  {currentTs.replace(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/, '$3/$2 $4:$5')}
-                </span>
-              )}
-            </span>
+
+          <div className="flex flex-col items-center gap-1.5 py-1">
+            <div className="flex justify-center items-center gap-4">
+              <button
+                type="button"
+                onClick={() => { setIsPlaying(false); prevFrame(); }}
+                title="Voltar 1 imagem"
+                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
+              >
+                <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={togglePlay}
+                title={isPlaying ? 'Pausar animação' : 'Tocar animação'}
+                className="p-3 sm:p-4 rounded-full bg-gradient-to-tr from-cyan-600 to-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_30px_rgba(6,182,212,0.6)] hover:scale-110 transition-all"
+              >
+                {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 pl-1" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setIsPlaying(false); nextFrame(); }}
+                title="Avançar 1 imagem"
+                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
+              >
+                <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

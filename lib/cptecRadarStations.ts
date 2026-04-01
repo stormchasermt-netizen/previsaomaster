@@ -186,6 +186,14 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
 
   // Fontes especiais (WMS/proxy)
   { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 36, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+
+  /**
+   * Pastas em `radar_ao_vivo_2` (GCS) — slugs que não existiam antes; coords para bounds do ao-vivo-2 (mapa + PPI).
+   * Alcance geodésico padrão quando não há bounds explícitos em getRadarImageBounds.
+   */
+  { id: 'R-AOVIVO2-ALMEIRIM', slug: 'almeirim', name: 'Almeirim (PA)', lat: -3.094, lng: -52.25, rangeKm: 250, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R-AOVIVO2-PICOS', slug: 'picos', name: 'Picos (PI)', lat: -7.077, lng: -41.467, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'R-AOVIVO2-USP-ITAITUBA', slug: 'usp-itaituba', name: 'USP Itaituba (PA)', lat: -3.259, lng: -55.991, rangeKm: 250, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
 ];
 
 /** URL da Cloud Function getRadarIPMet (proxy WMS mosaico estadual). */
