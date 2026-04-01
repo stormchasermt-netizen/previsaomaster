@@ -240,9 +240,11 @@ export default function NumericModelPage() {
       .then(r => r.json())
       .then(data => {
         if (data.variables) {
-          setAvailableVariables(data.variables);
-          if (!data.variables.includes(selectedVariable) && data.variables.length > 0) {
-            setSelectedVariable(data.variables[0]);
+          // Remover variáveis que são estritamente overlays e não devem aparecer como opção principal
+          const filteredVars = data.variables.filter((v: string) => v !== 'mlcape_contorno');
+          setAvailableVariables(filteredVars);
+          if (!filteredVars.includes(selectedVariable) && filteredVars.length > 0) {
+            setSelectedVariable(filteredVars[0]);
           }
         }
       })
