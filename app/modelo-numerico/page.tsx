@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
-import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, CloudLightning, Layers } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, CloudLightning, Layers, X } from 'lucide-react';
 import {
   parseWrfRunFolder,
   formatRodadaDropdownLabel,
