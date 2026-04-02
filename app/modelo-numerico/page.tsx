@@ -742,50 +742,51 @@ export default function NumericModelPage() {
 
               {/* Sounding Result Modal */}
               {soundingImageUrl && soundingPos && soundingIndex !== null && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                  <div className="relative bg-white p-2 rounded-lg max-w-[95vw] max-h-[95vh] h-auto overflow-hidden flex flex-col shadow-2xl">
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4 sm:p-6 overflow-hidden">
+                  {/* Caixa branca contida nas margens do mapa */}
+                  <div className="relative bg-white p-2 rounded-xl w-full max-w-[1200px] h-[90%] max-h-[800px] flex flex-col shadow-2xl">
                     
                     {/* Controles do Skew-T */}
-                    <div className="flex items-center justify-between bg-gray-100 p-2 mb-2 rounded border border-gray-300 gap-4 shrink-0">
+                    <div className="flex items-center justify-between bg-gray-100 p-2 sm:px-4 sm:py-2 mb-2 rounded-lg border border-gray-300 gap-2 shrink-0">
                       <button 
                         onClick={() => soundingIndex > 0 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex - 1)}
                         disabled={soundingIndex <= 0}
-                        className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1.5 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap"
                       >
                         <ChevronLeft size={16} /> Voltar Hora
                       </button>
   
-                      <div className="text-sm font-semibold text-gray-700 flex flex-col items-center whitespace-nowrap">
+                      <div className="text-xs sm:text-sm font-semibold text-gray-700 flex flex-col items-center whitespace-nowrap hidden sm:flex">
                         <span>Lat: {soundingPos.lat.toFixed(3)} | Lon: {soundingPos.lon.toFixed(3)}</span>
-                        <span className="text-blue-800 text-xs uppercase tracking-wide">
+                        <span className="text-blue-800 text-[10px] sm:text-xs uppercase tracking-wide">
                           Válido para: {images[soundingIndex] ? images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(9,11) + ':' + images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(11,13) + ' UTC' : ''}
                         </span>
                       </div>
   
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 sm:gap-4">
                         <button 
                           onClick={() => soundingIndex < images.length - 1 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex + 1)}
                           disabled={soundingIndex >= images.length - 1}
-                          className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                          className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1.5 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap"
                         >
-                          Avançar Hora <ChevronRight size={16} />
+                          <span className="hidden sm:inline">Avançar Hora</span> <ChevronRight size={16} />
                         </button>
     
                         <button 
                           onClick={closeSounding}
-                          className="ml-2 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded font-bold flex items-center gap-1 whitespace-nowrap"
+                          className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded font-bold flex items-center gap-1 text-sm whitespace-nowrap shadow-sm transition-colors"
                         >
-                          X Fechar
+                          <X size={16} /> Fechar
                         </button>
                       </div>
                     </div>
   
-                    {/* Imagem do Skew-T ajustada para caber totalmente na janela sem cortes */}
-                    <div className="flex-1 min-h-0 flex justify-center items-center p-0 relative">
+                    {/* Imagem do Skew-T espremida pelo Flexbox e contida para não crescer para fora */}
+                    <div className="flex-1 min-h-0 w-full relative bg-white flex justify-center items-center rounded-b-lg overflow-hidden">
                       <img 
                         src={soundingImageUrl} 
                         alt="WRF Sounding" 
-                        className="max-h-full max-w-full w-auto h-auto object-contain drop-shadow-md rounded" 
+                        className="w-full h-full object-contain object-center" 
                       />
                     </div>
                   </div>
