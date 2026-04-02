@@ -745,7 +745,7 @@ export default function NumericModelPage() {
             {/* Sounding Result Modal */}
             {soundingImageUrl && soundingPos && soundingIndex !== null && (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                <div className="relative bg-white p-2 rounded max-w-full max-h-full overflow-hidden flex flex-col">
+                <div className="relative bg-white p-2 rounded-lg max-w-[95%] max-h-[95%] overflow-hidden flex flex-col shadow-2xl">
                   
                   {/* Controles do Skew-T */}
                   <div className="flex items-center justify-between bg-gray-100 p-2 mb-2 rounded border border-gray-300 gap-4">
@@ -780,9 +780,13 @@ export default function NumericModelPage() {
                     </button>
                   </div>
 
-                  {/* Imagem do Skew-T com scroll se for muito grande */}
-                  <div className="overflow-auto flex-1 flex justify-center items-start">
-                    <img src={soundingImageUrl} alt="WRF Sounding" className="max-w-full h-auto object-contain border border-gray-300" />
+                  {/* Imagem do Skew-T ajustada para não rebentar a janela */}
+                  <div className="overflow-hidden flex-1 flex justify-center items-center p-2">
+                    <img 
+                      src={soundingImageUrl} 
+                      alt="WRF Sounding" 
+                      className="max-h-[80vh] w-auto max-w-[95vw] object-contain border border-gray-300 shadow-md rounded" 
+                    />
                   </div>
                 </div>
               </div>
