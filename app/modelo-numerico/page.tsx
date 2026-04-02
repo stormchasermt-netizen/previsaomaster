@@ -740,55 +740,57 @@ export default function NumericModelPage() {
               </div>
             )}
 
-            {/* Sounding Result Modal */}
-            {soundingImageUrl && soundingPos && soundingIndex !== null && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                <div className="relative bg-white p-2 rounded-lg max-w-[95%] max-h-[95%] overflow-hidden flex flex-col shadow-2xl">
-                  
-                  {/* Controles do Skew-T */}
-                  <div className="flex items-center justify-between bg-gray-100 p-2 mb-2 rounded border border-gray-300 gap-4">
-                    <button 
-                      onClick={() => soundingIndex > 0 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex - 1)}
-                      disabled={soundingIndex <= 0}
-                      className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft size={16} /> Voltar Hora
-                    </button>
-
-                    <div className="text-sm font-semibold text-gray-700 flex flex-col items-center">
-                      <span>Lat: {soundingPos.lat.toFixed(3)} | Lon: {soundingPos.lon.toFixed(3)}</span>
-                      <span className="text-blue-800 text-xs uppercase tracking-wide">
-                        Válido para: {images[soundingIndex] ? images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(9,11) + ':' + images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(11,13) + ' UTC' : ''}
-                      </span>
+              {/* Sounding Result Modal */}
+              {soundingImageUrl && soundingPos && soundingIndex !== null && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+                  <div className="relative bg-white p-2 rounded-lg max-w-[95vw] max-h-[95vh] h-auto overflow-hidden flex flex-col shadow-2xl">
+                    
+                    {/* Controles do Skew-T */}
+                    <div className="flex items-center justify-between bg-gray-100 p-2 mb-2 rounded border border-gray-300 gap-4 shrink-0">
+                      <button 
+                        onClick={() => soundingIndex > 0 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex - 1)}
+                        disabled={soundingIndex <= 0}
+                        className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        <ChevronLeft size={16} /> Voltar Hora
+                      </button>
+  
+                      <div className="text-sm font-semibold text-gray-700 flex flex-col items-center whitespace-nowrap">
+                        <span>Lat: {soundingPos.lat.toFixed(3)} | Lon: {soundingPos.lon.toFixed(3)}</span>
+                        <span className="text-blue-800 text-xs uppercase tracking-wide">
+                          Válido para: {images[soundingIndex] ? images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(9,11) + ':' + images[soundingIndex].name.replace('.png', '').replace('.jpg', '').substring(11,13) + ' UTC' : ''}
+                        </span>
+                      </div>
+  
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => soundingIndex < images.length - 1 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex + 1)}
+                          disabled={soundingIndex >= images.length - 1}
+                          className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          Avançar Hora <ChevronRight size={16} />
+                        </button>
+    
+                        <button 
+                          onClick={closeSounding}
+                          className="ml-2 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded font-bold flex items-center gap-1 whitespace-nowrap"
+                        >
+                          X Fechar
+                        </button>
+                      </div>
                     </div>
-
-                    <button 
-                      onClick={() => soundingIndex < images.length - 1 && fetchSounding(soundingPos.lat, soundingPos.lon, soundingIndex + 1)}
-                      disabled={soundingIndex >= images.length - 1}
-                      className="flex items-center justify-center gap-1 bg-white hover:bg-gray-50 text-blue-800 border border-blue-800 px-3 py-1 rounded font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Avançar Hora <ChevronRight size={16} />
-                    </button>
-
-                    <button 
-                      onClick={closeSounding}
-                      className="ml-4 bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded font-bold flex items-center gap-1"
-                    >
-                      X Fechar
-                    </button>
-                  </div>
-
-                  {/* Imagem do Skew-T ajustada para caber totalmente na janela sem cortes */}
-                  <div className="flex-1 min-h-0 flex justify-center items-center p-2">
-                    <img 
-                      src={soundingImageUrl} 
-                      alt="WRF Sounding" 
-                      className="max-h-full max-w-full w-auto h-auto object-contain border border-gray-300 shadow-md rounded" 
-                    />
+  
+                    {/* Imagem do Skew-T ajustada para caber totalmente na janela sem cortes */}
+                    <div className="flex-1 min-h-0 flex justify-center items-center p-0 relative">
+                      <img 
+                        src={soundingImageUrl} 
+                        alt="WRF Sounding" 
+                        className="max-h-full max-w-full w-auto h-auto object-contain drop-shadow-md rounded" 
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
 
           {/* BOTTOM PLAYBACK CONTROLS */}
