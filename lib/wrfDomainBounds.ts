@@ -50,24 +50,19 @@ export function imagePixelToLatLonCentroSul(
   offsetX: number,
   offsetY: number,
   rectWidth: number,
-  rectHeight: number
+  rectHeight: number,
+  naturalWidth: number,
+  naturalHeight: number
 ): { lat: number; lon: number; gridX: number; gridY: number } | null {
-  // 1. Margens da Imagem JPG (Baseado nas tuas medições exatas 2318x1905)
-  // Mas vamos usar as métricas exatas do recorte real do script plot_wrf2.py lidas da VM:
-  // Largura: 2295, Altura: 1904
-  // Borda Esquerda Px: 19
-  // Borda Direita Px: 75
-  // Borda Topo Px: 345
-  // Borda Fundo Px: 364
-  const imgW = 2318;
-  const imgH = 1905;
-  const marginLeft = 120 / imgW;           
-  const marginRight = (imgW - 404) / imgW; 
-  const marginTop = 62 / imgH;             
-  const marginBottom = (imgH - 58) / imgH; 
-
-  const mapWidth = marginRight - marginLeft;
-  const mapHeight = marginBottom - marginTop;
+  // Medições exatas dos arquivos gerados pelo plot_wrf2_copy.py (VM) com `bbox_inches='tight'`:
+  // A área do mapa (PlateCarree) tem SEMPRE 1983x1875 pixels (mesmo que a imagem mude de tamanho).
+  // A margem esquerda é sempre 20 pixels e a margem inferior é sempre 84 pixels.
+  // As margens direita e superior variam dependendo da barra de cores e dos títulos.
+  const marginLeft = 20 / naturalWidth;
+  const marginBottom = 84 / naturalHeight;
+  const mapWidth = 1983 / naturalWidth;
+  const mapHeight = 1875 / naturalHeight;
+  const marginTop = (naturalHeight - 84 - 1875) / naturalHeight;
 
   const xRatioOriginal = offsetX / rectWidth;
   const yRatioOriginal = offsetY / rectHeight;
@@ -150,18 +145,16 @@ export function imagePixelToLatLonParana(
   offsetX: number,
   offsetY: number,
   rectWidth: number,
-  rectHeight: number
+  rectHeight: number,
+  naturalWidth: number,
+  naturalHeight: number
 ): { lat: number; lon: number; gridX: number; gridY: number } | null {
-  // 1. Margens da Imagem JPG (Assumindo a mesma caixa/medida para Paraná, extraida de plot_wrf2.py)
-  const imgW = 2318;
-  const imgH = 1905;
-  const marginLeft = 120 / imgW;           
-  const marginRight = (imgW - 404) / imgW; 
-  const marginTop = 62 / imgH;             
-  const marginBottom = (imgH - 58) / imgH; 
-
-  const mapWidth = marginRight - marginLeft;
-  const mapHeight = marginBottom - marginTop;
+  // 1. Margens EXATAS da imagem (Paraná usa a mesma moldura Matplotlib)
+  const marginLeft = 20 / naturalWidth;
+  const marginBottom = 84 / naturalHeight;
+  const mapWidth = 1983 / naturalWidth;
+  const mapHeight = 1875 / naturalHeight;
+  const marginTop = (naturalHeight - 84 - 1875) / naturalHeight;
 
   const xRatioOriginal = offsetX / rectWidth;
   const yRatioOriginal = offsetY / rectHeight;
