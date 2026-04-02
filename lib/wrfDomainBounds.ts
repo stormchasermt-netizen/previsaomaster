@@ -1,14 +1,14 @@
 import proj4 from 'proj4';
 import { parseWrfRunFolder } from '@/lib/wrfModelRuns';
 
+const WGS84 = 'EPSG:4326';
+
 /** Centro-Sul - namelist.wps &geogrid (dx=3 km, LCC, ref_lat=-27.0, ref_lon=-52.0). */
 const CENTRO_SUL_REF_LAT = -27.0;
 const CENTRO_SUL_REF_LON = -52.0;
 const CENTRO_SUL_E_WE = 651;
 const CENTRO_SUL_E_SN = 651;
 const CENTRO_SUL_DX = 3000;
-
-const WGS84 = 'EPSG:4326';
 
 const CENTRO_SUL_LCC =
   '+proj=lcc +lat_1=-27.0 +lat_2=-27.0 +lat_0=-27.0 +lon_0=-52.0 +a=6370000 +b=6370000 +units=m +no_defs';
@@ -65,8 +65,6 @@ const PARANA_REF_LON = -51.647;
 const PARANA_E_WE = 134;
 const PARANA_E_SN = 84;
 const PARANA_DX = 6000;
-
-const WGS84 = 'EPSG:4326';
 
 const PARANA_LCC =
   '+proj=lcc +lat_1=-24.452 +lat_2=-24.452 +lat_0=-24.452 +lon_0=-51.647 +a=6370000 +b=6370000 +units=m +no_defs';
