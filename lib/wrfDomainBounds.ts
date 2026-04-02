@@ -80,12 +80,11 @@ export function imagePixelToLatLonCentroSul(
   }
 
   // 2. Limites EXATOS projetados do Matplotlib Axes
-  // O meteorologista usa margins de 0.2 graus do tamanho do quadro no PlateCarree para o arquivo principal:
-  // (Ou `[-0.5, +0.5, min, max]` como estava no `plot_wrf2.py` mas ele corrigiu para "0.2 do tamanho do quadro")
-  const min_lon = -62.632019 - 0.2;
-  const max_lon = -41.367981 + 0.2;
-  const min_lat = -35.721680 - 0.2;
-  const max_lat = -17.964783 + 0.2;
+  // O meteorologista usa margins de [-0.5, +0.5, min, max] no PlateCarree para o arquivo de plotagem `plot_wrf2_copy.py` gerado
+  const min_lon = -62.632019 - 0.5;
+  const max_lon = -41.367981 + 0.5;
+  const min_lat = -35.721680;
+  const max_lat = -17.964783;
 
   const lon = min_lon + xRatio * (max_lon - min_lon);
   const lat = max_lat - yRatio * (max_lat - min_lat); // y invertido no ecrã
