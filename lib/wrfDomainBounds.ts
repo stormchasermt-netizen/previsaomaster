@@ -61,8 +61,8 @@ export function imagePixelToLatLonCentroSul(
   // Borda Fundo Px: 364
   const imgW = 2318;
   const imgH = 1905;
-  const marginLeft = 120 / imgW;           
-  const marginRight = (imgW - 404) / imgW; 
+  const marginLeft = 20 / imgW;           
+  const marginRight = (imgW - 180) / imgW; 
   const marginTop = 62 / imgH;             
   const marginBottom = (imgH - 58) / imgH; 
 
@@ -155,8 +155,8 @@ export function imagePixelToLatLonParana(
   // 1. Margens da Imagem JPG (Assumindo a mesma caixa/medida para Paraná, extraida de plot_wrf2.py)
   const imgW = 2318;
   const imgH = 1905;
-  const marginLeft = 120 / imgW;           
-  const marginRight = (imgW - 404) / imgW; 
+  const marginLeft = 20 / imgW;           
+  const marginRight = (imgW - 180) / imgW; 
   const marginTop = 62 / imgH;             
   const marginBottom = (imgH - 58) / imgH; 
 
