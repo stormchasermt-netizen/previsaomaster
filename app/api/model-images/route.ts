@@ -55,10 +55,18 @@ export async function GET(req: NextRequest) {
       const imageFiles = files
         .filter(f => f.name.match(/\.(jpg|jpeg|png|gif)$/i))
         .sort((a, b) => a.name.localeCompare(b.name));
+        
+      // Filter the data files (.npy.gz) to attach them
+      const dataFiles = files.filter(f => f.name.match(/\.npy\.gz$/i));
       
       const images = await Promise.all(
         imageFiles.map(async (file) => {
           const fileName = file.name.split('/').pop() || '';
+          const baseName = fileName.replace(/\.[^/.]+$/, ""); // strip extension
+          
+          // Try to find the matching data file
+          const dataFile = dataFiles.find(df => df.name.endsWith(`${baseName}.npy.gz`));
+          
           // generation muda quando o objeto é sobrescrito no bucket — incluir na URL invalida cache (CDN/navegador)
           let gen = '';
           try {
@@ -69,10 +77,16 @@ export async function GET(req: NextRequest) {
           }
           const v = gen ? `&v=${encodeURIComponent(gen)}` : '';
           const url = `/api/model-image-proxy?file=${encodeURIComponent(file.name)}${v}`;
+          
+          let dataUrl = null;
+          if (dataFile) {
+              dataUrl = `/api/model-image-proxy?file=${encodeURIComponent(dataFile.name)}`;
+          }
 
           return {
             name: fileName,
             url,
+            dataUrl,
           };
         })
       );

@@ -69,7 +69,9 @@ function getValidDateStr(name: string) {
   return '';
 }
 
-export default function NumericModelPage() {
+  import * as pako from 'pako';
+
+  export default function NumericModelPage() {
   const [isMounted, setIsMounted] = useState(false);
 
   const [runs, setRuns] = useState<string[]>([]);
@@ -78,12 +80,15 @@ export default function NumericModelPage() {
   const [availableVariables, setAvailableVariables] = useState<string[]>([]);
   const [selectedVariable, setSelectedVariable] = useState<string>('mllr'); // Fallback para a variavel pedida
   
-  const [images, setImages] = useState<{name: string, url: string}[]>([]);
+  const [images, setImages] = useState<{name: string, url: string, dataUrl?: string | null}[]>([]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const prevIndexRef = useRef<number>(0);
 
   // States para Sondagem (WRF)
-  const [hoverPos, setHoverPos] = useState<{x: number, y: number, lat: number, lon: number} | null>(null);
+  const [hoverPos, setHoverPos] = useState<{x: number, y: number, lat: number, lon: number, gridX?: number, gridY?: number} | null>(null);
+  const [hoverValue, setHoverValue] = useState<number | null>(null);
+  const [currentDataArray, setCurrentDataArray] = useState<Float32Array | null>(null);
+    const [currentDataGridDims, setCurrentDataGridDims] = useState<{width: number, height: number, isFortran: boolean} | null>(null);
   const [isSoundingLoading, setIsSoundingLoading] = useState(false);
   const [soundingImageUrl, setSoundingImageUrl] = useState<string | null>(null);
   const [soundingPos, setSoundingPos] = useState<{lat: number, lon: number} | null>(null);
@@ -134,28 +139,96 @@ export default function NumericModelPage() {
     setShowPremiumPopup(true);
   }, []);
     const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const ox = e.nativeEvent.offsetX;
-      const oy = e.nativeEvent.offsetY;
-  
-      let lat: number;
-      let lon: number;
-      if (selectedRun && isParanaRun(selectedRun)) {
-        const ll = imagePixelToLatLonParana(ox, oy, rect.width, rect.height);
-        lat = ll.lat;
-        lon = ll.lon;
-      } else {
-        const ll = imagePixelToLatLonCentroSul(ox, oy, rect.width, rect.height);
-        lat = ll.lat;
-        lon = ll.lon;
+    // Como a imagem pode estar redimensionada com object-fit: contain, 
+    // precisamos saber o tamanho REAL pintado na tela em vez do tamanho da <img> tag inteira
+    const imgElement = e.currentTarget;
+    const rect = imgElement.getBoundingClientRect();
+    
+    // Obter as dimensões naturais e da tag
+    const naturalWidth = imgElement.naturalWidth;
+    const naturalHeight = imgElement.naturalHeight;
+    
+    if (naturalWidth === 0 || naturalHeight === 0) return;
+    
+    // Calcula a proporção da imagem pintada dentro do container (para object-fit: contain)
+    const scaleX = rect.width / naturalWidth;
+    const scaleY = rect.height / naturalHeight;
+    const scale = Math.min(scaleX, scaleY);
+    
+    // Tamanho final desenhado na tela
+    const drawnWidth = naturalWidth * scale;
+    const drawnHeight = naturalHeight * scale;
+    
+    // As bordas vazias (espaço em branco criado pelo object-fit)
+    const emptySpaceX = (rect.width - drawnWidth) / 2;
+    const emptySpaceY = (rect.height - drawnHeight) / 2;
+    
+    // O clique do rato (e.clientX) convertido para coordenadas dentro da imagem DESENHADA
+    const ox = e.clientX - rect.left - emptySpaceX;
+    const oy = e.clientY - rect.top - emptySpaceY;
+    
+    // Se clicou fora da área desenhada da imagem (nas bordas vazias do contain), ignora
+    if (ox < 0 || ox > drawnWidth || oy < 0 || oy > drawnHeight) {
+      setHoverPos(null);
+      setHoverValue(null);
+      return;
+    }
+
+    let lat: number;
+    let lon: number;
+    let gridX: number;
+    let gridY: number;
+    if (selectedRun && isParanaRun(selectedRun)) {
+      const ll = imagePixelToLatLonParana(ox, oy, drawnWidth, drawnHeight);
+      if (!ll) {
+        setHoverPos(null);
+        setHoverValue(null);
+        return;
       }
+      lat = ll.lat;
+      lon = ll.lon;
+      gridX = ll.gridX;
+      gridY = ll.gridY;
+    } else {
+      const ll = imagePixelToLatLonCentroSul(ox, oy, drawnWidth, drawnHeight);
+      if (!ll) {
+        setHoverPos(null);
+        setHoverValue(null);
+        return;
+      }
+      lat = ll.lat;
+      lon = ll.lon;
+      gridX = ll.gridX;
+      gridY = ll.gridY;
+    }
   
       setHoverPos({
         x: ox,
         y: oy,
         lat,
         lon,
+        gridX,
+        gridY,
       });
+
+      // Se tivermos os dados numéricos carregados em memória para o frame atual, pegamos o valor
+      if (currentDataArray && currentDataGridDims) {
+        // Garantir que não está fora dos limites
+        if (gridX >= 0 && gridX < currentDataGridDims.width && gridY >= 0 && gridY < currentDataGridDims.height) {
+          // Flatten index para array 1D
+          let index = gridY * currentDataGridDims.width + gridX;
+          if (currentDataGridDims.isFortran) {
+            index = gridX * currentDataGridDims.height + gridY;
+          }
+          const val = currentDataArray[index];
+          // Pode ter valors de Fill / NaN na borda
+          setHoverValue(!isNaN(val) && val > -9000 ? val : null);
+        } else {
+          setHoverValue(null);
+        }
+      } else {
+        setHoverValue(null);
+      }
     };
 
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
@@ -361,6 +434,99 @@ export default function NumericModelPage() {
       i.src = img.url;
     });
   }, [images]);
+
+  // Função para carregar .npy.gz do frame atual
+  useEffect(() => {
+    async function loadDataForCurrentFrame() {
+      const currentImage = images[currentIndex];
+      if (!currentImage || !currentImage.dataUrl) {
+        setCurrentDataArray(null);
+        setHoverValue(null);
+        return;
+      }
+
+      try {
+        const res = await fetch(currentImage.dataUrl);
+        if (!res.ok) throw new Error("Failed to fetch data");
+        const buf = await res.arrayBuffer();
+        
+        // Unzip .gz
+        const unzipped = pako.inflate(new Uint8Array(buf));
+        
+        // Parse basic .npy format header (np.save format v1.0 or v2.0)
+        // Magic string is 6 bytes: \x93NUMPY
+        const magic = new Uint8Array(unzipped.buffer, unzipped.byteOffset, 6);
+        if (magic[0] !== 0x93 || magic[1] !== 78 || magic[2] !== 85) {
+            throw new Error("Not a valid NPY file");
+        }
+        const major = unzipped[6];
+        let headerLen = 0;
+        let headerStr = "";
+        let dataOffset = 0;
+
+        if (major === 1) {
+            headerLen = new DataView(unzipped.buffer, unzipped.byteOffset + 8, 2).getUint16(0, true);
+            dataOffset = 10 + headerLen;
+            headerStr = new TextDecoder().decode(new Uint8Array(unzipped.buffer, unzipped.byteOffset + 10, headerLen));
+        } else if (major === 2) {
+            headerLen = new DataView(unzipped.buffer, unzipped.byteOffset + 8, 4).getUint32(0, true);
+            dataOffset = 12 + headerLen;
+            headerStr = new TextDecoder().decode(new Uint8Array(unzipped.buffer, unzipped.byteOffset + 12, headerLen));
+        }
+        
+        // Extract dimensions from the header dictionary string: {'descr': '<f2', 'fortran_order': False, 'shape': (651, 651), }
+        const shapeMatch = headerStr.match(/'shape':\s*\(\s*(\d+)\s*,\s*(\d+)/);
+        if (!shapeMatch) throw new Error("Could not parse shape from NPY header");
+        
+        const fortranMatch = headerStr.match(/'fortran_order':\s*(True|False)/);
+        const isFortran = fortranMatch ? fortranMatch[1] === 'True' : false;
+
+        const height = parseInt(shapeMatch[1], 10);
+        const width = parseInt(shapeMatch[2], 10);
+        setCurrentDataGridDims({width, height, isFortran});
+
+        // Verificamos o descritor do tipo. Definimos float16 ('<f2') no back-end.
+        // Javascript nativo nao tem Float16Array fácil, então vamos ler os Uint16 e converter
+        const isFloat16 = headerStr.includes("'<f2'");
+        const isFloat32 = headerStr.includes("'<f4'");
+
+        if (isFloat16) {
+          // Precisamos decodificar float16 para float32
+          const raw16 = new Uint16Array(unzipped.buffer, unzipped.byteOffset + dataOffset);
+          const f32 = new Float32Array(raw16.length);
+          for (let i = 0; i < raw16.length; i++) {
+              const h = raw16[i];
+              const s = (h & 0x8000) >> 15;
+              const e = (h & 0x7C00) >> 10;
+              const f = h & 0x03FF;
+
+              if (e === 0) {
+                  f32[i] = (s ? -1 : 1) * Math.pow(2, -14) * (f / 1024);
+              } else if (e === 0x1F) {
+                  f32[i] = f ? NaN : ((s ? -1 : 1) * Infinity);
+              } else {
+                  f32[i] = (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
+              }
+          }
+          setCurrentDataArray(f32);
+        } else if (isFloat32) {
+          setCurrentDataArray(new Float32Array(unzipped.buffer, unzipped.byteOffset + dataOffset));
+        } else {
+          // Se for float64
+          const f64 = new Float64Array(unzipped.buffer, unzipped.byteOffset + dataOffset);
+          const f32 = new Float32Array(f64.length);
+          for(let i=0; i<f64.length; i++) f32[i] = f64[i];
+          setCurrentDataArray(f32);
+        }
+
+      } catch (err) {
+        console.error("Erro ao carregar dados numéricos do mapa:", err);
+        setCurrentDataArray(null);
+      }
+    }
+
+    loadDataForCurrentFrame();
+  }, [currentIndex, images]);
 
   if (!isMounted) return <div className="min-h-screen bg-white" />;
 
@@ -718,15 +884,25 @@ export default function NumericModelPage() {
             {/* Hover tooltip for Lat/Lon */}
             {hoverPos && !isSoundingLoading && !soundingImageUrl && (
               <div 
-                className="absolute pointer-events-none bg-black/80 text-white text-[10px] px-2 py-1 rounded shadow-lg z-50 transform -translate-x-1/2 -translate-y-full mt-[-10px]"
+                className="absolute pointer-events-none bg-black/80 text-white text-[10px] px-2 py-1.5 rounded shadow-lg z-50 transform -translate-x-1/2 -translate-y-full mt-[-10px] min-w-[120px]"
                 style={{ 
                   left: hoverPos.x, 
                   top: hoverPos.y 
                 }}
               >
-                <div>Lat: {hoverPos.lat.toFixed(4)}</div>
-                <div>Lon: {hoverPos.lon.toFixed(4)}</div>
-                <div className="text-blue-300 font-bold mt-1">Clique para sondagem</div>
+                <div className="flex justify-between border-b border-gray-600 pb-1 mb-1">
+                  <span className="text-gray-400 uppercase tracking-widest text-[8px] font-bold">Coord:</span>
+                  <span>{hoverPos.lat.toFixed(3)}, {hoverPos.lon.toFixed(3)}</span>
+                </div>
+                
+                {hoverValue !== null && (
+                  <div className="flex justify-between items-center text-[12px] font-bold text-yellow-300">
+                    <span>Valor:</span>
+                    <span className="font-mono text-[14px]">{hoverValue.toFixed(1)}</span>
+                  </div>
+                )}
+                
+                <div className="text-blue-300 font-bold mt-1 text-[9px] text-center opacity-80">Clique para sondagem</div>
               </div>
             )}
 
