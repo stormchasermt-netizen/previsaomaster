@@ -9,7 +9,7 @@ import {
   getForecastHourFromRun,
   domainLabel,
 } from '@/lib/wrfModelRuns';
-import { getMapBoundsForRunFolder, imagePixelToLatLonParana, isParanaRun } from '@/lib/wrfDomainBounds';
+import { getMapBoundsForRunFolder, imagePixelToLatLonParana, imagePixelToLatLonCentroSul, isParanaRun } from '@/lib/wrfDomainBounds';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl', 'scp', 'stp'],
@@ -133,32 +133,30 @@ export default function NumericModelPage() {
     // Show popup immediately when component mounts
     setShowPremiumPopup(true);
   }, []);
-  const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ox = e.nativeEvent.offsetX;
-    const oy = e.nativeEvent.offsetY;
-
-    let lat: number;
-    let lon: number;
-    if (selectedRun && isParanaRun(selectedRun)) {
-      const ll = imagePixelToLatLonParana(ox, oy, rect.width, rect.height);
-      lat = ll.lat;
-      lon = ll.lon;
-    } else {
-      const b = getMapBoundsForRunFolder(selectedRun || '');
-      const latSpan = b.north - b.south;
-      const lonSpan = b.east - b.west;
-      lat = b.north - (oy / rect.height) * latSpan;
-      lon = b.west + (ox / rect.width) * lonSpan;
-    }
-
-    setHoverPos({
-      x: ox,
-      y: oy,
-      lat,
-      lon,
-    });
-  };
+    const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ox = e.nativeEvent.offsetX;
+      const oy = e.nativeEvent.offsetY;
+  
+      let lat: number;
+      let lon: number;
+      if (selectedRun && isParanaRun(selectedRun)) {
+        const ll = imagePixelToLatLonParana(ox, oy, rect.width, rect.height);
+        lat = ll.lat;
+        lon = ll.lon;
+      } else {
+        const ll = imagePixelToLatLonCentroSul(ox, oy, rect.width, rect.height);
+        lat = ll.lat;
+        lon = ll.lon;
+      }
+  
+      setHoverPos({
+        x: ox,
+        y: oy,
+        lat,
+        lon,
+      });
+    };
 
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
     if (!hoverPos || !images[currentIndex]) return;
