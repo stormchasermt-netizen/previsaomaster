@@ -780,12 +780,12 @@ export default function NumericModelPage() {
                     </button>
                   </div>
 
-                  {/* Imagem do Skew-T ajustada para não rebentar a janela */}
-                  <div className="overflow-hidden flex-1 flex justify-center items-center p-2">
+                  {/* Imagem do Skew-T ajustada para caber totalmente na janela sem cortes */}
+                  <div className="flex-1 min-h-0 flex justify-center items-center p-2">
                     <img 
                       src={soundingImageUrl} 
                       alt="WRF Sounding" 
-                      className="max-h-[80vh] w-auto max-w-[95vw] object-contain border border-gray-300 shadow-md rounded" 
+                      className="max-h-full max-w-full w-auto h-auto object-contain border border-gray-300 shadow-md rounded" 
                     />
                   </div>
                 </div>
