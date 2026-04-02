@@ -179,7 +179,7 @@ function getValidDateStr(name: string) {
     let gridX: number;
     let gridY: number;
     if (selectedRun && isParanaRun(selectedRun)) {
-      const ll = imagePixelToLatLonParana(ox, oy, drawnWidth, drawnHeight, naturalWidth, naturalHeight);
+      const ll = imagePixelToLatLonParana(ox, oy, drawnWidth, drawnHeight);
       if (!ll) {
         setHoverPos(null);
         setHoverValue(null);
@@ -190,7 +190,7 @@ function getValidDateStr(name: string) {
       gridX = ll.gridX;
       gridY = ll.gridY;
     } else {
-      const ll = imagePixelToLatLonCentroSul(ox, oy, drawnWidth, drawnHeight, naturalWidth, naturalHeight);
+      const ll = imagePixelToLatLonCentroSul(ox, oy, drawnWidth, drawnHeight);
       if (!ll) {
         setHoverPos(null);
         setHoverValue(null);
