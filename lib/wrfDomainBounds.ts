@@ -50,24 +50,22 @@ export function imagePixelToLatLonCentroSul(
   offsetX: number,
   offsetY: number,
   rectWidth: number,
-  rectHeight: number
+  rectHeight: number,
+  naturalWidth: number,
+  naturalHeight: number
 ): { lat: number; lon: number; gridX: number; gridY: number } | null {
-  // 1. Margens da Imagem JPG (Baseado nas tuas medições exatas 2318x1905)
-  // Mas vamos usar as métricas exatas do recorte real do script plot_wrf2.py lidas da VM:
-  // Largura: 2295, Altura: 1904
-  // Borda Esquerda Px: 19
-  // Borda Direita Px: 75
-  // Borda Topo Px: 345
-  // Borda Fundo Px: 364
-  const imgW = 2326;
-  const imgH = 2060;
-  const marginLeft = 20 / imgW;           
-  const marginRight = (imgW - 198) / imgW; 
-  const marginTop = 100 / imgH;             
-  const marginBottom = (imgH - 83) / imgH; 
+  // 1. Margens dinâmicas baseadas na área útil constante do mapa (2209x1877 px).
+  // A barra da esquerda é 19 px e a borda inferior é 83 px na imagem final, não importando
+  // o tamanho extra gerado pela colorbar com bbox_inches='tight'.
+  const mapWidthPx = 2209;
+  const mapHeightPx = 1877;
+  const marginLeftPx = 19;
+  const marginBottomPx = 83;
 
-  const mapWidth = marginRight - marginLeft;
-  const mapHeight = marginBottom - marginTop;
+  const marginLeft = marginLeftPx / naturalWidth;
+  const mapWidth = mapWidthPx / naturalWidth;
+  const mapHeight = mapHeightPx / naturalHeight;
+  const marginTop = (naturalHeight - marginBottomPx - mapHeightPx) / naturalHeight;
 
   const xRatioOriginal = offsetX / rectWidth;
   const yRatioOriginal = offsetY / rectHeight;
@@ -150,18 +148,20 @@ export function imagePixelToLatLonParana(
   offsetX: number,
   offsetY: number,
   rectWidth: number,
-  rectHeight: number
+  rectHeight: number,
+  naturalWidth: number,
+  naturalHeight: number
 ): { lat: number; lon: number; gridX: number; gridY: number } | null {
-  // 1. Margens da Imagem JPG (Assumindo a mesma caixa/medida para Paraná, extraida de plot_wrf2.py)
-  const imgW = 2326;
-  const imgH = 2060;
-  const marginLeft = 20 / imgW;           
-  const marginRight = (imgW - 198) / imgW; 
-  const marginTop = 100 / imgH;             
-  const marginBottom = (imgH - 83) / imgH; 
+  // 1. Margens dinâmicas baseadas na área útil constante do mapa (2209x1877 px).
+  const mapWidthPx = 2209;
+  const mapHeightPx = 1877;
+  const marginLeftPx = 19;
+  const marginBottomPx = 83;
 
-  const mapWidth = marginRight - marginLeft;
-  const mapHeight = marginBottom - marginTop;
+  const marginLeft = marginLeftPx / naturalWidth;
+  const mapWidth = mapWidthPx / naturalWidth;
+  const mapHeight = mapHeightPx / naturalHeight;
+  const marginTop = (naturalHeight - marginBottomPx - mapHeightPx) / naturalHeight;
 
   const xRatioOriginal = offsetX / rectWidth;
   const yRatioOriginal = offsetY / rectHeight;
