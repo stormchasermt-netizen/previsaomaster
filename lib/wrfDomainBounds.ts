@@ -59,12 +59,12 @@ export function imagePixelToLatLonCentroSul(
   // Borda Direita Px: 75
   // Borda Topo Px: 345
   // Borda Fundo Px: 364
-  const imgW = 2318;
-  const imgH = 1905;
+  const imgW = 2326;
+  const imgH = 2060;
   const marginLeft = 20 / imgW;           
-  const marginRight = (imgW - 180) / imgW; 
-  const marginTop = 62 / imgH;             
-  const marginBottom = (imgH - 58) / imgH; 
+  const marginRight = (imgW - 198) / imgW; 
+  const marginTop = 100 / imgH;             
+  const marginBottom = (imgH - 83) / imgH; 
 
   const mapWidth = marginRight - marginLeft;
   const mapHeight = marginBottom - marginTop;
@@ -80,18 +80,18 @@ export function imagePixelToLatLonCentroSul(
   }
 
   // 2. Limites EXATOS projetados do Matplotlib Axes
-  // O meteorologista usa margins de 0.2 graus do tamanho do quadro no PlateCarree para o arquivo principal:
-  // (Ou `[-0.5, +0.5, min, max]` como estava no `plot_wrf2.py` mas ele corrigiu para "0.2 do tamanho do quadro")
-  const min_lon = -62.632019 - 0.2;
-  const max_lon = -41.367981 + 0.2;
-  const min_lat = -35.721680 - 0.2;
-  const max_lat = -17.964783 + 0.2;
+  // A imagem não é retangular em Lat/Lon! É retangular na projeção LCC do WRF.
+  // Os limites em metros (LCC) extraídos do subplot_kw={'projection': cart_proj} são:
+  const lcc_xmin = -1190157.8789286374;
+  const lcc_xmax =  1190157.8789285964;
+  const lcc_ymin = -1018317.073233748;
+  const lcc_ymax =   956096.3317749603;
 
-  const lon = min_lon + xRatio * (max_lon - min_lon);
-  const lat = max_lat - yRatio * (max_lat - min_lat); // y invertido no ecrã
+  const lcc_x = lcc_xmin + xRatio * (lcc_xmax - lcc_xmin);
+  const lcc_y = lcc_ymax - yRatio * (lcc_ymax - lcc_ymin); // y invertido no ecrã
 
-  // Converter Lat/Lon -> LCC
-  const [lcc_x, lcc_y] = proj4(WGS84, CENTRO_SUL_LCC, [lon, lat]);
+  // Converter LCC -> Lat/Lon (Para exibir na tela)
+  const [lon, lat] = proj4(CENTRO_SUL_LCC, WGS84, [lcc_x, lcc_y]);
   
   // Converter LCC -> Índice da Matriz .npy.gz (Para o Hover de valor puro)
   const wrf_left_x = -((CENTRO_SUL_E_WE - 1) / 2) * CENTRO_SUL_DX;
@@ -153,12 +153,12 @@ export function imagePixelToLatLonParana(
   rectHeight: number
 ): { lat: number; lon: number; gridX: number; gridY: number } | null {
   // 1. Margens da Imagem JPG (Assumindo a mesma caixa/medida para Paraná, extraida de plot_wrf2.py)
-  const imgW = 2318;
-  const imgH = 1905;
+  const imgW = 2326;
+  const imgH = 2060;
   const marginLeft = 20 / imgW;           
-  const marginRight = (imgW - 180) / imgW; 
-  const marginTop = 62 / imgH;             
-  const marginBottom = (imgH - 58) / imgH; 
+  const marginRight = (imgW - 198) / imgW; 
+  const marginTop = 100 / imgH;             
+  const marginBottom = (imgH - 83) / imgH; 
 
   const mapWidth = marginRight - marginLeft;
   const mapHeight = marginBottom - marginTop;
@@ -174,16 +174,18 @@ export function imagePixelToLatLonParana(
   }
 
   // 2. Limites EXATOS projetados do Matplotlib Axes extraídos da VM (Paraná)
-  const min_lon = -56.0 - 0.2;
-  const max_lon = -47.0 + 0.2;
-  const min_lat = -27.0 - 0.2;
-  const max_lat = -22.0 + 0.2;
+  const lcc_xmin = -435236.6971430953;
+  const lcc_xmax =  538811.4763422405;
+  const lcc_ymin = -32828.08727992561;
+  const lcc_ymax =  571665.4411961415;
 
-  const lon = min_lon + xRatio * (max_lon - min_lon);
-  const lat = max_lat - yRatio * (max_lat - min_lat); // y invertido no ecrã
+  const lcc_x = lcc_xmin + xRatio * (lcc_xmax - lcc_xmin);
+  const lcc_y = lcc_ymax - yRatio * (lcc_ymax - lcc_ymin); // y invertido no ecrã
+  
+  // Converter LCC -> Lat/Lon
+  const [lon, lat] = proj4(PARANA_LCC, WGS84, [lcc_x, lcc_y]);
   
   // 4. Converter LCC -> Índice da Matriz .npy.gz 
-  const [lcc_x, lcc_y] = proj4(WGS84, PARANA_LCC, [lon, lat]);
   const wrf_left_x = -((PARANA_E_WE - 1) / 2) * PARANA_DX;
   const wrf_bottom_y = -((PARANA_E_SN - 1) / 2) * PARANA_DX;
 
