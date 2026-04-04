@@ -18,6 +18,14 @@ import {
   Layers,
   Check,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
+import { db, storage } from '@/lib/firebase';
+import { collection, addDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { fetchPrevotsForecasts } from '@/lib/prevotsForecastStore';
+import { PREVOTS_LEVEL_COLORS, type PrevotsForecast } from '@/lib/prevotsForecastData';
+import { AlertTriangle, MapPin, Crosshair, Search, Image as ImageIcon, Link as LinkIcon, Camera, FileText, CheckCircle2, ShieldAlert, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -376,6 +384,118 @@ const DOPPLER_LEGEND_GRADIENT_MS = `linear-gradient(90deg,
 const DOPPLER_LEGEND_TICKS_MS = [-60, -50, -40, -30, -20, -10, 0, 10, 20, 30, 40, 50, 60];
 
 export default function AoVivo2Content() {
+
+  const myLocation = null;
+
+  const cancelReport = () => {
+    setReportStep('closed');
+    setReportLat(null);
+    setReportLng(null);
+    setReportType('ven');
+    setReportDetail('');
+    setReportMediaMode('file');
+    setReportMediaFile(null);
+    setReportMediaLink('');
+    setReportCitySearch('');
+  };
+
+  const startPickMapLocation = () => {
+    setReportStep('pick-map');
+    const map = splitScreen ? mapSplitLeftRef.current : mapSingleRef.current;
+    if (map) {
+      map.getCanvas().style.cursor = 'crosshair';
+      map.once('click', (e) => {
+        setReportLat(parseFloat(e.lngLat.lat.toFixed(5)));
+        setReportLng(parseFloat(e.lngLat.lng.toFixed(5)));
+        setReportStep('form');
+        map.getCanvas().style.cursor = '';
+      });
+    }
+  };
+
+  const searchCityForReport = async () => {
+    if (!reportCitySearch.trim()) return;
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(reportCitySearch)}`);
+      const data = await res.json();
+      if (data && data.length > 0) {
+        setReportLat(parseFloat(data[0].lat));
+        setReportLng(parseFloat(data[0].lon));
+        setReportStep('form');
+      } else {
+        if (typeof addToast === 'function') addToast('Cidade não encontrada', 'info');
+      }
+    } catch {
+      if (typeof addToast === 'function') addToast('Erro ao buscar cidade', 'error');
+    }
+  };
+
+  const submitReport = async () => {
+    if (!user || reportLat == null || reportLng == null) return;
+    const hasMedia = reportMediaFile || (reportMediaMode === 'link' && reportMediaLink?.trim());
+    if (reportType === 'tor' && !hasMedia) {
+      if (typeof addToast === 'function') addToast('Tornados e Nuvens Funis requerem foto ou vídeo.', 'error');
+      return;
+    }
+    setReportSending(true);
+    try {
+      const payload = {
+        userId: user.uid,
+        lat: reportLat,
+        lng: reportLng,
+        type: reportType,
+        detail: reportType !== 'tor' ? reportDetail || undefined : undefined,
+        mediaType: reportMediaMode === 'link' && reportMediaLink ? 'link' : reportMediaFile ? 'file' : undefined,
+        mediaUrl: reportMediaMode === 'link' && reportMediaLink ? reportMediaLink : undefined,
+        createdAt: new Date(),
+        status: 'pending',
+      };
+
+      if (reportMediaMode === 'file' && reportMediaFile) {
+        const fileRef = ref(storage, `reports/${Date.now()}_${reportMediaFile.name}`);
+        await uploadBytes(fileRef, reportMediaFile);
+        payload.mediaUrl = await getDownloadURL(fileRef);
+      }
+
+      await addDoc(collection(db, 'storm_reports'), payload);
+      if (typeof addToast === 'function') addToast('Relato enviado com sucesso! Aguardando moderação.', 'success');
+      cancelReport();
+    } catch (e) {
+      if (typeof addToast === 'function') addToast('Erro ao enviar relato.', 'error');
+      console.error(e);
+    } finally {
+      setReportSending(false);
+    }
+  };
+
+
+  const { user } = useAuth();
+  const { addToast } = useToast();
+
+  const [prevotsOverlayVisible, setPrevotsOverlayVisible] = useState(false);
+  const [prevotsForecasts, setPrevotsForecasts] = useState<PrevotsForecast[]>([]);
+  const [prevotsForecastDate, setPrevotsForecastDate] = useState(() => {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  });
+  const [showPrevotsDialog, setShowPrevotsDialog] = useState(false);
+  const [selectedPrevotsLinks, setSelectedPrevotsLinks] = useState<{ xUrl?: string; instagramUrl?: string; date: string } | null>(null);
+
+  const [reportStep, setReportStep] = useState<'closed' | 'location' | 'pick-map' | 'form'>('closed');
+  const [reportLat, setReportLat] = useState<number | null>(null);
+  const [reportLng, setReportLng] = useState<number | null>(null);
+  const [reportType, setReportType] = useState<'ven' | 'gra' | 'tor'>('ven');
+  const [reportDetail, setReportDetail] = useState('');
+  const [reportMediaMode, setReportMediaMode] = useState<'file' | 'link'>('file');
+  const [reportMediaFile, setReportMediaFile] = useState<File | null>(null);
+  const [reportMediaLink, setReportMediaLink] = useState('');
+  const [reportCitySearch, setReportCitySearch] = useState('');
+  const [reportSending, setReportSending] = useState(false);
+
+  useEffect(() => {
+    fetchPrevotsForecasts().then(setPrevotsForecasts).catch(() => setPrevotsForecasts([]));
+  }, []);
+
   // Injectar CSS para renderização "crocante" dos radares (pixel-perfect zoom)
   useEffect(() => {
     const style = document.createElement('style');
@@ -1006,6 +1126,80 @@ export default function AoVivo2Content() {
     radarConfigs,
   ]);
 
+  
+  useEffect(() => {
+    const renderPrevots = (map: maplibregl.Map | null, prefix: string) => {
+      if (!map || !mapReady) return;
+      const sourceId = `prevots-source-${prefix}`;
+      const fillLayerId = `prevots-fill-${prefix}`;
+      const lineLayerId = `prevots-line-${prefix}`;
+
+      if (!prevotsOverlayVisible) {
+        if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
+        if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+        return;
+      }
+
+      const activeForecast = prevotsForecasts.find(f => f.date === prevotsForecastDate);
+      if (!activeForecast) {
+        if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
+        if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+        return;
+      }
+
+      const features: GeoJSON.Feature<GeoJSON.Polygon>[] = activeForecast.polygons.map((p) => {
+        const c = PREVOTS_LEVEL_COLORS[p.level];
+        const hex = `#${c.slice(2, 8)}`;
+        return {
+          type: 'Feature',
+          properties: { color: hex },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [p.coordinates.map(c => [c[1], c[0]])] // MapLibre wants [lng, lat]
+          }
+        };
+      });
+
+      const geojsonData: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features
+      };
+
+      if (map.getSource(sourceId)) {
+        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojsonData);
+      } else {
+        map.addSource(sourceId, { type: 'geojson', data: geojsonData });
+        map.addLayer({
+          id: fillLayerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': ['get', 'color'],
+            'fill-opacity': 0.3
+          }
+        });
+        map.addLayer({
+          id: lineLayerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': 2
+          }
+        });
+      }
+    };
+
+    if (splitScreen) {
+      renderPrevots(mapSplitLeftRef.current, 'left');
+      renderPrevots(mapSplitRightRef.current, 'right');
+    } else {
+      renderPrevots(mapSingleRef.current, 'single');
+    }
+  }, [prevotsOverlayVisible, prevotsForecasts, prevotsForecastDate, mapReady, splitScreen]);
+
   /** Camadas raster por radar — troca com raster-fade-duration para transição suave */
   useEffect(() => {
     if (!mapReady || !mapRasterIdle) return;
@@ -1429,6 +1623,25 @@ export default function AoVivo2Content() {
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => setPrevotsOverlayVisible(!prevotsOverlayVisible)}
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl shadow-lg ring-1 ring-black/5 transition ${
+                    prevotsOverlayVisible ? 'bg-[#ff00ff] text-white shadow-[0_0_15px_rgba(255,0,255,0.4)]' : 'bg-white/95 text-slate-700 hover:bg-white'
+                  }`}
+                  title="Alternar Overlay Prevots"
+                >
+                  <ShieldAlert className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReportStep('location')}
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/90 text-slate-900 shadow-[0_0_15px_rgba(245,158,11,0.3)] transition hover:bg-amber-400 hover:scale-105"
+                  title="Enviar relato"
+                >
+                  <AlertTriangle className="h-5 w-5" />
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setSuperResMode((v) => !v)}
