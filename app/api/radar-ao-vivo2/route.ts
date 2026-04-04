@@ -18,12 +18,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const bucket = admin.storage().bucket(getRadarAoVivo2BucketName());
+    const mode = searchParams.get('mode');
 
     if (action === 'listStations') {
-      const [, , apiResponse] = await bucket.getFiles({ delimiter: '/' });
+      const [, , apiResponse] = await bucket.getFiles({ prefix: mode === 'historico' ? 'historico/' : '', delimiter: '/' });
       const prefixes = (apiResponse.prefixes || []) as string[];
       let stations = prefixes
-        .map((p: string) => p.replace(/\/$/, ''))
+        .map((p: string) => mode === 'historico' ? p.replace(/^historico\//, '').replace(/\/$/, '') : p.replace(/\/$/, ''))
         .filter(Boolean)
         .filter(isValidRadarAoVivo2StationSlug);
 
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
       const product = productParam === 'doppler' ? 'doppler' : 'ppi';
 
       const actualStation = station === 'ipmet-prudente' ? 'ipmet-bauru' : station;
-      const prefix = `${actualStation}/`;
+      const prefix = mode === 'historico' ? `historico/${actualStation}/` : `${actualStation}/`;
       const [files] = await bucket.getFiles({ prefix });
 
       const imageFiles = files
