@@ -841,7 +841,7 @@ export function buildNowcastingUrl(
 
 
 export function hasSigmaFallback(slug: string): boolean {
-  const station = Object.values(CPTEC_STATIONS).find(s => s.slug === slug) || CPTEC_STATIONS[slug];
+  const station = Object.values(CPTEC_RADAR_STATIONS).find(s => s.slug === slug) || CPTEC_RADAR_STATIONS.find(s => s.id === slug);
   return !!station?.sigmaConfig;
 }
 
