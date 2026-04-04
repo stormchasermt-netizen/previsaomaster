@@ -1,193 +1,83 @@
 const fs = require('fs');
-let code = fs.readFileSync('app/ao-vivo-2/AoVivo2Content.tsx', 'utf8');
+const path = require('path');
+const p = path.join(__dirname, 'cloud-run/radar-ao-vivo2-feeder/src/radarFetch.ts');
+let content = fs.readFileSync(p, 'utf8');
 
-const oldString = code.substring(code.indexOf('const ppiSourceBySlug = useMemo'), code.indexOf('const effectiveDopplerImagesBySlug = useMemo'));
-const newString = `const ppiSourceBySlug = useMemo(() => {
-    const out: Record<string, 'cptec' | 'redemet' | 'sigma' | 'sipam'> = {};
-    for (const slug of stationsWithBounds) {
-      const catalog = bucketSlugToCatalogSlug(slug);
-      const cptec = imagesByStationPpi[slug] ?? [];
-      const red = imagesRedemetPpiByCptec[slug] ?? [];
-      const sig = imagesSigmaPpiByCptec[slug] ?? [];
-      const sip = imagesSipamPpiByCptec[slug] ?? [];
-      const hasRed = hasRedemetFallback(catalog) && red.length > 0;
-      const hasSig = hasSigmaFallback(catalog) && sig.length > 0;
-      const hasSip = hasSipamFallback(catalog) && sip.length > 0;
+const fallbackCode = `
+const STORAGE_BUCKET = 'studio-4398873450-7cc8f.firebasestorage.app';
+const RADAR_BACKUP_PREFIX = 'radar_backup';
 
-      let src: 'cptec' | 'redemet' | 'sigma' | 'sipam';
-      if (focusedSlug === slug && focusedRadarSource !== 'auto') {
-        src = focusedRadarSource as any;
-        if (src === 'cptec' && cptec.length === 0) {
-          if (hasRed) src = 'redemet';
-          else if (hasSig) src = 'sigma';
-          else if (hasSip) src = 'sipam';
-        }
-        if (src === 'redemet' && !hasRed) {
-          if (hasSig) src = 'sigma';
-          else if (hasSip) src = 'sipam';
-          else src = 'cptec';
-        }
-        if (src === 'sigma' && !hasSig) {
-          if (hasRed) src = 'redemet';
-          else if (hasSip) src = 'sipam';
-          else src = 'cptec';
-        }
-        if (src === 'sipam' && !hasSip) {
-          if (hasRed) src = 'redemet';
-          else if (hasSig) src = 'sigma';
-          else src = 'cptec';
-        }
-      } else {
-        if (isCptecPpiRecent(cptec, CPTEC_PPI_RECENT_MAX_AGE_MS)) {
-          src = 'cptec';
-        } else if (hasRed) {
-          src = 'redemet';
-        } else if (hasSig) {
-          src = 'sigma';
-        } else if (hasSip) {
-          src = 'sipam';
-        } else {
-          src = 'cptec';
-        }
+let fallbackBucket: any;
+function getFallbackBucket() {
+  if (!fallbackBucket) {
+    fallbackBucket = new Storage().bucket(STORAGE_BUCKET);
+  }
+  return fallbackBucket;
+}
+
+export async function checkFirebaseStorageFallback(slug: string, ts12: string, productType: 'reflectividade' | 'velocidade' = 'reflectividade'): Promise<{ buffer: Buffer, fileName: string } | null> {
+  const y = ts12.slice(0, 4);
+  const m = ts12.slice(4, 6);
+  const d = ts12.slice(6, 8);
+  const hh = ts12.slice(8, 10);
+  const mm = ts12.slice(10, 12);
+  const targetMin = parseInt(mm, 10);
+
+  const isVel = productType === 'velocidade';
+  const suffix = isVel ? '_vel.png' : '.png';
+  const bucket = getFallbackBucket();
+
+  try {
+    const hourPrefix = \`\${RADAR_BACKUP_PREFIX}/\${slug}/\${y}/\${m}/\${d}\${hh}\`;
+    let [files] = await bucket.getFiles({ prefix: hourPrefix, maxResults: 50 });
+    let pngFiles = files.filter((f: any) => f.name.endsWith(suffix));
+
+    if (pngFiles.length === 0) {
+      const prevHour = String(Math.max(0, parseInt(hh, 10) - 1)).padStart(2, '0');
+      const prevHourPrefix = \`\${RADAR_BACKUP_PREFIX}/\${slug}/\${y}/\${m}/\${d}\${prevHour}\`;
+      [files] = await bucket.getFiles({ prefix: prevHourPrefix, maxResults: 50 });
+      pngFiles = files.filter((f: any) => f.name.endsWith(suffix));
+    }
+
+    if (pngFiles.length === 0) {
+      const dayPrefix = \`\${RADAR_BACKUP_PREFIX}/\${slug}/\${y}/\${m}/\${d}\`;
+      [files] = await bucket.getFiles({ prefix: dayPrefix, maxResults: 100 });
+      pngFiles = files.filter((f: any) => f.name.endsWith(suffix));
+    }
+
+    if (pngFiles.length === 0) return null;
+
+    let bestFile: any = null;
+    let minDiff = Infinity;
+
+    for (const file of pngFiles) {
+      const basename = file.name.split('/').pop()?.replace('.png', '') ?? '';
+      if (basename.length < 6) continue;
+
+      const fileDay = parseInt(basename.slice(0, 2), 10);
+      const fileHour = parseInt(basename.slice(2, 4), 10);
+      const fileMin = parseInt(basename.slice(4, 6), 10);
+
+      const targetTotalMin = parseInt(d, 10) * 1440 + parseInt(hh, 10) * 60 + targetMin;
+      const fileTotalMin = fileDay * 1440 + fileHour * 60 + fileMin;
+      const diff = Math.abs(fileTotalMin - targetTotalMin);
+
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestFile = file;
       }
-      out[slug] = src;
     }
-    return out;
-  }, [
-    stationsWithBounds,
-    imagesByStationPpi,
-    imagesRedemetPpiByCptec,
-    imagesSigmaPpiByCptec,
-    imagesSipamPpiByCptec,
-    focusedSlug,
-    focusedRadarSource,
-  ]);
 
-  const effectivePpiImagesBySlug = useMemo(() => {
-    const out: Record<string, { name: string; url: string }[]> = {};
-    for (const slug of stationsWithBounds) {
-      const src = ppiSourceBySlug[slug];
-      const cptec = imagesByStationPpi[slug] ?? [];
-      const red = imagesRedemetPpiByCptec[slug] ?? [];
-      const sig = imagesSigmaPpiByCptec[slug] ?? [];
-      const sip = imagesSipamPpiByCptec[slug] ?? [];
-      out[slug] = src === 'sipam' ? sip : (src === 'sigma' ? sig : (src === 'redemet' ? red : cptec));
-    }
-    return out;
-  }, [stationsWithBounds, ppiSourceBySlug, imagesByStationPpi, imagesRedemetPpiByCptec, imagesSigmaPpiByCptec, imagesSipamPpiByCptec]);
+    if (!bestFile || minDiff > 10) return null; // 10 minutes tolerance
 
-  `;
+    const [buffer] = await bestFile.download();
+    return { buffer, fileName: \`\${ts12}\${isVel ? '-ppivr' : ''}.png\` };
+  } catch (err) {
+    console.error('checkFirebaseStorageFallback err:', err);
+    return null;
+  }
+}
+`;
 
-code = code.replace(oldString, newString);
-
-// Also update dependencies array for lookupsPpi
-code = code.replace(
-  'Object.values(imagesSigmaDopplerByCptec).some((imgs) => imgs.length > 0),\n    [imagesByStationPpi, imagesByStationDoppler, imagesRedemetPpiByCptec, imagesSigmaPpiByCptec, imagesSigmaDopplerByCptec]',
-  'Object.values(imagesSigmaDopplerByCptec).some((imgs) => imgs.length > 0) ||\n      Object.values(imagesSipamPpiByCptec).some((imgs) => imgs.length > 0),\n    [imagesByStationPpi, imagesByStationDoppler, imagesRedemetPpiByCptec, imagesSigmaPpiByCptec, imagesSipamPpiByCptec, imagesSigmaDopplerByCptec]'
-);
-
-code = code.replace(
-  'setImagesSigmaDopplerByCptec({});',
-  'setImagesSigmaDopplerByCptec({});\n      setImagesSipamPpiByCptec({});'
-);
-
-code = code.replace(
-  'const nextSigDop: Record<string, { name: string; url: string }[]> = {};',
-  'const nextSigDop: Record<string, { name: string; url: string }[]> = {};\n        const nextSipPpi: Record<string, { name: string; url: string }[]> = {};'
-);
-
-code = code.replace(
-  'setImagesSigmaDopplerByCptec(nextSigDop);',
-  'setImagesSigmaDopplerByCptec(nextSigDop);\n        setImagesSipamPpiByCptec(nextSipPpi);'
-);
-
-// We need to fetch sipam tasks!
-const sigTasksBlock = `        const sigTasks = stationsWithBounds
-          .map((slug) => {
-            const catalog = bucketSlugToCatalogSlug(slug);
-            if (!hasSigmaFallback(catalog)) return null;
-            const rs = getSigmaBucketSlugForCptecBucket(slug);
-            if (!rs) return null;
-            return Promise.all([
-              fetchStationProduct(rs, 'ppi').then((row) => ({ cptecSlug: slug, imagesPpi: row.images })),
-              fetchStationProduct(rs, 'doppler').then((row) => ({ cptecSlug: slug, imagesDop: row.images })),
-            ]);
-          })
-          .filter(Boolean);`;
-
-const sipTasksBlock = `        const sigTasks = stationsWithBounds
-          .map((slug) => {
-            const catalog = bucketSlugToCatalogSlug(slug);
-            if (!hasSigmaFallback(catalog)) return null;
-            const rs = getSigmaBucketSlugForCptecBucket(slug);
-            if (!rs) return null;
-            return Promise.all([
-              fetchStationProduct(rs, 'ppi').then((row) => ({ cptecSlug: slug, imagesPpi: row.images })),
-              fetchStationProduct(rs, 'doppler').then((row) => ({ cptecSlug: slug, imagesDop: row.images })),
-            ]);
-          })
-          .filter(Boolean);
-
-        const sipTasks = stationsWithBounds
-          .map((slug) => {
-            const catalog = bucketSlugToCatalogSlug(slug);
-            if (!hasSipamFallback(catalog)) return null;
-            const rs = getSipamBucketSlugForCptecBucket(slug);
-            if (!rs) return null;
-            return fetchStationProduct(rs, 'ppi').then((row) => ({ cptecSlug: slug, imagesPpi: row.images }));
-          })
-          .filter(Boolean);`;
-
-code = code.replace(sigTasksBlock, sipTasksBlock);
-
-const sigTasksResolve = `          const sigRes = await Promise.all(sigTasks);
-          for (const tuple of sigRes) {
-            const [ppi, dop] = tuple as [{ cptecSlug: string; imagesPpi: any[] }, { cptecSlug: string; imagesDop: any[] }];
-            nextSigPpi[ppi.cptecSlug] = ppi.imagesPpi;
-            nextSigDop[dop.cptecSlug] = dop.imagesDop;
-          }`;
-
-const sipTasksResolve = `          const sigRes = await Promise.all(sigTasks);
-          for (const tuple of sigRes) {
-            const [ppi, dop] = tuple as [{ cptecSlug: string; imagesPpi: any[] }, { cptecSlug: string; imagesDop: any[] }];
-            nextSigPpi[ppi.cptecSlug] = ppi.imagesPpi;
-            nextSigDop[dop.cptecSlug] = dop.imagesDop;
-          }
-          const sipRes = await Promise.all(sipTasks);
-          for (const r of sipRes) {
-            if (r) {
-              nextSipPpi[r.cptecSlug] = r.imagesPpi;
-            }
-          }`;
-
-code = code.replace(sigTasksResolve, sipTasksResolve);
-
-// Also add to hasAny
-code = code.replace(
-  '(imagesSigmaDopplerByCptec[slug]?.length ?? 0) > 0 ||',
-  '(imagesSigmaDopplerByCptec[slug]?.length ?? 0) > 0 ||\n          (imagesSipamPpiByCptec[slug]?.length ?? 0) > 0 ||'
-);
-
-// getSipamBucketSlugForCptecBucket check in marker click
-code = code.replace(
-  'const ss = getSigmaBucketSlugForCptecBucket(slug);',
-  'const ss = getSigmaBucketSlugForCptecBucket(slug);\n              const sip = getSipamBucketSlugForCptecBucket(slug);'
-);
-code = code.replace(
-  'if (src === \'sigma\' && ss) return findCptecBySlug(ss, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);',
-  'if (src === \'sigma\' && ss) return findCptecBySlug(ss, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);\n              if (src === \'sipam\' && sip) return findCptecBySlug(sip, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);'
-);
-
-// select option
-code = code.replace(
-  '{hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="sigma">SIGMA</option>}',
-  '{hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="sigma">SIGMA</option>}\n                          {hasSipamFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="sipam">SIPAM HIDRO</option>}'
-);
-
-// hasSipamFallback
-code = code.replace(
-  '(hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) || hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)))',
-  '(hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) || hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)) || hasSipamFallback(bucketSlugToCatalogSlug(focusedSlug)))'
-);
-
-fs.writeFileSync('app/ao-vivo-2/AoVivo2Content.tsx', code);
+content = content.replace('export async function fetchCptecPngFromCdn', fallbackCode + '\nexport async function fetchCptecPngFromCdn');
+fs.writeFileSync(p, content);

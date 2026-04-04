@@ -44,10 +44,11 @@ export async function GET(req: NextRequest) {
 
       /** ppi = reflectividade (YYYYMMDDHHmm.png); doppler = velocidade (YYYYMMDDHHmm-ppivr.png) */
       const productParam = searchParams.get('product') || 'ppi';
-      const product = productParam === 'doppler' ? 'doppler' : 'ppi';
+            const product = productParam === 'doppler' ? 'doppler' : 'ppi';
 
       const actualStation = station === 'ipmet-prudente' ? 'ipmet-bauru' : station;
-      const prefix = mode === 'historico' ? `historico/${actualStation}/` : `${actualStation}/`;
+      const dateStr = searchParams.get('date');
+      const prefix = mode === 'historico' ? `historico/${actualStation}/${dateStr ? dateStr + '/' : ''}` : `${actualStation}/`;
       const [files] = await bucket.getFiles({ prefix });
 
       const imageFiles = files

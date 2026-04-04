@@ -11,6 +11,7 @@ import {
   downloadArgentinaImagesInWindow,
   downloadRedemetImagesInWindow,
   downloadSimeparImagesInWindow,
+  downloadIpmetImagesInWindow,
   downloadIpmetRainviewerInWindow,
   downloadSigmaImagesInWindow,
   downloadSipamImagesInWindow,
@@ -238,13 +239,14 @@ async function executeSync(targetSlug?: string): Promise<{
 async function executeHistorico(targetTs12: string, windowMinutes: number): Promise<{ ok: boolean, results: any[] }> {
   const bucket = storage.bucket(GCS_BUCKET);
   const results: any[] = [];
+  const dateStr = targetTs12.substring(0, 8);
   
   const activeSlugs = SYNC_SLUGS.filter(slug => !SLUGS_WITHOUT_CDN_SYNC.has(slug));
 
   // Clear existing history for all active slugs in parallel to speed up
   await Promise.all(activeSlugs.map(async (slug) => {
     try {
-      await bucket.deleteFiles({ prefix: `historico/${slug}/` });
+      await bucket.deleteFiles({ prefix: `historico/${slug}/${dateStr}/` });
     } catch (e) {
       console.error(`Failed to clear history for ${slug}`, e);
     }
@@ -258,8 +260,8 @@ async function executeHistorico(targetTs12: string, windowMinutes: number): Prom
       let r: { buffer: Buffer, fileName: string, url: string }[] = [];
       try {
         if (slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
-          const fetchIpmet = await fetchIpmetImage(targetTs12);
-          r = fetchIpmet ? [{ buffer: fetchIpmet.buffer, fileName: `${fetchIpmet.ts12}.png`, url: 'ipmet' }] : [];
+          const ipmetData = await downloadIpmetImagesInWindow(slug, targetTs12, windowMinutes);
+          r = ipmetData.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
         } else if (slug === 'climatempo-poa') {
           const climatempo = await fetchClimatempoPoa(targetTs12);
           r = climatempo ? [{ buffer: climatempo.buffer, fileName: `${climatempo.ts12}.png`, url: 'climatempo' }] : [];
@@ -309,7 +311,7 @@ async function executeHistorico(targetTs12: string, windowMinutes: number): Prom
       if (r && r.length > 0) {
         await Promise.all(r.map(async item => {
           try {
-            const objectPath = `historico/${slug}/${item.fileName}`;
+            const objectPath = `historico/${slug}/${dateStr}/${item.fileName}`;
             const file = bucket.file(objectPath);
             await file.save(item.buffer, { contentType: 'image/png' });
           } catch (e) {

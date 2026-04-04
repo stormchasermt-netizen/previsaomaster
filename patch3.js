@@ -1,56 +1,49 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/radarFetch.ts', 'utf8');
+const path = require('path');
+const p = path.join(__dirname, 'cloud-run/radar-ao-vivo2-feeder/src/radarFetch.ts');
+let content = fs.readFileSync(p, 'utf8');
 
-const fetchUspCode = `
-export async function downloadUspImagesInWindow(
-  slug: string,
-  targetTs12: string,
-  windowMinutes: number
-): Promise<CptecSyncedFile[]> {
-  const images: CptecSyncedFile[] = [];
-  if (slug !== 'usp-starnet') return images;
+const newCode = `  for (const ts12 of candidates) {
+    const ppiFileName = \`\${ts12}.png\`;
+    if (options?.checkExists && await options.checkExists(ppiFileName)) {
+      // Já existe, não precisamos sacar o PPI
+    } else {
+      let ppi: any = await checkFirebaseStorageFallback(slug, ts12, 'reflectividade');
+      if (!ppi) {
+        ppi = await fetchCptecPngFromCdn(station, ts12, 'ppi');
+      }
+      if (ppi) {
+        out.push({
+          ts12,
+          layer: 'ppi',
+          fileName: ppiFileName,
+          url: ppi.url || 'firebase-fallback',
+          buffer: ppi.buffer,
+        });
+      }
+    }
 
-  const nowMs = ts12ToUtcMs(targetTs12);
-  const startMs = nowMs - windowMinutes * 60 * 1000;
-
-  // Starnet loop X is 1 to 10. 10 is the most recent.
-  // We need to fetch each image and read its Last-Modified header to get the real timestamp,
-  // since the URL is generic. Or we can just use the current time and subtract ~5 mins per frame, 
-  // but let's try to get Last-Modified.
-  
-  for (let i = 1; i <= 10; i++) {
-    const imgUrl = \`https://www.starnet.iag.usp.br/img_starnet/Radar_USP/pelletron_36km/loop/36km_loop_\${i}.png\`;
-    try {
-      const imgRes = await fetch(imgUrl, {
-        signal: AbortSignal.timeout(10000),
-      });
-      if (imgRes.ok) {
-        const lastModified = imgRes.headers.get('last-modified');
-        let fileDate = new Date(); // fallback to roughly now if not provided
-        if (lastModified) {
-          fileDate = new Date(lastModified);
-        } else {
-          // Fallback: estimate time based on index (i=10 is newest, i=1 is oldest, 5 min intervals)
-          fileDate = new Date(nowMs - (10 - i) * 5 * 60 * 1000);
+    if (fetchDoppler) {
+      const vrFileName = \`\${ts12}-ppivr.png\`;
+      if (options?.checkExists && await options.checkExists(vrFileName)) {
+        // Já existe
+      } else {
+        let vr: any = await checkFirebaseStorageFallback(slug, ts12, 'velocidade');
+        if (!vr) {
+          vr = await fetchCptecPngFromCdn(station, ts12, 'doppler');
         }
-        
-        const fileMs = fileDate.getTime();
-        // check if it's within the window
-        if (fileMs >= startMs && fileMs <= nowMs + 10 * 60 * 1000) {
-          const ts12 = \`\${fileDate.getUTCFullYear()}\${String(fileDate.getUTCMonth() + 1).padStart(2, '0')}\${String(fileDate.getUTCDate()).padStart(2, '0')}\${String(fileDate.getUTCHours()).padStart(2, '0')}\${String(fileDate.getUTCMinutes()).padStart(2, '0')}\`;
-          const fileName = \`\${slug}_\${ts12}.png\`;
-          const buf = Buffer.from(await imgRes.arrayBuffer());
-          images.push({ buffer: buf, fileName, url: imgUrl, ts12, layer: 'ppi' });
+        if (vr) {
+          out.push({
+            ts12,
+            layer: 'doppler',
+            fileName: vrFileName,
+            url: vr.url || 'firebase-fallback',
+            buffer: vr.buffer,
+          });
         }
       }
-    } catch (e: any) {
-      console.log(\`[USP] Falha ao baixar \${imgUrl}: \${e.message}\`);
     }
-  }
+  }`;
 
-  images.sort((a, b) => b.ts12.localeCompare(a.ts12));
-  return images;
-}
-`;
-
-fs.writeFileSync('src/radarFetch.ts', code + '\n' + fetchUspCode);
+content = content.replace(/for \(const ts12 of candidates\) \{[\s\S]*?if \(fetchDoppler\) \{[\s\S]*?\}[\s\S]*?\}/, newCode);
+fs.writeFileSync(p, content);

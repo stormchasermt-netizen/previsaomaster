@@ -892,15 +892,14 @@ export default function AoVivo2Content() {
     fetchAllData();
   }, [isHistoricalMode]);
 
-  // Polling para historico e ao vivo
-  useEffect(() => {
-    // Se está no modo histórico e ainda não carregou as estações ou imagens, faz polling mais rápido para ver quando o backend terminou
-    const isWaitingForHistory = isHistoricalMode && stations.length === 0;
-    const intervalTime = isWaitingForHistory ? 5000 : 60000;
-    
-    const interval = setInterval(fetchAllData, intervalTime);
+      // Polling para historico e ao vivo
+    useEffect(() => {
+      const isWaitingForHistory = isHistoricalMode && (stations.length === 0 || Object.values(imagesByStationPpi).every(imgs => imgs.length === 0));
+      const intervalTime = isWaitingForHistory ? 5000 : 60000;
+      
+      const interval = setInterval(fetchAllData, intervalTime);
     return () => clearInterval(interval);
-  }, [isHistoricalMode, stations.length]);
+    }, [isHistoricalMode, stations.length, imagesByStationPpi]);
 
   useEffect(() => {
     if (stationsWithBounds.length === 0) {
