@@ -580,14 +580,6 @@ export default function AoVivo2Content() {
     };
   }, []);
 
-  // Carregar RadarConfigs (admin overrides) do Firestore
-  useEffect(() => {
-    fetchRadarConfigs().then(configs => {
-      setRadarConfigs(configs);
-    }).catch(err => {
-      console.error("Erro ao carregar RadarConfigs", err);
-    });
-  }, []);
 
   const [stations, setStations] = useState<string[]>([]);
   const [radarConfigs, setRadarConfigs] = useState<RadarConfig[]>([]);
@@ -850,6 +842,14 @@ export default function AoVivo2Content() {
   const fetchAllData = () => {
     setIsLoading(true);
     setError(null);
+    
+    // Fetch configs first so they are available when bounds are calculated
+    fetchRadarConfigs().then(configs => {
+      setRadarConfigs(configs);
+    }).catch(err => {
+      console.error("Erro ao carregar RadarConfigs", err);
+    });
+
     fetch(`/api/radar-ao-vivo2?action=listStations${isHistoricalMode ? '&mode=historico' : ''}`)
       .then(async (r) => {
         const data = (await r.json()) as { stations?: string[]; error?: string };
