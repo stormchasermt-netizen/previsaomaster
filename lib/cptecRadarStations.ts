@@ -84,6 +84,8 @@ export interface CptecRadarStation {
   updateIntervalMinutes?: number;
   /** Minuto de início do ciclo na hora (ex.: 2 para Chapecó = XX:02, XX:08…; 0 para Santiago = XX:00, XX:10…). */
   updateIntervalOffsetMinutes?: number;
+  /** Ícones adicionais no mapa que ativam o mesmo radar/mosaico */
+  aliases?: { name: string; lat: number; lng: number }[];
   /** Servidor para ppivr (velocidade), quando diferente de server. Ex.: Chapecó usa s2 (ppicz) e s3 (ppivr). */
   velocityServer?: string;
   /** ID no arquivo para ppivr, quando diferente de id. Ex.: Chapecó usa R12137761 (ppicz) e R12137762 (ppivr). */
@@ -261,7 +263,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'REDEMET-sr', slug: 'redemet-sr', name: 'São Roque/SP (REDEMET)', lat: -23.601915, lng: -47.094063, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -49.5836753845, minLat: -25.8431473784, maxLon: -44.6049841568, maxLat: -21.342464447 } },
   { id: 'REDEMET-st', slug: 'redemet-st', name: 'Santa Tereza/ES (REDEMET)', lat: -19.98887, lng: -40.5794, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.939214, minLat: -22.22030575, maxLon: -38.15125375, maxLat: -17.725309 } },
   { id: 'REDEMET-ua', slug: 'redemet-ua', name: 'São Gabriel da Cachoeira/AM (REDEMET)', lat: -0.143611, lng: -67.056944, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -69.2051, minLat: -2.2906000139, maxLon: -64.9017020167, maxLat: 2.0104 } },
-  { id: 'BRSC3', slug: 'simepar-cascavel', name: 'Simepar - Cascavel (Mosaico)', lat: -24.8755, lng: -53.5252, rangeKm: 500, org: 'simepar', server: 'rainviewer', product: 'ppi', subtype: 'ppi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -57.149369633169535, minLat: -28.537878289124517, maxLon: -45.834686785981404, maxLat: -21.006712988730044 } },
+  { id: 'BRSC3', slug: 'simepar-cascavel', name: 'Simepar - Cascavel (Mosaico)', lat: -24.8755, lng: -53.5252, rangeKm: 500, org: 'simepar', server: 'rainviewer', product: 'ppi', subtype: 'ppi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, aliases: [{ name: 'Simepar - Teixeira Soares', lat: -25.505813, lng: -50.361672 }], bounds: { minLon: -57.149369633169535, minLat: -28.537878289124517, maxLon: -45.834686785981404, maxLat: -21.006712988730044 } },
 ];
 
 /** URL da Cloud Function getRadarIPMet (proxy WMS mosaico estadual). */

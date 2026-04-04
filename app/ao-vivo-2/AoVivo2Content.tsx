@@ -1091,31 +1091,43 @@ export default function AoVivo2Content() {
           (imagesSigmaDopplerByCptec[slug]?.length ?? 0) > 0 ||
           (imagesByStationDoppler[slug]?.length ?? 0) > 0;
 
-        const el = document.createElement('div');
-        el.className = 'w-8 h-8 cursor-pointer';
-        if (hasAny) {
-          el.innerHTML = `
-          <div class="relative flex items-center justify-center w-full h-full transition-transform hover:scale-125">
-            <div class="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping" style="animation-duration: 2.5s;"></div>
-            <img src="${RADAR_ICON_AVAILABLE}" alt="Radar On" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-          </div>
-        `;
-        } else {
-          el.innerHTML = `
-          <div class="relative flex items-center justify-center w-full h-full opacity-50 transition-transform hover:scale-110 grayscale">
-            <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar Off" class="w-8 h-8 object-contain" />
-          </div>
-        `;
-        }
+        const createMarker = (lat: number, lng: number, title: string) => {
+          const el = document.createElement('div');
+          el.className = 'w-8 h-8 cursor-pointer group relative';
+          if (hasAny) {
+            el.innerHTML = `
+            <div class="relative flex items-center justify-center w-full h-full transition-transform hover:scale-125">
+              <div class="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping" style="animation-duration: 2.5s;"></div>
+              <img src="${RADAR_ICON_AVAILABLE}" alt="Radar On" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+              <div class="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-slate-900/90 text-cyan-50 text-[10px] px-2 py-1 rounded whitespace-nowrap pointer-events-none border border-slate-700 z-50 transition-opacity">${title}</div>
+            </div>
+          `;
+          } else {
+            el.innerHTML = `
+            <div class="relative flex items-center justify-center w-full h-full opacity-50 transition-transform hover:scale-110 grayscale">
+              <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar Off" class="w-8 h-8 object-contain" />
+              <div class="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-slate-900/90 text-slate-300 text-[10px] px-2 py-1 rounded whitespace-nowrap pointer-events-none border border-slate-700 z-50 transition-opacity">${title}</div>
+            </div>
+          `;
+          }
+
+          const marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setFocusedSlug((prev) => (prev === slug ? null : slug));
+          });
+          radarMarkersRef.current.push(marker);
+        };
 
         const iconLat = (st as any).iconLat ?? st.lat;
         const iconLng = (st as any).iconLng ?? st.lng;
-        const marker = new maplibregl.Marker({ element: el }).setLngLat([iconLng, iconLat]).addTo(map);
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          setFocusedSlug((prev) => (prev === slug ? null : slug));
-        });
-        radarMarkersRef.current.push(marker);
+        createMarker(iconLat, iconLng, st.name);
+
+        if (st.aliases) {
+          for (const alias of st.aliases) {
+            createMarker(alias.lat, alias.lng, alias.name);
+          }
+        }
       }
     };
 

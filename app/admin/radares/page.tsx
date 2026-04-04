@@ -315,7 +315,7 @@ if (baseMapId === 'dark') {
   /** Abre o painel para configurar um radar CPTEC */
   const handleSelectStation = (station: CptecRadarStation, source: 'cptec' | 'redemet' | 'sigma' = 'cptec') => {
     const slug = source === 'redemet' ? `${station.slug}-redemet` : source === 'sigma' ? `sigma-${station.slug}` : station.slug;
-    const existing = configs.find((c) => c.id === slug || c.stationSlug === slug);
+    const existing = configs.find((c) => c.id === slug);
     const interval = existing?.updateIntervalMinutes ?? station.updateIntervalMinutes ?? 10;
     
     setRadarSource(source);
@@ -1321,20 +1321,30 @@ if (baseMapId === 'dark') {
                     <span className="text-xs font-normal text-slate-500">(Argentina)</span>
                   )}
                 </h3>
-                {selectedStation.type === 'cptec' && hasRedemetFallback(selectedStation.station.slug) && (
-                  <div className="flex gap-2 mt-2">
+                {selectedStation.type === 'cptec' && (hasRedemetFallback(selectedStation.station.slug) || hasSigmaFallback(selectedStation.station.slug)) && (
+                  <div className="flex flex-wrap gap-2 mt-2">
                     <button
                       onClick={() => handleSelectStation(selectedStation.station, 'cptec')}
                       className={`px-3 py-1 rounded text-xs font-bold transition-colors ${radarSource === 'cptec' ? 'bg-cyan-500 text-black' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
                     >
                       NORMAL (CPTEC)
                     </button>
-                    <button
-                      onClick={() => handleSelectStation(selectedStation.station, 'redemet')}
-                      className={`px-3 py-1 rounded text-xs font-bold transition-colors ${radarSource === 'redemet' ? 'bg-cyan-500 text-black' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
-                    >
-                      HD (REDEMET)
-                    </button>
+                    {hasRedemetFallback(selectedStation.station.slug) && (
+                      <button
+                        onClick={() => handleSelectStation(selectedStation.station, 'redemet')}
+                        className={`px-3 py-1 rounded text-xs font-bold transition-colors ${radarSource === 'redemet' ? 'bg-cyan-500 text-black' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                      >
+                        HD (REDEMET)
+                      </button>
+                    )}
+                    {hasSigmaFallback(selectedStation.station.slug) && (
+                      <button
+                        onClick={() => handleSelectStation(selectedStation.station, 'sigma')}
+                        className={`px-3 py-1 rounded text-xs font-bold transition-colors ${radarSource === 'sigma' ? 'bg-cyan-500 text-black' : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                      >
+                        SIGMA
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
