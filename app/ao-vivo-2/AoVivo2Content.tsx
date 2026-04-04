@@ -1090,28 +1090,42 @@ export default function AoVivo2Content() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [splitScreen]);
 
-  /** Ajusta enquadramento (apenas global, não move ao trocar radar) */
+  const hasFitBoundsRef = useRef(false);
+  const lastSplitScreenRef = useRef(splitScreen);
+
+  /** Ajusta enquadramento (apenas global na primeira carga ou ao alterar layout, não move ao trocar radar) */
   useEffect(() => {
+    if (!mapReady || stationsWithBounds.length === 0) return;
+    
+    // Only fit bounds on first load, or when splitScreen layout changes
+    if (hasFitBoundsRef.current && lastSplitScreenRef.current === splitScreen) return; 
+
     const b = mergeFitBounds(stationsWithBounds, (slug) => {
       const redSlug = getRedemetBucketSlugForCptecBucket(slug);
       const src = ppiSourceBySlug[slug];
       if (src === 'redemet' && redSlug) return findCptecBySlug(redSlug, radarConfigs);
       return findCptecBySlug(slug, radarConfigs);
     });
+    
     if (!b) return;
+    
     const pad = superResMode ? 52 : 80;
     const opts = { padding: pad, duration: 500 };
+    
     if (splitScreen) {
       const mapL = mapSplitLeftRef.current;
       const mapR = mapSplitRightRef.current;
-      if (!mapL || !mapR || !mapReady) return;
+      if (!mapL || !mapR) return;
       mapL.fitBounds(b, opts);
       mapR.fitBounds(b, opts);
-      return;
+    } else {
+      const map = mapSingleRef.current;
+      if (!map) return;
+      map.fitBounds(b, opts);
     }
-    const map = mapSingleRef.current;
-    if (!map || !mapReady) return;
-    map.fitBounds(b, opts);
+    
+    hasFitBoundsRef.current = true;
+    lastSplitScreenRef.current = splitScreen;
   }, [mapReady, stationsWithBounds, superResMode, splitScreen, ppiSourceBySlug, radarConfigs]);
 
   useEffect(() => {
