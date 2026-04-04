@@ -45,14 +45,14 @@ function bucketSlugToCatalogSlug(slug: string): string {
   return slug;
 }
 
-function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadarStation | undefined {
+function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadarStation & { iconLat?: number, iconLng?: number } | undefined {
   const base = CPTEC_RADAR_STATIONS.find((s) => s.slug === bucketSlugToCatalogSlug(slug));
   if (!base) return undefined;
 
   if (radarConfigs) {
     const config = radarConfigs.find(c => c.stationSlug === base.slug);
     if (config) {
-      const merged = { ...base };
+      const merged = { ...base, iconLat: base.lat, iconLng: base.lng };
       if (config.lat !== undefined && config.lat !== 0) merged.lat = config.lat;
       if (config.lng !== undefined && config.lng !== 0) merged.lng = config.lng;
       if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
@@ -68,7 +68,7 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
     }
   }
 
-  return base;
+  return { ...base, iconLat: base.lat, iconLng: base.lng };
 }
 
 function imageCoordinatesFromBounds(bounds: ReturnType<typeof getRadarImageBounds>): [
@@ -819,7 +819,9 @@ export default function AoVivo2Content() {
         `;
         }
 
-        const marker = new maplibregl.Marker({ element: el }).setLngLat([st.lng, st.lat]).addTo(map);
+        const iconLat = (st as any).iconLat ?? st.lat;
+        const iconLng = (st as any).iconLng ?? st.lng;
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([iconLng, iconLat]).addTo(map);
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           setFocusedSlug((prev) => (prev === slug ? null : slug));

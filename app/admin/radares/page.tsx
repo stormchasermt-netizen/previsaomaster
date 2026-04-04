@@ -22,6 +22,8 @@ declare const google: any;
 
 const BRAZIL_CENTER = { lat: -14.235, lng: -51.925 };
 
+const RADAR_ICON_AVAILABLE = 'https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/78c82d9eb9f723ed65805e819046d598ace4a36e/radar-icon-svg-download-png-8993769.webp';
+
 type BaseMapId = 'satellite' | 'hybrid' | 'roadmap' | 'terrain' | 'dark' | 'light';
 
 const BASE_MAP_OPTIONS: {
@@ -109,6 +111,9 @@ export default function AdminRadaresPage() {
   /** Centro da antena e raio em km — bounds são calculados automaticamente. */
   const [centerLat, setCenterLat] = useState<number>(0);
   const [centerLng, setCenterLng] = useState<number>(0);
+  const [imageCenterLat, setImageCenterLat] = useState<number>(0);
+  const [imageCenterLng, setImageCenterLng] = useState<number>(0);
+  const [pickingImageCenter, setPickingImageCenter] = useState<boolean>(false);
   const [rangeKm, setRangeKm] = useState<number>(250);
   const [panelOpen, setPanelOpen] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -131,6 +136,12 @@ export default function AdminRadaresPage() {
   // Bounding Box (Arrasto e estiramento nas 4 pontas em vez de só centro/raio)
   const [useCustomBounds, setUseCustomBounds] = useState(false);
   const [customBounds, setCustomBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null);
+
+  // Modo de arraste do overlay: mover o centro (lat/lng) ou mover a imagem inteira (customBounds)
+  const [dragMode, setDragMode] = useState<'center' | 'image'>('center');
+  
+  // Modo de edição para permitir mover a imagem vs escolher o centro
+  const [editMode, setEditMode] = useState<'move_image' | 'pick_center'>('move_image');
 
   // Chroma Key e Corte (Limpação da imagem)
   const [chromaKeyDeltaThreshold, setChromaKeyDeltaThreshold] = useState<number>(0);
@@ -208,8 +219,14 @@ export default function AdminRadaresPage() {
     const isIpmet = selectedStation?.type === 'cptec' && 
       ((selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru' || (selectedStation.station as CptecRadarStation).slug === 'ipmet-prudente');
     const calc = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
-    return calc(centerLat, centerLng, rangeKm);
-  }, [centerLat, centerLng, rangeKm, selectedStation]);
+    
+    // Se a imagem tem um centro diferente (como Ipmet), usamos esse centro.
+    // O fallback é o centerLat (ícone)
+    const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
+    const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
+    
+    return calc(latForBounds, lngForBounds, rangeKm);
+  }, [centerLat, centerLng, imageCenterLat, imageCenterLng, rangeKm, selectedStation]);
 
   const getArgentinaTsArgentina = (intervalMinutes: number): string => {
     const ts12 = getSampleTs12(intervalMinutes);
@@ -280,6 +297,8 @@ export default function AdminRadaresPage() {
     const hasValidCoords = existing && (existing.lat !== 0 || existing.lng !== 0);
     setCenterLat(hasValidCoords ? existing!.lat : station.lat);
     setCenterLng(hasValidCoords ? existing!.lng : station.lng);
+    setImageCenterLat(existing?.imageCenterLat ?? 0);
+    setImageCenterLng(existing?.imageCenterLng ?? 0);
     setRangeKm(existing?.rangeKm ?? station.rangeKm);
     setRotationDegrees(existing?.rotationDegrees ?? 0);
     setPreviewOpacity(existing?.opacity ?? 0.75);
@@ -343,6 +362,8 @@ export default function AdminRadaresPage() {
     const hasValidCoords = existing && (existing.lat !== 0 || existing.lng !== 0);
     setCenterLat(hasValidCoords ? existing!.lat : station.lat);
     setCenterLng(hasValidCoords ? existing!.lng : station.lng);
+    setImageCenterLat(existing?.imageCenterLat ?? 0);
+    setImageCenterLng(existing?.imageCenterLng ?? 0);
     setRangeKm(existing?.rangeKm ?? station.rangeKm);
     setRotationDegrees(existing?.rotationDegrees ?? 0);
     setPreviewOpacity(existing?.opacity ?? 0.75);
@@ -438,14 +459,40 @@ export default function AdminRadaresPage() {
     }
   }, [selectedStation, radarSource, urlTemplate, config, rangeKm, updateIntervalMinutes, rotationDegrees, previewOpacity, configs, addToast]);
 
+  /** Marcador fixo da antena original (não arrastável) */
+  const originalAntennaMarkerRef = useRef<any>(null);
+
   /** Marcador draggable do ícone de radar — arrastar apenas o ícone define lat/lng (o mapa não se move) */
   useEffect(() => {
     if (positionMarkerRef.current) {
       positionMarkerRef.current.setMap(null);
       positionMarkerRef.current = null;
     }
+    if (originalAntennaMarkerRef.current) {
+      originalAntennaMarkerRef.current.setMap(null);
+      originalAntennaMarkerRef.current = null;
+    }
     if (!mapReady || !mapInstanceRef.current || !panelOpen || !selectedStation) return;
     const map = mapInstanceRef.current;
+    
+    // Marcador Fixo (Antena Original)
+    const baseLat = selectedStation.station.lat;
+    const baseLng = selectedStation.station.lng;
+    const originalMarker = new google.maps.Marker({
+      map,
+      position: { lat: baseLat, lng: baseLng },
+      draggable: false,
+      icon: {
+        url: RADAR_ICON_AVAILABLE,
+        scaledSize: new google.maps.Size(32, 32),
+        anchor: new google.maps.Point(16, 16),
+      },
+      title: 'Posição Original da Antena',
+      zIndex: 900,
+    });
+    originalAntennaMarkerRef.current = originalMarker;
+
+    // Marcador Editável (Centro da Máscara)
     const lat = liveCenter ? liveCenter.lat : centerLat;
     const lng = liveCenter ? liveCenter.lng : centerLng;
     const marker = new google.maps.Marker({
@@ -453,11 +500,14 @@ export default function AdminRadaresPage() {
       position: { lat, lng },
       draggable: true,
       icon: {
-        url: '/radar-icon.svg',
-        scaledSize: new google.maps.Size(36, 36),
-        anchor: new google.maps.Point(18, 18),
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#22d3ee",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 2,
       },
-      title: 'Arraste para posicionar',
+      title: 'Centro da Máscara (Arraste para mover)',
       zIndex: 1000,
     });
     marker.addListener('dragend', () => {
@@ -476,6 +526,10 @@ export default function AdminRadaresPage() {
       if (positionMarkerRef.current) {
         positionMarkerRef.current.setMap(null);
         positionMarkerRef.current = null;
+      }
+      if (originalAntennaMarkerRef.current) {
+        originalAntennaMarkerRef.current.setMap(null);
+        originalAntennaMarkerRef.current = null;
       }
     };
   }, [mapReady, panelOpen, selectedStation, centerLat, centerLng, liveCenter, handleSavePosition]);
@@ -566,7 +620,14 @@ export default function AdminRadaresPage() {
     const isIpmet = selectedStation?.type === 'cptec' && 
       ((selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru' || (selectedStation.station as CptecRadarStation).slug === 'ipmet-prudente');
     const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
-    const defaultB = calcBounds(centerLat, centerLng, rangeKm);
+    
+    // Para radares com limites fixos (mosaicos como IPMet), usamos eles como defaultB em vez de calcular a partir do centro
+    const defaultB = (isIpmet && selectedStation?.type === 'cptec' && selectedStation.station.bounds)
+      ? {
+          sw: { lat: selectedStation.station.bounds.minLat, lng: selectedStation.station.bounds.minLon },
+          ne: { lat: selectedStation.station.bounds.maxLat, lng: selectedStation.station.bounds.maxLon }
+        }
+      : calcBounds(centerLat, centerLng, rangeKm);
     
     // Matriz Fonte de Origem
     const currentB = (useCustomBounds && customBounds) ? { 
@@ -629,26 +690,79 @@ export default function AdminRadaresPage() {
           const proj = ov.getProjection();
           if (!proj) return;
           const rect = mapDiv.getBoundingClientRect();
-          const offsetX = (e.clientX - rect.left) - proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng))!.x;
-          const offsetY = (e.clientY - rect.top) - proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng))!.y;
-          divEl!.style.cursor = 'grabbing';
-  
-          moveHandler = (e2: MouseEvent) => {
-            const mx = e2.clientX - rect.left - offsetX;
-            const my = e2.clientY - rect.top - offsetY;
-            const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
-            if (!pt || !divEl) return;
-            setLiveCenter({ lat: pt.lat(), lng: pt.lng() });
-          };
-          upHandler = () => {
-            divEl!.style.cursor = 'grab';
-            document.removeEventListener('mousemove', moveHandler);
-            document.removeEventListener('mouseup', upHandler);
-            setLiveCenter(prev => { 
-                if(prev) handleSavePosition(prev.lat, prev.lng); 
-                return null; 
-            });
-          };
+          
+          if (dragMode === 'center') {
+            const offsetX = (e.clientX - rect.left) - proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng))!.x;
+            const offsetY = (e.clientY - rect.top) - proj.fromLatLngToDivPixel(new google.maps.LatLng(centerLat, centerLng))!.y;
+            divEl!.style.cursor = 'grabbing';
+    
+            moveHandler = (e2: MouseEvent) => {
+              const mx = e2.clientX - rect.left - offsetX;
+              const my = e2.clientY - rect.top - offsetY;
+              const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
+              if (!pt || !divEl) return;
+              setLiveCenter({ lat: pt.lat(), lng: pt.lng() });
+            };
+            upHandler = () => {
+              divEl!.style.cursor = 'grab';
+              document.removeEventListener('mousemove', moveHandler);
+              document.removeEventListener('mouseup', upHandler);
+              setLiveCenter(prev => { 
+                  if(prev) handleSavePosition(prev.lat, prev.lng); 
+                  return null; 
+              });
+            };
+          } else {
+            // dragMode === 'image'
+            // Move entire customBounds
+            const startCenterLat = (currentB.ne.lat + currentB.sw.lat) / 2;
+            const startCenterLng = (currentB.ne.lng + currentB.sw.lng) / 2;
+            const startPixelCenter = proj.fromLatLngToDivPixel(new google.maps.LatLng(startCenterLat, startCenterLng))!;
+            
+            const offsetX = (e.clientX - rect.left) - startPixelCenter.x;
+            const offsetY = (e.clientY - rect.top) - startPixelCenter.y;
+            divEl!.style.cursor = 'grabbing';
+            
+            let lastBounds = currentB;
+            
+            moveHandler = (e2: MouseEvent) => {
+              const mx = e2.clientX - rect.left - offsetX;
+              const my = e2.clientY - rect.top - offsetY;
+              const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
+              if (!pt || !divEl) return;
+              
+              const dLat = pt.lat() - startCenterLat;
+              const dLng = pt.lng() - startCenterLng;
+              
+              lastBounds = {
+                 sw: { lat: currentB.sw.lat + dLat, lng: currentB.sw.lng + dLng },
+                 ne: { lat: currentB.ne.lat + dLat, lng: currentB.ne.lng + dLng }
+              };
+              
+              const swP = proj.fromLatLngToDivPixel(new google.maps.LatLng(lastBounds.sw.lat, lastBounds.sw.lng));
+              const neP = proj.fromLatLngToDivPixel(new google.maps.LatLng(lastBounds.ne.lat, lastBounds.ne.lng));
+              if (swP && neP) {
+                divEl!.style.left = Math.min(swP.x, neP.x) + 'px';
+                divEl!.style.top = Math.min(swP.y, neP.y) + 'px';
+                divEl!.style.width = Math.abs(neP.x - swP.x) + 'px';
+                divEl!.style.height = Math.abs(neP.y - swP.y) + 'px';
+              }
+            };
+            
+            upHandler = () => {
+              divEl!.style.cursor = 'grab';
+              document.removeEventListener('mousemove', moveHandler);
+              document.removeEventListener('mouseup', upHandler);
+              setUseCustomBounds(true);
+              setCustomBounds({
+                  north: lastBounds.ne.lat,
+                  south: lastBounds.sw.lat,
+                  east: lastBounds.ne.lng,
+                  west: lastBounds.sw.lng
+              });
+            };
+          }
+
           document.addEventListener('mousemove', moveHandler);
           document.addEventListener('mouseup', upHandler);
         });
@@ -687,12 +801,6 @@ export default function AdminRadaresPage() {
         inner.appendChild(ph);
       }
       
-      const centerIcon = document.createElement('img');
-      centerIcon.src = '/radar-icon.svg';
-      centerIcon.alt = 'Posição do radar';
-      centerIcon.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:36px;height:36px;pointer-events:none;';
-      centerIcon.setAttribute('aria-hidden', 'true');
-      inner.appendChild(centerIcon);
       divEl.appendChild(inner);
       ov.getPanes()?.overlayMouseTarget?.appendChild(divEl);
     };
@@ -731,7 +839,7 @@ export default function AdminRadaresPage() {
       (ov as any).setMap?.(null);
       overlayRef.current = null;
     };
-  }, [mapReady, panelOpen, selectedStation, previewImageUrl, processedImageUrl, previewUrlsToTry, centerLat, centerLng, rangeKm, rotationDegrees, previewOpacity, useCustomBounds]); // Removido customBounds daqui pois o listener cuida do drag contínuo
+  }, [mapReady, panelOpen, selectedStation, previewImageUrl, processedImageUrl, previewUrlsToTry, centerLat, centerLng, rangeKm, rotationDegrees, previewOpacity, useCustomBounds, dragMode]); // Removido customBounds daqui pois o listener cuida do drag contínuo
 
   /** Preencher centro e raio a partir da estação padrão */
   const handleUseStationDefaults = () => {
@@ -1143,8 +1251,27 @@ export default function AdminRadaresPage() {
                 </div>
               </div>
 
+              <div className="mb-4 bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                <label className="text-slate-300 text-sm font-semibold block mb-2">Ação ao Arrastar o Mapa</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input type="radio" name="dragMode" checked={dragMode === 'center'} onChange={() => setDragMode('center')} className="accent-cyan-500" />
+                    <span className={dragMode === 'center' ? 'text-cyan-400 font-medium' : 'text-slate-400'}>Mover Centro do Radar (Corte)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input type="radio" name="dragMode" checked={dragMode === 'image'} onChange={() => setDragMode('image')} className="accent-cyan-500" />
+                    <span className={dragMode === 'image' ? 'text-cyan-400 font-medium' : 'text-slate-400'}>Mover Posição da Imagem</span>
+                  </label>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  {dragMode === 'center' 
+                    ? "Arrastar altera o Centro da Antena (Lat/Lng) usado para desenhar a máscara do radar." 
+                    : "Arrastar altera a Bounding Box da Imagem para alinhá-la com o mapa."}
+                </p>
+              </div>
+
               <div>
-                <label className="text-slate-400 text-sm block mb-1">Centro da antena (lat, lng)</label>
+                <label className="text-slate-400 text-sm block mb-1">Centro da antena / Máscara (lat, lng)</label>
                 <p className="text-xs text-slate-500 mb-2">
                   Arraste a imagem no mapa para posicionar (o ponto central define lat/lng). Salvamento automático ao soltar.
                 </p>

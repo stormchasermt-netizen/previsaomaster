@@ -43,6 +43,9 @@ export interface RadarConfig {
   opacity?: number;
   /** Bounds personalizados desenhados manualmente (sobrescreve cálculo de alcance) */
   customBounds?: { north: number; south: number; east: number; west: number };
+  /** Centro da imagem do radar (pode ser diferente da antena real) */
+  imageCenterLat?: number;
+  imageCenterLng?: number;
   /** Filtro de saturação (delta) para Chroma Key. Ex: 60 (apaga cores lavadas) */
   chromaKeyDeltaThreshold?: number;
   /** Margens de corte relativas da imagem crua (0 a 1). Ex: {top:0, bottom:0.25} */
@@ -85,6 +88,8 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
     rotationDegrees: typeof data.rotationDegrees === 'number' ? data.rotationDegrees : undefined,
     opacity: typeof data.opacity === 'number' ? data.opacity : undefined,
     customBounds: cb && typeof cb.north === 'number' ? { north: cb.north, south: cb.south, east: cb.east, west: cb.west } : undefined,
+    imageCenterLat: typeof data.imageCenterLat === 'number' ? data.imageCenterLat : undefined,
+    imageCenterLng: typeof data.imageCenterLng === 'number' ? data.imageCenterLng : undefined,
     chromaKeyDeltaThreshold: typeof data.chromaKeyDeltaThreshold === 'number' ? data.chromaKeyDeltaThreshold : undefined,
     cropConfig: cr && typeof cr.top === 'number' ? { top: cr.top, bottom: cr.bottom, left: cr.left, right: cr.right } : undefined,
     superRes: typeof data.superRes === 'boolean' ? data.superRes : undefined,
@@ -120,6 +125,8 @@ export async function saveRadarConfig(config: Omit<RadarConfig, 'id'> & { id?: s
     rotationDegrees: config.rotationDegrees ?? null,
     opacity: config.opacity ?? null,
     customBounds: config.customBounds ?? null,
+    imageCenterLat: config.imageCenterLat ?? null,
+    imageCenterLng: config.imageCenterLng ?? null,
     chromaKeyDeltaThreshold: config.chromaKeyDeltaThreshold ?? null,
     cropConfig: config.cropConfig ?? null,
     superRes: config.superRes ?? null,
