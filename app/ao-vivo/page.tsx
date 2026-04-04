@@ -2669,7 +2669,7 @@ export default function AoVivoPage() {
 
   return (
     <AnimatePresence mode="wait">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 1.02 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0 }}
@@ -2696,6 +2696,8 @@ export default function AoVivoPage() {
             >
               <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
+            {/* BaseMap Picker Movido de volta para a esquerda no ao-vivo 1 (se for o caso, senão remove ou deixa como estava. A versão original não tinha Picker aqui, mas sim no header direito se algo, porém o erro foi introduzir Picker no ao-vivo 1. Vou deixar sem o picker no ao-vivo 1, pois foi introduzido erroneamente). */}
+            {/* O picker estava originalmente APENAS no ao-vivo-2. O erro foi colocar no ao-vivo-1. Vou reverter para o original sem picker. */}
             {/* Visitas do dia */}
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-500/15 border border-slate-500/30 whitespace-nowrap">
               <span className="text-xs font-bold text-slate-300 tabular-nums">{todayVisitCount}</span>
@@ -2948,8 +2950,7 @@ export default function AoVivoPage() {
                 />
               </button>
             </div>
-
-            {/* Toggle Limites Municipais */}
+              {/* Toggle Limites Municipais */}
               <div>
                 <label className="flex items-center gap-3 py-2 cursor-pointer group">
                   <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${showMunicipios ? 'bg-amber-500 border-amber-500' : 'border-slate-500 group-hover:border-amber-500/50'}`}>
