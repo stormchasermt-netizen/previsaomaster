@@ -57,7 +57,7 @@ export interface RadarConfig {
   updatedAtMs?: number;
 }
 
-const COLLECTION = 'radar_configs';
+const COLLECTION = 'radar_configs_v2';
 
 function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig {
   const b = data.bounds as Record<string, unknown>;

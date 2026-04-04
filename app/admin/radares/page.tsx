@@ -499,7 +499,6 @@ if (baseMapId === 'dark') {
     
     const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
     let computedBounds = calcBounds(newImgLat, newImgLng, rangeKm);
-    if (isIpmet) { computedBounds = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     
     setSaving(true);
     try {
@@ -581,7 +580,6 @@ if (baseMapId === 'dark') {
     } else {
       const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
       computedBounds = calcBounds(latForBounds, lngForBounds, rangeKm);
-      if (isIpmet) { computedBounds = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     }
     
     setSaving(true);
@@ -755,11 +753,8 @@ if (baseMapId === 'dark') {
           ctx.putImageData(imgData, 0, 0);
         }
         
-        // 3. Circular Mask (Ipmet Bauru / Prudente)
-        const isIpmet = selectedStation?.type === 'cptec' && 
-          ((selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru' || (selectedStation.station as CptecRadarStation).slug === 'ipmet-prudente');
-        
-        if (isIpmet && selectedStation?.type === 'cptec') {
+        // 3. Circular Mask (Raio de Corte)
+        if (maskRadiusKm < rangeKm || (selectedStation?.type === 'cptec' && (selectedStation.station as CptecRadarStation).slug.startsWith('ipmet-'))) {
           const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
           const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
           const calcBounds = typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
@@ -1094,7 +1089,6 @@ if (baseMapId === 'dark') {
       };
     } else {
       computedBounds = calcBounds(latForBounds, lngForBounds, rangeKm);
-      if (isIpmet) { computedBounds = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     }
     
     setSaving(true);
@@ -1563,11 +1557,10 @@ if (baseMapId === 'dark') {
                 </div>
               </div>
 
-              {(selectedStation.type === 'cptec' && (selectedStation.station.slug === 'ipmet-bauru' || selectedStation.station.slug === 'ipmet-prudente')) && (
-                <div className="mt-4">
-                  <label className="text-slate-400 text-sm block mb-1 font-medium text-cyan-300">Alcance do Raio (IPMet - Corte Circular)</label>
+              <div className="mt-4">
+                  <label className="text-slate-400 text-sm block mb-1 font-medium text-cyan-300">Alcance do Raio de Corte (Máscara Circular)</label>
                   <p className="text-xs text-slate-500 mb-2">
-                    Corta a imagem circularmente em tempo real até o ponto em que a bolinha azul (Centro da Máscara) foi inserida.
+                    Corta a imagem circularmente em tempo real até o limite definido a partir do Centro da Máscara.
                   </p>
                   <div className="flex items-center gap-3">
                     <input
@@ -1582,7 +1575,6 @@ if (baseMapId === 'dark') {
                     <span className="text-sm font-mono text-cyan-400 min-w-[3rem]">{maskRadiusKm} km</span>
                   </div>
                 </div>
-              )}
 
               <div>
                 <label className="text-slate-400 text-sm block mt-4 mb-1">Bounds (calculados, somente leitura)</label>
