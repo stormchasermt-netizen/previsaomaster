@@ -25,7 +25,7 @@ import { collection, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchPrevotsForecasts } from '@/lib/prevotsForecastStore';
 import { PREVOTS_LEVEL_COLORS, type PrevotsForecast } from '@/lib/prevotsForecastData';
-import { AlertTriangle, MapPin, Crosshair, Search, Image as ImageIcon, Link as LinkIcon, Camera, FileText, CheckCircle2, ShieldAlert, Info } from 'lucide-react';
+import { AlertTriangle, MapPin, Crosshair, Search, Image as ImageIcon, Link as LinkIcon, Camera, FileText, CheckCircle2, ShieldAlert, Info, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -506,6 +506,66 @@ export default function AoVivo2Content() {
   const [reportCitySearch, setReportCitySearch] = useState('');
   const [reportSending, setReportSending] = useState(false);
 
+  const [isHistoricalMode, setIsHistoricalMode] = useState(false);
+  const [showHistoricalModal, setShowHistoricalModal] = useState(false);
+  const [histStartDate, setHistStartDate] = useState('');
+  const [histEndDate, setHistEndDate] = useState('');
+  const [histIsInterval, setHistIsInterval] = useState(false);
+  const [histLoading, setHistLoading] = useState(false);
+
+  const startHistoricalJob = async () => {
+    if (!histStartDate) return;
+    setHistLoading(true);
+    
+    // convert YYYY-MM-DDTHH:mm to YYYYMMDDHHmm
+    const toTs12 = (d: string) => d.replace(/\D/g, '').slice(0, 12);
+    
+    // If it's a single date, download 12 images (approx 2 hours if 10min interval)
+    // If interval, calculate the difference in minutes
+    let windowMinutes = 120; 
+    let targetTs12 = toTs12(histStartDate);
+    
+    if (histIsInterval && histEndDate) {
+      const endTs = toTs12(histEndDate);
+      targetTs12 = endTs; // The fetch goes backwards from targetTs
+      const d1 = new Date(histStartDate).getTime();
+      const d2 = new Date(histEndDate).getTime();
+      windowMinutes = Math.max(10, Math.floor((d2 - d1) / 60000));
+      // Cap at 24 hours (1440 minutes) or 288 images
+      if (windowMinutes > 1440) windowMinutes = 1440;
+    }
+    
+    try {
+      const res = await fetch('/api/radar-historico-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetTs12, windowMinutes })
+      });
+      if (!res.ok) throw new Error('Erro ao iniciar job');
+      
+      if (typeof addToast === 'function') addToast('Buscando histórico... Isso pode levar alguns instantes.', 'info');
+      setIsHistoricalMode(true);
+      setShowHistoricalModal(false);
+      
+      // The Next.js polling for 'listImages' will automatically update when the files appear in the bucket
+      // Let's trigger a refresh of the radar stations list right now
+      // which will trigger listImages with mode=historico
+      setMapReady(false); // Quick hack to trigger reload
+      setTimeout(() => setMapReady(true), 500);
+
+    } catch (e) {
+      if (typeof addToast === 'function') addToast('Erro ao buscar histórico', 'error');
+    } finally {
+      setHistLoading(false);
+    }
+  };
+
+  const closeHistoricalMode = () => {
+    setIsHistoricalMode(false);
+    setMapReady(false);
+    setTimeout(() => setMapReady(true), 100);
+  };
+
   useEffect(() => {
     fetchPrevotsForecasts().then(setPrevotsForecasts).catch(() => setPrevotsForecasts([]));
   }, []);
@@ -567,6 +627,7 @@ export default function AoVivo2Content() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const [focusedSlug, setFocusedSlug] = useState<string | null>(null);
+  const [focusedAliasName, setFocusedAliasName] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
   /** MapLibre: após `load` o estilo pode ainda animar; `idle` garante que raster/imagens aplicam no 1.º mosaico. */
   const [mapRasterIdle, setMapRasterIdle] = useState(false);
@@ -797,7 +858,7 @@ export default function AoVivo2Content() {
   useEffect(() => {
     setIsLoading(true);
     setError(null);
-    fetch('/api/radar-ao-vivo2?action=listStations')
+    fetch(`/api/radar-ao-vivo2?action=listStations${isHistoricalMode ? '&mode=historico' : ''}`)
       .then(async (r) => {
         const data = (await r.json()) as { stations?: string[]; error?: string };
         if (!r.ok) throw new Error(data.error || `Erro ${r.status} ao listar pastas`);
@@ -823,7 +884,7 @@ export default function AoVivo2Content() {
 
     const fetchStationProduct = (slug: string, prod: 'ppi' | 'doppler') =>
       fetch(
-        `/api/radar-ao-vivo2?action=listImages&station=${encodeURIComponent(slug)}&product=${prod}`
+        `/api/radar-ao-vivo2?action=listImages&station=${encodeURIComponent(slug)}&product=${prod}${isHistoricalMode ? '&mode=historico' : ''}`
       )
         .then(async (r) => {
           const data = (await r.json()) as { images?: { name: string; url: string }[]; error?: string };
@@ -1029,17 +1090,16 @@ export default function AoVivo2Content() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [splitScreen]);
 
-  /** Ajusta enquadramento */
+  /** Ajusta enquadramento (apenas global, não move ao trocar radar) */
   useEffect(() => {
-    const slugs = focusedSlug ? [focusedSlug] : stationsWithBounds;
-    const b = mergeFitBounds(slugs, (slug) => {
+    const b = mergeFitBounds(stationsWithBounds, (slug) => {
       const redSlug = getRedemetBucketSlugForCptecBucket(slug);
       const src = ppiSourceBySlug[slug];
       if (src === 'redemet' && redSlug) return findCptecBySlug(redSlug, radarConfigs);
       return findCptecBySlug(slug, radarConfigs);
     });
     if (!b) return;
-    const pad = superResMode ? (focusedSlug ? 36 : 52) : focusedSlug ? 56 : 80;
+    const pad = superResMode ? 52 : 80;
     const opts = { padding: pad, duration: 500 };
     if (splitScreen) {
       const mapL = mapSplitLeftRef.current;
@@ -1052,7 +1112,7 @@ export default function AoVivo2Content() {
     const map = mapSingleRef.current;
     if (!map || !mapReady) return;
     map.fitBounds(b, opts);
-  }, [mapReady, focusedSlug, stationsWithBounds, superResMode, splitScreen, ppiSourceBySlug, radarConfigs]);
+  }, [mapReady, stationsWithBounds, superResMode, splitScreen, ppiSourceBySlug, radarConfigs]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -1114,7 +1174,14 @@ export default function AoVivo2Content() {
           const marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
           el.addEventListener('click', (e) => {
             e.stopPropagation();
-            setFocusedSlug((prev) => (prev === slug ? null : slug));
+            setFocusedSlug((prev) => {
+              if (prev === slug && focusedAliasName === (title !== st.name ? title : null)) {
+                setFocusedAliasName(null);
+                return null;
+              }
+              setFocusedAliasName(title !== st.name ? title : null);
+              return slug;
+            });
           });
           radarMarkersRef.current.push(marker);
         };
@@ -1541,9 +1608,9 @@ export default function AoVivo2Content() {
 
   const showEmptyBucketHelp = stations.length === 0 && !isLoading && !error;
 
-  const stationTitle = focusedSlug
+  const stationTitle = focusedAliasName || (focusedSlug
     ? (findCptecBySlug(focusedSlug, radarConfigs)?.name ?? focusedSlug)
-    : 'Brasil — mosaico';
+    : 'Brasil — mosaico');
   const productLabel = splitScreen
     ? 'PPI + Doppler (mesmo instante)'
     : product === 'ppi'
@@ -1676,6 +1743,16 @@ export default function AoVivo2Content() {
                   title="Enviar relato"
                 >
                   <AlertTriangle className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowHistoricalModal(true)}
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl shadow-lg ring-1 ring-black/5 transition ${
+                    isHistoricalMode ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)]' : 'bg-white/95 text-slate-700 hover:bg-white'
+                  }`}
+                  title={isHistoricalMode ? "Modo Histórico Ativo (Clique para sair)" : "Imagens Anteriores"}
+                >
+                  <History className="h-5 w-5" />
                 </button>
 
                 <button
@@ -1989,7 +2066,10 @@ export default function AoVivo2Content() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (focusedSlug) setFocusedSlug(null);
+                        if (focusedSlug) {
+                          setFocusedSlug(null);
+                          setFocusedAliasName(null);
+                        }
                       }}
                       title={focusedSlug ? 'Voltar ao mosaico' : 'Mosaico ativo'}
                       className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
@@ -2052,6 +2132,112 @@ export default function AoVivo2Content() {
           )}
         </div>
       )}
+
+      {/* MODAL DE IMAGENS ANTERIORES */}
+      <AnimatePresence>
+        {showHistoricalModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-sm overflow-hidden rounded-2xl bg-slate-900 shadow-2xl ring-1 ring-white/10"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 bg-slate-800/50 p-4">
+                <h3 className="text-lg font-bold text-white flex items-center">
+                  <History className="mr-2 h-5 w-5 text-sky-400" />
+                  Imagens Anteriores
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowHistoricalModal(false)}
+                  className="rounded-full bg-white/5 p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="p-5">
+                {isHistoricalMode ? (
+                  <div className="text-center">
+                    <p className="text-sm text-slate-300 mb-4">
+                      O modo de histórico já está ativo e buscando dados do arquivo.
+                    </p>
+                    <button
+                      onClick={closeHistoricalMode}
+                      className="w-full rounded-xl bg-red-600 py-3 font-semibold text-white shadow hover:bg-red-500 transition"
+                    >
+                      Sair do Modo Histórico
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-1">
+                        {histIsInterval ? 'Data e Hora Inicial' : 'Data e Hora'}
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={histStartDate}
+                        onChange={(e) => setHistStartDate(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-white outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                      />
+                    </div>
+
+                    {histIsInterval && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        className="overflow-hidden"
+                      >
+                        <label className="block text-sm font-medium text-slate-300 mb-1">
+                          Data e Hora Final (Até 24h)
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={histEndDate}
+                          onChange={(e) => setHistEndDate(e.target.value)}
+                          className="w-full rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-white outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                        />
+                      </motion.div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setHistIsInterval(!histIsInterval)}
+                        className="text-sm text-sky-400 hover:text-sky-300 transition underline-offset-4 hover:underline"
+                      >
+                        {histIsInterval ? 'Selecionar Apenas Um Horário' : 'Selecionar Intervalo (Animação)'}
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={startHistoricalJob}
+                      disabled={histLoading || !histStartDate || (histIsInterval && !histEndDate)}
+                      className="mt-4 w-full rounded-xl bg-sky-600 py-3 font-semibold text-white shadow-lg shadow-sky-600/30 transition hover:bg-sky-500 disabled:opacity-50 flex justify-center items-center"
+                    >
+                      {histLoading ? (
+                        <>
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white mr-2" />
+                          Iniciando...
+                        </>
+                      ) : (
+                        'Carregar Histórico'
+                      )}
+                    </button>
+                    
+                    <p className="text-xs text-slate-500 mt-2 text-center">
+                      * O download completo pode levar de alguns segundos a minutos dependendo do intervalo. O radar atualizará assim que as imagens chegarem.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
