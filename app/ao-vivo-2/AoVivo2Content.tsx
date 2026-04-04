@@ -546,12 +546,6 @@ export default function AoVivo2Content() {
       if (typeof addToast === 'function') addToast('Buscando histórico... Isso pode levar alguns instantes.', 'info');
       setIsHistoricalMode(true);
       setShowHistoricalModal(false);
-      
-      // The Next.js polling for 'listImages' will automatically update when the files appear in the bucket
-      // Let's trigger a refresh of the radar stations list right now
-      // which will trigger listImages with mode=historico
-      setMapReady(false); // Quick hack to trigger reload
-      setTimeout(() => setMapReady(true), 500);
 
     } catch (e) {
       if (typeof addToast === 'function') addToast('Erro ao buscar histórico', 'error');
@@ -562,8 +556,6 @@ export default function AoVivo2Content() {
 
   const closeHistoricalMode = () => {
     setIsHistoricalMode(false);
-    setMapReady(false);
-    setTimeout(() => setMapReady(true), 100);
   };
 
   useEffect(() => {
@@ -855,7 +847,7 @@ export default function AoVivo2Content() {
     return stationsWithBounds;
   }, [focusedSlug, stationsWithBounds]);
 
-  useEffect(() => {
+  const fetchAllData = () => {
     setIsLoading(true);
     setError(null);
     fetch(`/api/radar-ao-vivo2?action=listStations${isHistoricalMode ? '&mode=historico' : ''}`)
@@ -866,7 +858,17 @@ export default function AoVivo2Content() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setIsLoading(false));
-  }, []);
+  };
+
+  useEffect(() => {
+    fetchAllData();
+  }, [isHistoricalMode]);
+
+  // Polling para historico e ao vivo
+  useEffect(() => {
+    const interval = setInterval(fetchAllData, 60000); // 1 minuto
+    return () => clearInterval(interval);
+  }, [isHistoricalMode]);
 
   useEffect(() => {
     if (stationsWithBounds.length === 0) {
@@ -962,7 +964,7 @@ export default function AoVivo2Content() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setIsLoading(false));
-  }, [stationsWithBounds]);
+  }, [stationsWithBounds, isHistoricalMode]);
 
   /** Ao mudar foco, produto ou modo dividido: voltar ao último instante disponível. */
   useEffect(() => {
