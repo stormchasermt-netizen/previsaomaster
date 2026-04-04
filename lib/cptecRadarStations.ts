@@ -162,7 +162,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12457387', slug: 'saofrancisco', name: 'São Francisco', lat: -16.017361, lng: -44.69525, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12457388', vilId: 'R12452184', waldvogelId: 'R12454605', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -47.009944916, minLat: -18.237812042, maxLon: -42.335361481, maxLat: -13.748636246 }, sigmaConfig: { cappi: 8345, vento: 7388 } },
   { id: 'R12477391', slug: 'tresmarias', name: 'Três Marias', lat: -18.207222, lng: -45.460556, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12477392', vilId: 'R12472188', waldvogelId: 'R12474611', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -47.797908783, minLat: -20.43413353, maxLon: -43.067661285, maxLat: -15.945045471 }, sigmaConfig: { cappi: 5984, vento: 7392 } },
   { id: 'R12277383', slug: 'jaraguari', name: 'Jaraguari', lat: -20.27855, lng: -54.47396, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12277384', vilId: 'R12272180', waldvogelId: 'R12274497', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -56.837623596, minLat: -22.503732681, maxLon: -52.047153473, maxLat: -18.014743805 }, sigmaConfig: { cappi: 8344, vento: 7384 } },
-  { id: 'R12247379', slug: 'natal', name: 'Natal', lat: -5.90448, lng: -35.25401, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12247380', vilId: 'R12242177', waldvogelId: 'R12244491', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -37.506313324, minLat: -8.141628265, maxLon: -32.989379883, maxLat: -3.65220499 }, sigmaConfig: { cappi: 8343, vento: 7380 } },
+  { id: 'R12247379', slug: 'natal', name: 'Natal', lat: -5.90448, lng: -35.25401, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12247380', vilId: 'R12242177', waldvogelId: 'R12244491', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -37.506313324, minLat: -8.141628265, maxLon: -32.989379883, maxLat: -3.65220499 }, sigmaConfig: { cappi: 8343, vento: 7380 }, sipamSlug: 'sbnt' },
   { id: 'R12447385', slug: 'maceio', name: 'Maceió', lat: -9.551389, lng: -35.770833, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12447386', vilId: 'R12442182', waldvogelId: 'R12444600', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -38.036766052, minLat: -11.785545349, maxLon: -33.480552673, maxLat: -7.296182156 }, sigmaConfig: { cappi: 8325, vento: 7386 } },
   { id: 'R12467389', slug: 'salvador', name: 'Salvador', lat: -12.9025, lng: -38.326667, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12467390', vilId: 'R12462186', waldvogelId: 'R12464608', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -40.613765717, minLat: -15.134028435, maxLon: -36.004219055, maxLat: -10.644747734 }, sigmaConfig: { cappi: 8346, vento: 7390 } },
   { id: 'R12257381', slug: 'petrolina', name: 'Petrolina', lat: -9.367, lng: -40.573, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12257382', vilId: 'R12252178', waldvogelId: 'R12254494', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.838165283, minLat: -11.60140419, maxLon: -38.28440094, maxLat: -7.11203622 }, sigmaConfig: { cappi: 8342, vento: 7382 } },
@@ -206,6 +206,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12777586', slug: 'macapa', name: 'Macapá', lat: 0.050085, lng: -51.0923775, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12777366', vilId: 'R12772568', waldvogelId: 'R12774644', sipamSlug: 'sbmq', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -53.3348, minLat: -2.19112, maxLon: -48.849955, maxLat: 2.29129 }, sigmaConfig: { cappi: 2255, vento: 7366 } },
   { id: 'R12807592', slug: 'santarem', name: 'Santarém', lat: -2.424504, lng: -54.7945175, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12807372', vilId: 'R12802579', waldvogelId: 'R12804662', sipamSlug: 'sbsn', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -57.0426, minLat: -4.666354, maxLon: -52.546435, maxLat: -0.182654 }, sigmaConfig: { cappi: 2142, vento: 7372 } },
   { id: 'R12907765', slug: 'saoluis', name: 'São Luís', lat: -2.595277, lng: -44.23476, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12907766', vilId: 'R12902576', waldvogelId: 'R12904656', sipamSlug: 'sbsl', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -46.4834, minLat: -4.837192, maxLon: -41.98612, maxLat: -0.353362 }, sigmaConfig: { cappi: 4967, vento: 7766 } },
+  { id: 'SIPAM-teresina', slug: 'teresina', name: 'Teresina', lat: -5.0400, lng: -42.8100, rangeKm: 400, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbte', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -46.41719, minLat: -8.63324, maxLon: -39.20281, maxLat: -1.44675 } },
   { id: 'R12800001', slug: 'belem', name: 'Belém', lat: -1.4019665, lng: -48.45733, rangeKm: 500, org: 'sipam', server: 's1', product: 'ppi', subtype: 'ppicz', sipamSlug: 'sbbe', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -50.7025, minLat: -3.643424, maxLon: -46.21216, maxLat: 0.839491 }, sigmaConfig: { cappi: 2136 } },
 
   // FUNCEME
@@ -214,7 +215,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'RMT0100DS', funcemeId: 'RMT0100DS', slug: 'funceme-ceara', name: 'Ceará Mosaico (FUNCEME)', lat: -5.0691, lng: -39.2669, rangeKm: 600, org: 'funceme', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.6806, minLat: -12.4827, maxLon: -35.8536, maxLat: -1.6557 } },
 
   // Fontes especiais (WMS/proxy)
-  { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 36, org: 'decea', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0 },
+  { id: 'USP', slug: 'usp-starnet', name: 'USP/StarNet (São Paulo)', lat: -23.5220, lng: -46.6181, rangeKm: 36, org: 'usp', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0 },
 
   /**
    * Pastas em `radar_ao_vivo_2` (GCS) — slugs que não existiam antes; coords para bounds do ao-vivo-2 (mapa + PPI).
@@ -294,12 +295,12 @@ export const IPMET_FIXED_BOUNDS = {
  * Fonte: ol.proj.transformExtent([-47.134155, -23.930042, -46.337808, -23.192604], ...)
  */
 export const USP_STARNET_FIXED_BOUNDS = {
-  north: -23.288351,
-  south: -23.755570,
-  east: -46.289584,
-  west: -46.946592,
-  ne: { lat: -23.288351, lng: -46.289584 },
-  sw: { lat: -23.755570, lng: -46.946592 },
+  north: -23.1926,
+  south: -23.9300,
+  east: -46.3378,
+  west: -47.1341,
+  ne: { lat: -23.1926, lng: -46.3378 },
+  sw: { lat: -23.9300, lng: -47.1341 },
 };
 
 /**
@@ -849,5 +850,15 @@ export function hasSigmaFallback(slug: string): boolean {
 
 export function getSigmaBucketSlugForCptecBucket(cptecSlug: string): string | undefined {
   if (hasSigmaFallback(cptecSlug)) return 'sigma-' + cptecSlug;
+  return undefined;
+}
+
+export function hasSipamFallback(slug: string): boolean {
+  const station = Object.values(CPTEC_RADAR_STATIONS).find(s => s.slug === slug) || CPTEC_RADAR_STATIONS.find(s => s.id === slug);
+  return !!station?.sipamSlug;
+}
+
+export function getSipamBucketSlugForCptecBucket(cptecSlug: string): string | undefined {
+  if (hasSipamFallback(cptecSlug)) return 'sipam-' + cptecSlug;
   return undefined;
 }

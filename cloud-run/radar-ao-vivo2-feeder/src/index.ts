@@ -14,6 +14,7 @@ import {
   downloadIpmetRainviewerInWindow,
   downloadSigmaImagesInWindow,
   downloadSipamImagesInWindow,
+  downloadUspImagesInWindow,
   ts12ToUtcMs,
 } from './radarFetch.js';
 
@@ -191,6 +192,8 @@ async function executeSync(targetSlug?: string): Promise<{
       found = await downloadSimeparImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
         checkExists,
       });
+    } else if (slug === 'usp-starnet') {
+      found = await downloadUspImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES);
     } else {
       const station = CPTEC_STATIONS[slug];
       if (!station) {
@@ -285,6 +288,9 @@ async function executeHistorico(targetTs12: string, windowMinutes: number): Prom
       } else {
         r = [];
       }
+    } else if (slug === 'usp-starnet') {
+      const usp = await downloadUspImagesInWindow(slug, targetTs12, windowMinutes);
+      r = usp.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
     } else {
       const st = CPTEC_STATIONS[slug];
       if (st) {

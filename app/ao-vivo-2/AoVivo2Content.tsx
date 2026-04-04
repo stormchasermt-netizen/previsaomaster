@@ -31,7 +31,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { CPTEC_RADAR_STATIONS, getRadarImageBounds, type CptecRadarStation } from '@/lib/cptecRadarStations';
 import { hasRedemetFallback, getRedemetBucketSlugForCptecBucket } from '@/lib/redemetRadar';
-import { hasSigmaFallback, getSigmaBucketSlugForCptecBucket } from '@/lib/cptecRadarStations';
+import { hasSigmaFallback, getSigmaBucketSlugForCptecBucket, hasSipamFallback, getSipamBucketSlugForCptecBucket } from '@/lib/cptecRadarStations';
 import {
   filterClimatempoRadarImage,
   filterReflectivitySuperRes,
@@ -84,6 +84,7 @@ export type RadarProductMode = 'ppi' | 'doppler';
 function bucketSlugToCatalogSlug(slug: string): string {
   if (slug.startsWith('redemet-')) return bucketSlugToCatalogSlug(slug.replace('redemet-', ''));
   if (slug.startsWith('sigma-')) return bucketSlugToCatalogSlug(slug.replace('sigma-', ''));
+  if (slug.startsWith('sipam-')) return bucketSlugToCatalogSlug(slug.replace('sipam-', ''));
   if (slug === 'riobranco') return 'rio-branco';
   return slug;
 }
@@ -96,6 +97,7 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
     let targetConfigId = base.slug;
     if (slug.startsWith('redemet-')) targetConfigId = base.slug + '-redemet';
     else if (slug.startsWith('sigma-')) targetConfigId = 'sigma-' + base.slug;
+    else if (slug.startsWith('sipam-')) targetConfigId = 'sipam-' + base.slug;
 
     let config = radarConfigs.find(c => c.id === targetConfigId);
     if (!config) {
@@ -204,7 +206,7 @@ function isCptecPpiRecent(imgs: { name: string }[], maxAgeMs: number): boolean {
   return Date.now() - newest <= maxAgeMs;
 }
 
-export type FocusedRadarSourceMode = 'auto' | 'cptec' | 'redemet' | 'sigma';
+export type FocusedRadarSourceMode = 'auto' | 'cptec' | 'redemet' | 'sigma' | 'sipam';
 
 function ts12ToUtcMs(ts: string): number {
   const y = +ts.slice(0, 4);
@@ -598,6 +600,9 @@ export default function AoVivo2Content() {
   const [imagesSigmaDopplerByCptec, setImagesSigmaDopplerByCptec] = useState<
     Record<string, { name: string; url: string }[]>
   >({});
+  const [imagesSipamPpiByCptec, setImagesSipamPpiByCptec] = useState<
+    Record<string, { name: string; url: string }[]>
+  >({});
   /** Com radar em foco e par CPTEC+REDEMET: escolha de fonte (Automático = recente no CPTEC senão REDEMET). */
   const [focusedRadarSource, setFocusedRadarSource] = useState<FocusedRadarSourceMode>('auto');
   /** `null` = sempre o último instante da timeline (abertura / “ao vivo”); número = frame fixo após interação. */
@@ -648,28 +653,38 @@ export default function AoVivo2Content() {
   );
 
   const ppiSourceBySlug = useMemo(() => {
-    const out: Record<string, 'cptec' | 'redemet' | 'sigma'> = {};
+    const out: Record<string, 'cptec' | 'redemet' | 'sigma' | 'sipam'> = {};
     for (const slug of stationsWithBounds) {
       const catalog = bucketSlugToCatalogSlug(slug);
       const cptec = imagesByStationPpi[slug] ?? [];
       const red = imagesRedemetPpiByCptec[slug] ?? [];
       const sig = imagesSigmaPpiByCptec[slug] ?? [];
+      const sip = imagesSipamPpiByCptec[slug] ?? [];
       const hasRed = hasRedemetFallback(catalog) && red.length > 0;
       const hasSig = hasSigmaFallback(catalog) && sig.length > 0;
+      const hasSip = hasSipamFallback(catalog) && sip.length > 0;
 
-      let src: 'cptec' | 'redemet' | 'sigma';
+      let src: 'cptec' | 'redemet' | 'sigma' | 'sipam';
       if (focusedSlug === slug && focusedRadarSource !== 'auto') {
-        src = focusedRadarSource;
+        src = focusedRadarSource as any;
         if (src === 'cptec' && cptec.length === 0) {
           if (hasRed) src = 'redemet';
           else if (hasSig) src = 'sigma';
+          else if (hasSip) src = 'sipam';
         }
         if (src === 'redemet' && !hasRed) {
           if (hasSig) src = 'sigma';
+          else if (hasSip) src = 'sipam';
           else src = 'cptec';
         }
         if (src === 'sigma' && !hasSig) {
           if (hasRed) src = 'redemet';
+          else if (hasSip) src = 'sipam';
+          else src = 'cptec';
+        }
+        if (src === 'sipam' && !hasSip) {
+          if (hasRed) src = 'redemet';
+          else if (hasSig) src = 'sigma';
           else src = 'cptec';
         }
       } else {
@@ -679,6 +694,8 @@ export default function AoVivo2Content() {
           src = 'redemet';
         } else if (hasSig) {
           src = 'sigma';
+        } else if (hasSip) {
+          src = 'sipam';
         } else {
           src = 'cptec';
         }
@@ -691,6 +708,7 @@ export default function AoVivo2Content() {
     imagesByStationPpi,
     imagesRedemetPpiByCptec,
     imagesSigmaPpiByCptec,
+    imagesSipamPpiByCptec,
     focusedSlug,
     focusedRadarSource,
   ]);
@@ -702,10 +720,11 @@ export default function AoVivo2Content() {
       const cptec = imagesByStationPpi[slug] ?? [];
       const red = imagesRedemetPpiByCptec[slug] ?? [];
       const sig = imagesSigmaPpiByCptec[slug] ?? [];
-      out[slug] = src === 'sigma' ? sig : (src === 'redemet' ? red : cptec);
+      const sip = imagesSipamPpiByCptec[slug] ?? [];
+      out[slug] = src === 'sipam' ? sip : (src === 'sigma' ? sig : (src === 'redemet' ? red : cptec));
     }
     return out;
-  }, [stationsWithBounds, ppiSourceBySlug, imagesByStationPpi, imagesRedemetPpiByCptec, imagesSigmaPpiByCptec]);
+  }, [stationsWithBounds, ppiSourceBySlug, imagesByStationPpi, imagesRedemetPpiByCptec, imagesSigmaPpiByCptec, imagesSipamPpiByCptec]);
 
   const effectiveDopplerImagesBySlug = useMemo(() => {
     const out: Record<string, { name: string; url: string }[]> = {};
@@ -877,6 +896,7 @@ export default function AoVivo2Content() {
       setImagesRedemetPpiByCptec({});
       setImagesSigmaPpiByCptec({});
       setImagesSigmaDopplerByCptec({});
+      setImagesSipamPpiByCptec({});
       setTimelineCursor(null);
       return;
     }
@@ -951,6 +971,7 @@ export default function AoVivo2Content() {
 
         const nextSigPpi: Record<string, { name: string; url: string }[]> = {};
         const nextSigDop: Record<string, { name: string; url: string }[]> = {};
+        const nextSipPpi: Record<string, { name: string; url: string }[]> = {};
         if (sigRows) {
           for (const r of sigRows) {
             nextSigPpi[r.cptecSlug] = r.imagesPpi;
@@ -959,6 +980,7 @@ export default function AoVivo2Content() {
         }
         setImagesSigmaPpiByCptec(nextSigPpi);
         setImagesSigmaDopplerByCptec(nextSigDop);
+        setImagesSipamPpiByCptec(nextSipPpi);
 
         setTimelineCursor(null);
       })
@@ -1104,8 +1126,12 @@ export default function AoVivo2Content() {
 
     const b = mergeFitBounds(stationsWithBounds, (slug) => {
       const redSlug = getRedemetBucketSlugForCptecBucket(slug);
+      const sigSlug = getSigmaBucketSlugForCptecBucket(slug);
+      const sipSlug = getSipamBucketSlugForCptecBucket(slug);
       const src = ppiSourceBySlug[slug];
       if (src === 'redemet' && redSlug) return findCptecBySlug(redSlug, radarConfigs);
+      if (src === 'sigma' && sigSlug) return findCptecBySlug(sigSlug, radarConfigs);
+      if (src === 'sipam' && sipSlug) return findCptecBySlug(sipSlug, radarConfigs);
       return findCptecBySlug(slug, radarConfigs);
     });
     
@@ -1165,6 +1191,7 @@ export default function AoVivo2Content() {
           (imagesRedemetPpiByCptec[slug]?.length ?? 0) > 0 ||
           (imagesSigmaPpiByCptec[slug]?.length ?? 0) > 0 ||
           (imagesSigmaDopplerByCptec[slug]?.length ?? 0) > 0 ||
+          (imagesSipamPpiByCptec[slug]?.length ?? 0) > 0 ||
           (imagesByStationDoppler[slug]?.length ?? 0) > 0;
 
         const createMarker = (lat: number, lng: number, title: string) => {
@@ -1342,6 +1369,7 @@ export default function AoVivo2Content() {
         kind === 'doppler'
           ? (() => {
               const ss = getSigmaBucketSlugForCptecBucket(slug);
+              const sip = getSipamBucketSlugForCptecBucket(slug);
               // if sigma is selected for doppler
               // effectiveDopplerImagesBySlug determines source. Since we forced it to match ppiSourceBySlug
               if (ppiSourceBySlug[slug] === 'sigma' && ss) return findCptecBySlug(ss, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
@@ -1351,16 +1379,24 @@ export default function AoVivo2Content() {
               const src = ppiSourceBySlug[slug];
               const rs = getRedemetBucketSlugForCptecBucket(slug);
               const ss = getSigmaBucketSlugForCptecBucket(slug);
+              const sip = getSipamBucketSlugForCptecBucket(slug);
               if (src === 'redemet' && rs) return findCptecBySlug(rs, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
               if (src === 'sigma' && ss) return findCptecBySlug(ss, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
+              if (src === 'sipam' && sip) return findCptecBySlug(sip, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
               return findCptecBySlug(slug, radarConfigs);
             })();
       if (!boundsStation) return;
-      const bounds = getRadarImageBounds(boundsStation);
-      let coordinates = imageCoordinatesFromBounds(bounds);
-      
-      const config = radarConfigs.find(c => c.id === slug) || radarConfigs.find(c => c.stationSlug === boundsStation.slug);
-      const targetOpacity = (config?.opacity !== undefined && config?.opacity !== null) ? config.opacity : (superResMode ? 0.95 : 0.88);
+        const bounds = getRadarImageBounds(boundsStation);
+        let coordinates = imageCoordinatesFromBounds(bounds);
+        
+        let targetConfigId = boundsStation.slug;
+        const src = ppiSourceBySlug[slug];
+        if (src === 'redemet') targetConfigId = boundsStation.slug + '-redemet';
+        else if (src === 'sigma') targetConfigId = 'sigma-' + boundsStation.slug;
+        else if (src === 'sipam') targetConfigId = 'sipam-' + boundsStation.slug;
+
+        const config = radarConfigs.find(c => c.id === targetConfigId) || radarConfigs.find(c => c.id === boundsStation.slug) || radarConfigs.find(c => c.stationSlug === boundsStation.slug);
+        const targetOpacity = (config?.opacity !== undefined && config?.opacity !== null) ? config.opacity : (superResMode ? 0.95 : 0.88);
 
       if (config?.rotationDegrees) {
         // Rotate the 4 corners around the center
@@ -1429,7 +1465,7 @@ export default function AoVivo2Content() {
           nextUrl = filtered ?? nextUrl;
         }
         const mRadius = boundsStation.maskRadiusKm;
-        if (mRadius !== undefined && mRadius < boundsStation.rangeKm || slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
+        if (mRadius !== undefined && mRadius !== boundsStation.rangeKm || slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
           const radiusToUse = mRadius ?? boundsStation.rangeKm;
           const masked = await filterRadarImageCircularMask(nextUrl, boundsStation.lat, boundsStation.lng, radiusToUse, bounds);
           if (gen !== layerUpdateGenerationRef.current) return;
@@ -2013,7 +2049,7 @@ export default function AoVivo2Content() {
                       <p className="min-w-0 truncate text-[11px] font-semibold text-white sm:text-sm">
                         {stationTitle}
                       </p>
-                      {(focusedSlug && (hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) || hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)))) && (
+                      {(focusedSlug && (hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) || hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)) || hasSipamFallback(bucketSlugToCatalogSlug(focusedSlug)))) && (
                         <select
                           value={focusedRadarSource}
                           onChange={(e) => {
@@ -2028,6 +2064,7 @@ export default function AoVivo2Content() {
                           <option value="cptec">CPTEC</option>
                           {hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="redemet">REDEMET</option>}
                           {hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="sigma">SIGMA</option>}
+                          {hasSipamFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="sipam">SIPAM HIDRO</option>}
                         </select>
                       )}
                     </div>

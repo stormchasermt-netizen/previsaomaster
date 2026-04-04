@@ -1,6 +1,6 @@
 import express from 'express';
 import { Storage } from '@google-cloud/storage';
-import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, downloadArgentinaImagesInWindow, downloadRedemetImagesInWindow, downloadSimeparImagesInWindow, downloadSigmaImagesInWindow, downloadSipamImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
+import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, downloadArgentinaImagesInWindow, downloadRedemetImagesInWindow, downloadSimeparImagesInWindow, downloadSigmaImagesInWindow, downloadSipamImagesInWindow, downloadUspImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
 const storage = new Storage();
 const PORT = process.env.PORT || '8080';
 const GCS_BUCKET = process.env.GCS_BUCKET || 'radar_ao_vivo_2';
@@ -152,6 +152,9 @@ async function executeSync(targetSlug) {
                 checkExists,
             });
         }
+        else if (slug === 'usp-starnet') {
+            found = await downloadUspImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES);
+        }
         else {
             const station = CPTEC_STATIONS[slug];
             if (!station) {
@@ -250,6 +253,10 @@ async function executeHistorico(targetTs12, windowMinutes) {
             else {
                 r = [];
             }
+        }
+        else if (slug === 'usp-starnet') {
+            const usp = await downloadUspImagesInWindow(slug, targetTs12, windowMinutes);
+            r = usp.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
         }
         else {
             const st = CPTEC_STATIONS[slug];
