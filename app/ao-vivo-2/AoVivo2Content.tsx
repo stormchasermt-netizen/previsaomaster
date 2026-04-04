@@ -120,7 +120,10 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
       if (config.lng !== undefined && config.lng !== 0) merged.lng = config.lng;
 
       if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
-      if (config.maskRadiusKm !== undefined && config.maskRadiusKm !== 0) merged.maskRadiusKm = config.maskRadiusKm;
+      // Inherit from config.rangeKm if maskRadiusKm is not explicitly set
+      merged.maskRadiusKm = (config.maskRadiusKm !== undefined && config.maskRadiusKm !== 0) 
+        ? config.maskRadiusKm 
+        : (config.rangeKm !== undefined && config.rangeKm !== 0 ? config.rangeKm : base.rangeKm);
       
       if (config.customBounds && config.customBounds.north) {
         merged.bounds = {
@@ -885,9 +888,13 @@ export default function AoVivo2Content() {
 
   // Polling para historico e ao vivo
   useEffect(() => {
-    const interval = setInterval(fetchAllData, 60000); // 1 minuto
+    // Se está no modo histórico e ainda não carregou as estações ou imagens, faz polling mais rápido para ver quando o backend terminou
+    const isWaitingForHistory = isHistoricalMode && stations.length === 0;
+    const intervalTime = isWaitingForHistory ? 5000 : 60000;
+    
+    const interval = setInterval(fetchAllData, intervalTime);
     return () => clearInterval(interval);
-  }, [isHistoricalMode]);
+  }, [isHistoricalMode, stations.length]);
 
   useEffect(() => {
     if (stationsWithBounds.length === 0) {

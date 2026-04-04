@@ -239,88 +239,88 @@ async function executeHistorico(targetTs12: string, windowMinutes: number): Prom
   const bucket = storage.bucket(GCS_BUCKET);
   const results: any[] = [];
   
-  for (const slug of SYNC_SLUGS) {
-    if (SLUGS_WITHOUT_CDN_SYNC.has(slug)) continue;
-    
-    // Clear existing history for this slug
-    const prefix = `historico/${slug}/`;
+  const activeSlugs = SYNC_SLUGS.filter(slug => !SLUGS_WITHOUT_CDN_SYNC.has(slug));
+
+  // Clear existing history for all active slugs in parallel to speed up
+  await Promise.all(activeSlugs.map(async (slug) => {
     try {
-      await bucket.deleteFiles({ prefix });
+      await bucket.deleteFiles({ prefix: `historico/${slug}/` });
     } catch (e) {
       console.error(`Failed to clear history for ${slug}`, e);
     }
-    
-    // Download logic
-    let r: { buffer: Buffer, fileName: string, url: string }[] = [];
-    if (slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
-      // For Ipmet we might not be able to easily get history unless the proxy supports it, but let's try the latest
-      const fetchIpmet = await fetchIpmetImage(targetTs12);
-      r = fetchIpmet ? [{ buffer: fetchIpmet.buffer, fileName: `${fetchIpmet.ts12}.png`, url: 'ipmet' }] : [];
-    } else if (slug === 'climatempo-poa') {
-      const climatempo = await fetchClimatempoPoa(targetTs12);
-      r = climatempo ? [{ buffer: climatempo.buffer, fileName: `${climatempo.ts12}.png`, url: 'climatempo' }] : [];
-    } else if (slug === 'simepar-cascavel') {
-      const simepar = await downloadSimeparImagesInWindow(slug, targetTs12, windowMinutes);
-      r = simepar.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
-    } else if (slug.startsWith('sigma-')) {
-      const st = CPTEC_STATIONS[slug];
-      if (st && st.sigmaConfig) {
-        const sigma = await downloadSigmaImagesInWindow(slug, targetTs12, windowMinutes);
-        r = sigma.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
-      } else {
-        r = [];
-      }
-    } else if (slug.startsWith('sipam-')) {
-      const baseSlug = slug.replace('sipam-', '');
-      const sipamSlug = CPTEC_STATIONS[baseSlug]?.sipamSlug || CPTEC_STATIONS[slug]?.sipamSlug;
-      if (sipamSlug) {
-        const sipamData = await downloadSipamImagesInWindow(slug, targetTs12, windowMinutes, sipamSlug);
-        r = sipamData.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
-      } else {
-        r = [];
-      }
-    } else if (slug.startsWith('redemet-')) {
-      const baseSlug = slug.replace('redemet-', '');
-      const st = CPTEC_STATIONS[baseSlug];
-      if (st) {
-        const red = await downloadRedemetImagesInWindow(baseSlug, targetTs12, windowMinutes);
-        r = red.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
-      } else {
-        r = [];
-      }
-    } else if (slug === 'usp-starnet') {
-      const usp = await downloadUspImagesInWindow(slug, targetTs12, windowMinutes);
-      r = usp.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
-    } else {
-      const st = CPTEC_STATIONS[slug];
-      if (st) {
-        if (st.org === 'smn_ar') {
-          const ar = await downloadArgentinaImagesInWindow(slug, targetTs12, windowMinutes);
-          r = ar.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+  }));
+  
+  // Download logic in parallel (batches of 10)
+  const batchSize = 10;
+  for (let i = 0; i < activeSlugs.length; i += batchSize) {
+    const batch = activeSlugs.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (slug) => {
+      let r: { buffer: Buffer, fileName: string, url: string }[] = [];
+      try {
+        if (slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
+          const fetchIpmet = await fetchIpmetImage(targetTs12);
+          r = fetchIpmet ? [{ buffer: fetchIpmet.buffer, fileName: `${fetchIpmet.ts12}.png`, url: 'ipmet' }] : [];
+        } else if (slug === 'climatempo-poa') {
+          const climatempo = await fetchClimatempoPoa(targetTs12);
+          r = climatempo ? [{ buffer: climatempo.buffer, fileName: `${climatempo.ts12}.png`, url: 'climatempo' }] : [];
+        } else if (slug === 'simepar-cascavel') {
+          const simepar = await downloadSimeparImagesInWindow(slug, targetTs12, windowMinutes);
+          r = simepar.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+        } else if (slug.startsWith('sigma-')) {
+          const st = CPTEC_STATIONS[slug];
+          if (st && st.sigmaConfig) {
+            const sigma = await downloadSigmaImagesInWindow(slug, targetTs12, windowMinutes);
+            r = sigma.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+          }
+        } else if (slug.startsWith('sipam-')) {
+          const baseSlug = slug.replace('sipam-', '');
+          const sipamSlug = CPTEC_STATIONS[baseSlug]?.sipamSlug || CPTEC_STATIONS[slug]?.sipamSlug;
+          if (sipamSlug) {
+            const sipamData = await downloadSipamImagesInWindow(slug, targetTs12, windowMinutes, sipamSlug);
+            r = sipamData.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+          }
+        } else if (slug.startsWith('redemet-')) {
+          const baseSlug = slug.replace('redemet-', '');
+          const st = CPTEC_STATIONS[baseSlug];
+          if (st) {
+            const red = await downloadRedemetImagesInWindow(baseSlug, targetTs12, windowMinutes);
+            r = red.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+          }
+        } else if (slug === 'usp-starnet') {
+          const usp = await downloadUspImagesInWindow(slug, targetTs12, windowMinutes);
+          r = usp.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
         } else {
-          const cptec = await downloadCptecImagesInWindow(st as any, slug, targetTs12, windowMinutes);
-          r = cptec.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+          const st = CPTEC_STATIONS[slug];
+          if (st) {
+            if (st.org === 'smn_ar') {
+              const ar = await downloadArgentinaImagesInWindow(slug, targetTs12, windowMinutes);
+              r = ar.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+            } else {
+              const cptec = await downloadCptecImagesInWindow(st as any, slug, targetTs12, windowMinutes);
+              r = cptec.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+            }
+          }
         }
-      } else {
-        r = [];
+      } catch (e) {
+        console.error(`Error downloading history for ${slug}:`, e);
       }
-    }
-    
-    // Save to historico/slug/
-    if (r && r.length > 0) {
-      await Promise.all(r.map(async item => {
-        try {
-          const objectPath = `historico/${slug}/${item.fileName}`;
-          const file = bucket.file(objectPath);
-          await file.save(item.buffer, { contentType: 'image/png' });
-        } catch (e) {
-          console.error('Failed to save', item.fileName, e);
-        }
-      }));
-      results.push({ slug, count: r.length });
-    } else {
-      results.push({ slug, count: 0 });
-    }
+      
+      // Save to historico/slug/
+      if (r && r.length > 0) {
+        await Promise.all(r.map(async item => {
+          try {
+            const objectPath = `historico/${slug}/${item.fileName}`;
+            const file = bucket.file(objectPath);
+            await file.save(item.buffer, { contentType: 'image/png' });
+          } catch (e) {
+            console.error('Failed to save', item.fileName, e);
+          }
+        }));
+        results.push({ slug, count: r.length });
+      } else {
+        results.push({ slug, count: 0 });
+      }
+    }));
   }
   
   return { ok: true, results };
