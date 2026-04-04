@@ -154,6 +154,11 @@ service cloud.firestore {
       allow get, list: if isSignedIn();
       allow create, update, delete: if isAdmin();
     }
+    
+    match /radar_configs_v2/{configId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
 
     /**
      * @description Presença em tempo real.

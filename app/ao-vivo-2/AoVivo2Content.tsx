@@ -93,7 +93,16 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
   if (!base) return undefined;
 
   if (radarConfigs) {
-    const config = radarConfigs.find(c => c.id === slug) || radarConfigs.find(c => c.stationSlug === base.slug);
+    let targetConfigId = base.slug;
+    if (slug.startsWith('redemet-')) targetConfigId = base.slug + '-redemet';
+    else if (slug.startsWith('sigma-')) targetConfigId = base.slug + '-sigma';
+
+    let config = radarConfigs.find(c => c.id === targetConfigId);
+    if (!config) {
+      // Fallback para a config padrão da base CPTEC se não houver config específica da fonte
+      config = radarConfigs.find(c => c.id === base.slug);
+    }
+
     if (config) {
       const merged = { ...base, iconLat: base.lat, iconLng: base.lng, maskRadiusKm: base.rangeKm };
       const isIpmet = base.slug === 'ipmet-bauru' || base.slug === 'ipmet-prudente';
