@@ -1,3 +1,5 @@
+import { applyThemeToReflectivity, applyThemeToVelocity } from './radarThemeApplier';
+
 /**
  * Filtro de ruído para imagens de radar meteorológico.
  * Remove pixels brancos/cinza (ground clutter, ruído) tornando-os transparentes.
@@ -107,7 +109,9 @@ export async function filterRadarImageCircularMask(
 export async function filterRadarImageFromUrl(
   imageUrl: string,
   chromaDelta?: number,
-  cropConfig?: { top: number; bottom: number; left: number; right: number }
+  cropConfig?: { top: number; bottom: number; left: number; right: number },
+  theme?: 'classic' | 'gutoscope',
+  isVelocity?: boolean
 ): Promise<string | null> {
   try {
     let blob: Blob;
@@ -160,6 +164,14 @@ export async function filterRadarImageFromUrl(
       }
     } else {
       filterPixels(imageData.data);
+    }
+    
+    if (theme === 'gutoscope') {
+      if (isVelocity) {
+        applyThemeToVelocity(imageData.data);
+      } else {
+        applyThemeToReflectivity(imageData.data);
+      }
     }
     
     ctx.putImageData(imageData, 0, 0);

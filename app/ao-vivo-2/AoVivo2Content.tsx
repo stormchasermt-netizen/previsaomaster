@@ -17,6 +17,7 @@ import {
   Menu,
   Layers,
   Check,
+  Palette,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -625,6 +626,7 @@ export default function AoVivo2Content() {
   const [mapRasterIdle, setMapRasterIdle] = useState(false);
   const [splitScreen, setSplitScreen] = useState(false);
   const [superResMode, setSuperResMode] = useState(false);
+  const [radarTheme, setRadarTheme] = useState<'classic' | 'gutoscope'>('classic');
   const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
 
   const [baseMapId, setBaseMapId] = useState<BaseMapId>('streets');
@@ -1159,9 +1161,9 @@ export default function AoVivo2Content() {
       map.fitBounds(b, opts);
     }
     
-    hasFitBoundsRef.current = true;
+      hasFitBoundsRef.current = true;
     lastSplitScreenRef.current = splitScreen;
-  }, [mapReady, stationsWithBounds, superResMode, splitScreen, ppiSourceBySlug, radarConfigs]);
+  }, [mapReady, stationsWithBounds, superResMode, splitScreen, ppiSourceBySlug, radarConfigs, radarTheme]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -1464,16 +1466,21 @@ export default function AoVivo2Content() {
         else apply();
       };
 
-      void (async () => {
-        let nextUrl = absoluteUrl(url);
-        if (slug === 'climatempo-poa') {
-          const filtered = await filterClimatempoRadarImage(nextUrl);
-          if (gen !== layerUpdateGenerationRef.current) return;
-          nextUrl = filtered ?? nextUrl;
-        }
-        const mRadius = boundsStation.maskRadiusKm;
-        if (mRadius !== undefined && mRadius !== boundsStation.rangeKm || slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
-          const radiusToUse = mRadius ?? boundsStation.rangeKm;
+        void (async () => {
+          let nextUrl = absoluteUrl(url);
+          if (slug === 'climatempo-poa') {
+            const filtered = await filterClimatempoRadarImage(nextUrl);
+            if (gen !== layerUpdateGenerationRef.current) return;
+            nextUrl = filtered ?? nextUrl;
+          } else {
+            // Apply base filter and theme immediately if we aren't using climatempo
+            const baseFiltered = await filterRadarImageFromUrl(nextUrl, undefined, undefined, radarTheme, kind === 'doppler');
+            if (gen !== layerUpdateGenerationRef.current) return;
+            nextUrl = baseFiltered ?? nextUrl;
+          }
+          const mRadius = boundsStation.maskRadiusKm;
+          if (mRadius !== undefined && mRadius !== boundsStation.rangeKm || slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
+            const radiusToUse = mRadius ?? boundsStation.rangeKm;
           const masked = await filterRadarImageCircularMask(nextUrl, boundsStation.lat, boundsStation.lng, radiusToUse, bounds);
           if (gen !== layerUpdateGenerationRef.current) return;
           nextUrl = masked ?? nextUrl;
@@ -1884,7 +1891,19 @@ export default function AoVivo2Content() {
 
           {/* Galeria de Mapa Base - Canto Direito */}
           <div className="absolute right-3 top-3 flex items-start gap-3 pointer-events-auto sm:right-4 sm:top-4 z-50">
-            {/* Base Map Picker */}
+              {/* Theme Picker */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setRadarTheme(radarTheme === 'classic' ? 'gutoscope' : 'classic')}
+                  className={`flex h-[60px] w-[60px] items-center justify-center rounded-full transition-all hover:scale-105 shadow-lg border border-white/10 ${radarTheme === 'gutoscope' ? 'bg-cyan-600 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)]' : 'bg-[#0f172a] text-slate-300 hover:text-white'}`}
+                  title="Mudar Tema do Radar"
+                >
+                  <Palette className="h-6 w-6" />
+                </button>
+              </div>
+              
+              {/* Base Map Picker */}
             <div className="relative">
               <button
                 type="button"
