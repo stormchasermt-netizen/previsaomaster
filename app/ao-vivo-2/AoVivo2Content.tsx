@@ -1622,7 +1622,7 @@ export default function AoVivo2Content() {
     });
   };
 
-  const showEmptyBucketHelp = stations.length === 0 && !isLoading && !error;
+  const showEmptyBucketHelp = stations.length === 0 && !isLoading && !error && !histLoading && !isHistoricalMode;
 
   const stationTitle = focusedAliasName || (focusedSlug
     ? (findCptecBySlug(focusedSlug, radarConfigs)?.name ?? focusedSlug)
