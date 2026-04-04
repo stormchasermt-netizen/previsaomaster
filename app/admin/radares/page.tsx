@@ -9,7 +9,7 @@ import { ChevronLeft, Plus, Check, X, Radar, Loader2, Save, MapPin, Layers } fro
 import { MAP_STYLE_DARK } from '@/lib/constants';
 import { CPTEC_RADAR_STATIONS, calculateRadarBounds, calculateRadarBoundsGeodesic, buildNowcastingPngUrl, getNowMinusMinutesTimestamp12UTC, getNearestRadarTimestamp, subtractMinutesFromTimestamp12UTC, type CptecRadarStation } from '@/lib/cptecRadarStations';
 import { hasRedemetFallback, getRedemetArea, buildRedemetPngUrl } from '@/lib/redemetRadar';
-import { hasSigmaFallback } from '@/lib/cptecRadarStations';
+import { hasSigmaFallback, IPMET_FIXED_BOUNDS } from '@/lib/cptecRadarStations';
 import {
   ARGENTINA_RADAR_STATIONS,
   buildArgentinaRadarPngUrl,
@@ -275,7 +275,10 @@ if (baseMapId === 'dark') {
     const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
     const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
     
-    return calc(latForBounds, lngForBounds, rangeKm);
+    let computed = calc(latForBounds, lngForBounds, rangeKm);
+    const isIpmet = selectedStation?.type === 'cptec' && ((s as CptecRadarStation).slug === 'ipmet-bauru' || (s as CptecRadarStation).slug === 'ipmet-prudente');
+    if (isIpmet) { computed = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
+    return computed;
   }, [centerLat, centerLng, imageCenterLat, imageCenterLng, rangeKm, selectedStation]);
 
   const getArgentinaTsArgentina = (intervalMinutes: number): string => {
@@ -494,10 +497,11 @@ if (baseMapId === 'dark') {
       : `argentina:${(s as ArgentinaRadarStation).id}`;
     const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : (selectedStation.type === 'cptec' && radarSource === 'sigma') ? `sigma-${slug}` : slug;
     
-    const isIpmet = selectedStation.type === 'cptec' && (s as CptecRadarStation).slug === 'ipmet-bauru';
+    const isIpmet = selectedStation.type === 'cptec' && ((s as CptecRadarStation).slug === 'ipmet-bauru' || (s as CptecRadarStation).slug === 'ipmet-prudente');
     
     const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
-    const computedBounds = calcBounds(newImgLat, newImgLng, rangeKm);
+    let computedBounds = calcBounds(newImgLat, newImgLng, rangeKm);
+    if (isIpmet) { computedBounds = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     
     setSaving(true);
     try {
@@ -579,6 +583,7 @@ if (baseMapId === 'dark') {
     } else {
       const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
       computedBounds = calcBounds(latForBounds, lngForBounds, rangeKm);
+      if (isIpmet) { computedBounds = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     }
     
     setSaving(true);
@@ -1091,6 +1096,7 @@ if (baseMapId === 'dark') {
       };
     } else {
       computedBounds = calcBounds(latForBounds, lngForBounds, rangeKm);
+      if (isIpmet) { computedBounds = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     }
     
     setSaving(true);
