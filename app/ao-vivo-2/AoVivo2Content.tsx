@@ -111,20 +111,22 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
       if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
       if (config.maskRadiusKm !== undefined && config.maskRadiusKm !== 0) merged.maskRadiusKm = config.maskRadiusKm;
       
-      if (config.customBounds && config.customBounds.north) {
-        merged.bounds = {
-          maxLat: config.customBounds.north,
-          minLat: config.customBounds.south,
-          maxLon: config.customBounds.east,
-          minLon: config.customBounds.west
-        };
-      } else if (config.bounds && config.bounds.ne) {
-        merged.bounds = {
-          maxLat: config.bounds.ne.lat,
-          minLat: config.bounds.sw.lat,
-          maxLon: config.bounds.ne.lng,
-          minLon: config.bounds.sw.lng
-        };
+      if (!isIpmet) {
+        if (config.customBounds && config.customBounds.north) {
+          merged.bounds = {
+            maxLat: config.customBounds.north,
+            minLat: config.customBounds.south,
+            maxLon: config.customBounds.east,
+            minLon: config.customBounds.west
+          };
+        } else if (config.bounds && config.bounds.ne) {
+          merged.bounds = {
+            maxLat: config.bounds.ne.lat,
+            minLat: config.bounds.sw.lat,
+            maxLon: config.bounds.ne.lng,
+            minLon: config.bounds.sw.lng
+          };
+        }
       }
       return merged;
     }
@@ -580,8 +582,16 @@ export default function AoVivo2Content() {
   const prevTimelineLenRef = useRef(0);
 
   const stationsWithBounds = useMemo(
-    () =>
-      stations.filter((s) => !s.startsWith('redemet-') && Boolean(findCptecBySlug(s, radarConfigs))).sort(),
+    () => {
+      const baseSlugs = new Set<string>();
+      for (const s of stations) {
+        const base = bucketSlugToCatalogSlug(s);
+        if (Boolean(findCptecBySlug(base, radarConfigs))) {
+          baseSlugs.add(base);
+        }
+      }
+      return Array.from(baseSlugs).sort();
+    },
     [stations, radarConfigs]
   );
 
