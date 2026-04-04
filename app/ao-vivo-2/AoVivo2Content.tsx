@@ -95,7 +95,7 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
   if (radarConfigs) {
     let targetConfigId = base.slug;
     if (slug.startsWith('redemet-')) targetConfigId = base.slug + '-redemet';
-    else if (slug.startsWith('sigma-')) targetConfigId = base.slug + '-sigma';
+    else if (slug.startsWith('sigma-')) targetConfigId = 'sigma-' + base.slug;
 
     let config = radarConfigs.find(c => c.id === targetConfigId);
     if (!config) {
@@ -1696,10 +1696,10 @@ export default function AoVivo2Content() {
       {!showEmptyBucketHelp && !error && (
         <>
           {splitScreen ? (
-            <div className="absolute inset-0 z-0 flex min-h-0 w-full">
-              <div ref={mapContainerSplitLeftRef} className="relative h-full min-h-0 min-w-0 flex-1" />
-              <div className="w-px shrink-0 bg-teal-500/70" aria-hidden />
-              <div ref={mapContainerSplitRightRef} className="relative h-full min-h-0 min-w-0 flex-1" />
+            <div className="absolute inset-0 z-0 flex flex-col md:flex-row min-h-0 w-full">
+              <div ref={mapContainerSplitLeftRef} className="relative w-full md:h-full md:w-auto min-h-0 min-w-0 flex-1" />
+              <div className="h-px md:h-full md:w-px shrink-0 bg-teal-500/70" aria-hidden />
+              <div ref={mapContainerSplitRightRef} className="relative w-full md:h-full md:w-auto min-h-0 min-w-0 flex-1" />
             </div>
           ) : (
             <div ref={mapContainerSingleRef} className="absolute inset-0 z-0 h-full w-full" />
@@ -1904,39 +1904,39 @@ export default function AoVivo2Content() {
           {/* Legenda — centro superior (dividido: PPI + Doppler m/s) */}
           <div
             className={`pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 sm:top-4 ${
-              splitScreen ? 'w-[min(98vw,720px)]' : 'w-[min(96vw,520px)]'
+              splitScreen ? 'w-[min(98vw,560px)] sm:w-[min(98vw,720px)]' : 'w-[min(65vw,520px)] sm:w-[min(96vw,520px)]'
             }`}
           >
             {splitScreen ? (
-              <div className="flex gap-2 sm:gap-3">
-                <div className="min-w-0 flex-1 rounded-2xl bg-white/95 px-2 py-2 shadow-lg ring-1 ring-black/5 sm:px-3 sm:py-2.5">
-                  <div className="mb-1 flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-bold text-slate-900 sm:text-[11px]">dBZ</span>
-                    <span className="text-[8px] text-slate-600 sm:text-[9px]">Refletividade</span>
+              <div className="flex gap-1.5 sm:gap-3 px-14 sm:px-0">
+                <div className="min-w-0 flex-1 rounded-2xl bg-white/95 px-1.5 py-1.5 shadow-lg ring-1 ring-black/5 sm:px-3 sm:py-2.5">
+                  <div className="mb-0.5 flex items-center justify-between gap-1">
+                    <span className="text-[8px] font-bold text-slate-900 sm:text-[11px]">dBZ</span>
+                    <span className="text-[6px] text-slate-600 sm:text-[9px]">Refletividade</span>
                   </div>
                   <div
-                    className="h-3 w-full rounded-md shadow-inner"
+                    className="h-2 sm:h-3 w-full rounded-md shadow-inner"
                     style={{
                       background:
                         'linear-gradient(90deg,#6b6b6b 0%,#00c8ff 8%,#00ff66 22%,#ffff00 38%,#ff9900 52%,#ff0000 66%,#ff00ff 80%,#ffffff 100%)',
                     }}
                   />
-                  <div className="mt-1 flex justify-between text-[7px] font-medium tabular-nums text-slate-700 sm:text-[8px]">
+                  <div className="mt-0.5 flex justify-between text-[5px] font-medium tabular-nums text-slate-700 sm:text-[8px]">
                     {dbzLegendTicks.map((t) => (
                       <span key={t}>{t}</span>
                     ))}
                   </div>
                 </div>
-                <div className="min-w-0 flex-1 rounded-2xl bg-white/95 px-2 py-2 shadow-lg ring-1 ring-black/5 sm:px-3 sm:py-2.5">
-                  <div className="mb-1 flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-bold text-slate-900 sm:text-[11px]">m/s</span>
-                    <span className="text-[8px] text-slate-600 sm:text-[9px]">Doppler</span>
+                <div className="min-w-0 flex-1 rounded-2xl bg-white/95 px-1.5 py-1.5 shadow-lg ring-1 ring-black/5 sm:px-3 sm:py-2.5">
+                  <div className="mb-0.5 flex items-center justify-between gap-1">
+                    <span className="text-[8px] font-bold text-slate-900 sm:text-[11px]">m/s</span>
+                    <span className="text-[6px] text-slate-600 sm:text-[9px]">Doppler</span>
                   </div>
                   <div
-                    className="h-3 w-full rounded-md shadow-inner"
+                    className="h-2 sm:h-3 w-full rounded-md shadow-inner"
                     style={{ background: DOPPLER_LEGEND_GRADIENT_MS }}
                   />
-                  <div className="mt-1 flex justify-between text-[7px] font-medium tabular-nums text-slate-700 sm:text-[8px]">
+                  <div className="mt-0.5 flex justify-between text-[5px] font-medium tabular-nums text-slate-700 sm:text-[8px]">
                     {DOPPLER_LEGEND_TICKS_MS.map((t) => (
                       <span key={t} className="max-w-[2rem] truncate sm:max-w-none">
                         {t}
