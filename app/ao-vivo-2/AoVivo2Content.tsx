@@ -99,7 +99,7 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
     else if (slug.startsWith('sigma-')) targetConfigId = 'sigma-' + base.slug;
     else if (slug.startsWith('sipam-')) targetConfigId = 'sipam-' + base.slug;
 
-    let config = radarConfigs.find(c => c.id === targetConfigId);
+    let config = radarConfigs.find(c => c.id === targetConfigId) || radarConfigs.find(c => c.id === slug) || radarConfigs.find(c => c.stationSlug === slug);
     if (!config) {
       // Fallback para a config padrão da base CPTEC se não houver config específica da fonte
       config = radarConfigs.find(c => c.id === base.slug);
@@ -1393,7 +1393,7 @@ export default function AoVivo2Content() {
               return findCptecBySlug(slug, radarConfigs);
             })();
       if (!boundsStation) return;
-        const bounds = getRadarImageBounds(boundsStation);
+        const bounds = getRadarImageBounds(boundsStation, boundsStation.rangeKm);
         let coordinates = imageCoordinatesFromBounds(bounds);
         
         let targetConfigId = boundsStation.slug;

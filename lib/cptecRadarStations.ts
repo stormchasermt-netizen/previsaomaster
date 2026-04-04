@@ -500,38 +500,45 @@ export function calculateRadarBoundsGeodesic(
 /** Bounds geográficos da imagem PPI (quadrado centrado no radar). IPMet usa bounds fixos da WMS.
  *  @param overrideRangeKm - Se fornecido, usa esse alcance em vez do padrão da estação (ex: 400km para REDEMET Santiago).
  */
-export function getRadarImageBounds(station: CptecRadarStation, overrideRangeKm?: number): {
-  north: number;
-  south: number;
-  east: number;
-  west: number;
-} {
-  // Se a estação já tiver bounds definidos (ex: via override do admin, Redemet, Simepar, Ipmet), usá-los
-  if (station.bounds) {
-    return { 
-      north: station.bounds.maxLat, 
-      south: station.bounds.minLat, 
-      east: station.bounds.maxLon, 
-      west: station.bounds.minLon 
+  export function getRadarImageBounds(station: CptecRadarStation, overrideRangeKm?: number): {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  } {
+    // Se overrideRangeKm for fornecido (ex: via getConfig que sobrepõe rangeKm),
+    // ignorar station.bounds para forçar o recálculo do quadrado, a menos que seja customBounds ou Ipmet
+    const range = overrideRangeKm ?? station.rangeKm;
+
+    if (station.bounds && !overrideRangeKm) {
+      return { 
+        north: station.bounds.maxLat, 
+        south: station.bounds.minLat, 
+        east: station.bounds.maxLon, 
+        west: station.bounds.minLon 
+      };
+    }
+    
+    // Fallback pra mosaicos com bounds fixos caso não tenham bounds no objeto
+    if (!station.bounds) {
+      if (station.slug === 'ipmet-bauru' || station.slug === 'ipmet-prudente') {
+        return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
+      }
+      if (station.slug === 'usp-starnet') {
+        return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
+      }
+    }
+    
+    // Recalcula o quadrado geográfico baseado no raio
+    const calc = (station.slug === 'ipmet-bauru' || station.slug === 'ipmet-prudente') ? calculateRadarBoundsGeodesic : calculateRadarBounds;
+    const b = calc(station.lat, station.lng, range);
+    return {
+      north: b.ne.lat,
+      south: b.sw.lat,
+      east: b.ne.lng,
+      west: b.sw.lng,
     };
   }
-  
-  if (station.slug === 'ipmet-bauru' || station.slug === 'ipmet-prudente') {
-    return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
-  }
-  if (station.slug === 'usp-starnet') {
-    return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
-  }
-  
-  const range = overrideRangeKm ?? station.rangeKm;
-  const b = calculateRadarBoundsGeodesic(station.lat, station.lng, range);
-  return {
-    north: b.ne.lat,
-    south: b.sw.lat,
-    east: b.ne.lng,
-    west: b.sw.lng,
-  };
-}
 
 /** Retorna timestamp atual no formato YYYYMMDDHHmm (horário local). */
 export function getNowTimestamp12(): string {
