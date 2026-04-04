@@ -141,8 +141,8 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.214725, lng: -49.4559, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12227760', vilId: 'R12222198', waldvogelId: 'R12224626', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -52.029, minLat: -29.46675, maxLon: -46.8827, maxLat: -24.9627 }, sigmaConfig: { cappi: 2244, vento: 7760 } },
   { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.1078451, lng: -49.4719928, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12544956', vilId: 'R12544955', waldvogelId: 'R12544489', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -52.0632, minLat: -30.3648, maxLon: -46.8704, maxLat: -25.8599 }, sigmaConfig: { cappi: 4964, vento: 4956 } },
 
-  { id: 'IPMET-PRUDENTE', slug: 'ipmet-prudente', name: 'IPMet (Pres. Prudente)', lat: -22.175000, lng: -51.372778, rangeKm: 450, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -26.4118, maxLat: -18.1209, minLon: -55.7506, maxLon: -44.6430 }, sigmaConfig: { cappi: 8335 } },
-  { id: 'IPMET-BAURU', slug: 'ipmet-bauru', name: 'IPMet (Bauru)', lat: -22.357778, lng: -49.026667, rangeKm: 450, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -26.4118, maxLat: -18.1209, minLon: -55.7506, maxLon: -44.6430 }, sigmaConfig: { cappi: 8335 } },
+  { id: 'IPMET-PRUDENTE', slug: 'ipmet-prudente', name: 'IPMet (Pres. Prudente)', lat: -22.175000, lng: -51.372778, rangeKm: 450, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -24.5, maxLat: -19.4975, minLon: -54.0, maxLon: -46.5 }, sigmaConfig: { cappi: 8335 } },
+  { id: 'IPMET-BAURU', slug: 'ipmet-bauru', name: 'IPMet (Bauru)', lat: -22.357778, lng: -49.026667, rangeKm: 450, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -24.5, maxLat: -19.4975, minLon: -54.0, maxLon: -46.5 }, sigmaConfig: { cappi: 8335 } },
   { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0, bounds: { minLon: -58.0, minLat: -34.0, maxLon: -49.0, maxLat: -27.0 } },
 
   // DECEA - Sudeste/Centro-Oeste
@@ -279,12 +279,12 @@ export const GET_RADAR_USP_URL = 'https://us-central1-studio-4398873450-7cc8f.cl
  * Longitude Máxima (Extremo Leste): -44.6430
  */
 export const IPMET_FIXED_BOUNDS = {
-  north: -18.1209,
-  south: -26.4118,
-  east: -44.6430,
-  west: -55.7506,
-  ne: { lat: -18.1209, lng: -44.6430 },
-  sw: { lat: -26.4118, lng: -55.7506 },
+  north: -19.4975,
+  south: -24.5,
+  east: -46.5,
+  west: -54.0,
+  ne: { lat: -19.4975, lng: -46.5 },
+  sw: { lat: -24.5, lng: -54.0 }
 };
 
 /**
