@@ -98,17 +98,20 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
       const merged = { ...base, iconLat: base.lat, iconLng: base.lng, maskRadiusKm: base.rangeKm };
       const isIpmet = base.slug === 'ipmet-bauru' || base.slug === 'ipmet-prudente';
       
-      // O ícone do IPMet nunca deve sair do lugar e os bounds/posição também não devem ser alterados.
+      // O ícone do IPMet nunca deve sair do lugar, mesmo que o centro da máscara mude.
       if (!isIpmet) {
         if (config.lat !== undefined && config.lat !== 0) merged.iconLat = config.lat;
         if (config.lng !== undefined && config.lng !== 0) merged.iconLng = config.lng;
-        
-        if (config.lat !== undefined && config.lat !== 0) merged.lat = config.lat;
-        if (config.lng !== undefined && config.lng !== 0) merged.lng = config.lng;
+      }
+      
+      // A máscara (ou o cálculo de bounds/corte) usa as configurações ajustadas pelo admin.
+      if (config.lat !== undefined && config.lat !== 0) merged.lat = config.lat;
+      if (config.lng !== undefined && config.lng !== 0) merged.lng = config.lng;
 
-        if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
-        if (config.maskRadiusKm !== undefined && config.maskRadiusKm !== 0) merged.maskRadiusKm = config.maskRadiusKm;
-        
+      if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
+      if (config.maskRadiusKm !== undefined && config.maskRadiusKm !== 0) merged.maskRadiusKm = config.maskRadiusKm;
+      
+      if (!isIpmet) {
         if (config.customBounds && config.customBounds.north) {
           merged.bounds = {
             maxLat: config.customBounds.north,
@@ -124,13 +127,6 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
             minLon: config.bounds.sw.lng
           };
         }
-      } else {
-        // Garantir explicitamente que IPMet não usa customBounds e nem posição alterada
-        // e que o bounds original de lib/cptecRadarStations prevalece.
-        merged.lat = base.lat;
-        merged.lng = base.lng;
-        merged.iconLat = base.lat;
-        merged.iconLng = base.lng;
       }
       return merged;
     }
