@@ -1,0 +1,218 @@
+[
+  {
+    "codigo": 2136,
+    "nome": "CAPPI Bel&eacute;m - PA"
+  },
+  {
+    "codigo": 2137,
+    "nome": "CAPPI Boa Vista - RR"
+  },
+  {
+    "codigo": 7361,
+    "nome": "VENTO Boa Vista - RR"
+  },
+  {
+    "codigo": 2138,
+    "nome": "CAPPI Cruzeiro do Sul - AC"
+  },
+  {
+    "codigo": 2255,
+    "nome": "CAPPI Macap&atilde; - AP"
+  },
+  {
+    "codigo": 7366,
+    "nome": "VENTO Macap&atilde; - AP"
+  },
+  {
+    "codigo": 2140,
+    "nome": "CAPPI Manaus - AM"
+  },
+  {
+    "codigo": 7367,
+    "nome": "VENTO Manaus - AM"
+  },
+  {
+    "codigo": 2141,
+    "nome": "CAPPI Porto Velho - RO"
+  },
+  {
+    "codigo": 7370,
+    "nome": "VENTO Porto Velho - RO"
+  },
+  {
+    "codigo": 2142,
+    "nome": "CAPPI Santarem - PA"
+  },
+  {
+    "codigo": 7372,
+    "nome": "VENTO Santarem - PA"
+  },
+  {
+    "codigo": 2144,
+    "nome": "CAPPI Tabatinga - AM"
+  },
+  {
+    "codigo": 2258,
+    "nome": "CAPPI Tef&eacute; - AM"
+  },
+  {
+    "codigo": 7377,
+    "nome": "VENTO Tef&eacute; - AM"
+  },
+  {
+    "codigo": 2143,
+    "nome": "CAPPI S&atilde;o Gabriel - AM"
+  },
+  {
+    "codigo": 7374,
+    "nome": "VENTO S&atilde;o Gabriel - AM"
+  },
+  {
+    "codigo": 7011,
+    "nome": "CAPPI Quixeramobim - CE"
+  },
+  {
+    "codigo": 7018,
+    "nome": "VENTO Quixeramobim - CE"
+  },
+  {
+    "codigo": 8325,
+    "nome": "CAPPI Maceió - AL"
+  },
+  {
+    "codigo": 7386,
+    "nome": "VENTO Maceió - AL"
+  },
+  {
+    "codigo": 8343,
+    "nome": "CAPPI Natal - RN"
+  },
+  {
+    "codigo": 7380,
+    "nome": "VENTO Natal - RN"
+  },
+  {
+    "codigo": 8342,
+    "nome": "CAPPI Petrolina - PE"
+  },
+  {
+    "codigo": 7382,
+    "nome": "VENTO Petrolina - PE"
+  },
+  {
+    "codigo": 8346,
+    "nome": "CAPPI Salvador - BA"
+  },
+  {
+    "codigo": 7390,
+    "nome": "VENTO Salvador - BA"
+  },
+  {
+    "codigo": 4967,
+    "nome": "CAPPI S&atilde;o Luiz - MA"
+  },
+  {
+    "codigo": 7766,
+    "nome": "VENTO S&atilde;o Luiz - MA"
+  },
+  {
+    "codigo": 4961,
+    "nome": "CAPPI Gama - DF"
+  },
+  {
+    "codigo": 7562,
+    "nome": "VENTO Gama - DF"
+  },
+  {
+    "codigo": 8344,
+    "nome": "CAPPI Jaraguari - MS"
+  },
+  {
+    "codigo": 7384,
+    "nome": "VENTO Jaraguari - MS"
+  },
+  {
+    "codigo": 4966,
+    "nome": "CAPPI Almenara - MG"
+  },
+  {
+    "codigo": 7396,
+    "nome": "VENTO Almenara - MG"
+  },
+  {
+    "codigo": 4963,
+    "nome": "CAPPI Pico do Couto - RJ"
+  },
+  {
+    "codigo": 7537,
+    "nome": "VENTO Pico do Couto - RJ"
+  },
+  {
+    "codigo": 4960,
+    "nome": "CAPPI São Roque - SP"
+  },
+  {
+    "codigo": 7536,
+    "nome": "VENTO São Roque - SP"
+  },
+  {
+    "codigo": 8335,
+    "nome": "CAPPI Bauru e Pres.Prud - SP"
+  },
+  {
+    "codigo": 8345,
+    "nome": "CAPPI São Francisco - MG"
+  },
+  {
+    "codigo": 7388,
+    "nome": "VENTO São Francisco - MG"
+  },
+  {
+    "codigo": 5984,
+    "nome": "CAPPI Três Marias - MG"
+  },
+  {
+    "codigo": 7392,
+    "nome": "VENTO Três Marias - MG"
+  },
+  {
+    "codigo": 4962,
+    "nome": "CAPPI Canguçu - RS"
+  },
+  {
+    "codigo": 7538,
+    "nome": "VENTO canguçu - RS"
+  },
+  {
+    "codigo": 2247,
+    "nome": "CAPPI Chapecó - SC"
+  },
+  {
+    "codigo": 7762,
+    "nome": "VENTO Chapecó - SC"
+  },
+  {
+    "codigo": 2244,
+    "nome": "CAPPI Lontras - SC"
+  },
+  {
+    "codigo": 7760,
+    "nome": "VENTO Lontras - SC"
+  },
+  {
+    "codigo": 4964,
+    "nome": "CAPPI Morro Igreja - SC"
+  },
+  {
+    "codigo": 4956,
+    "nome": "VENTO Morro Igreja - SC"
+  },
+  {
+    "codigo": 4965,
+    "nome": "CAPPI Santiago - RS"
+  },
+  {
+    "codigo": 8323,
+    "nome": "VENTO Santiago - RS"
+  }
+]

@@ -1,0 +1,193 @@
+<AnimatePresence>
+      {reportStep !== 'closed' && (
+        <>
+          {reportStep !== 'pick-map' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={cancelReport} aria-hidden />
+          )}
+          {reportStep === 'pick-map' ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed z-50 bottom-24 left-4 right-4 mx-auto max-w-md rounded-xl bg-[#0F131C]/95 backdrop-blur-xl border border-white/10 shadow-lg p-4 flex items-center justify-between gap-4"
+            >
+              <p className="text-slate-300 text-sm font-medium flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-cyan-400" />
+                Toque no mapa para selecionar o local
+              </p>
+              <button onClick={cancelReport} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-slate-200 text-sm font-bold shrink-0">
+                Cancelar
+              </button>
+            </motion.div>
+          ) : (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }}
+            animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }}
+            exit={{ opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }}
+            className="fixed z-50 top-1/2 left-1/2 w-[min(22rem,92vw)] rounded-2xl bg-[#0F131C]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden"
+          >
+            {/* Etapa 1: Escolher localização */}
+            {reportStep === 'location' && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold tracking-widest uppercase text-cyan-400">Localização do relato</h3>
+                  <button onClick={cancelReport} className="text-slate-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+                </div>
+                <button
+                  onClick={() => {
+                    if (myLocation) {
+                      setReportLat(parseFloat(myLocation.lat.toFixed(5)));
+                      setReportLng(parseFloat(myLocation.lng.toFixed(5)));
+                      setReportStep('form');
+                    } else {
+                      addToast('Localização não disponível', 'info');
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 text-cyan-300 text-sm font-bold transition-all transform hover:scale-[1.02]"
+                >
+                  <Crosshair className="w-5 h-5 flex-shrink-0" />
+                  Usar minha localização atual
+                </button>
+                <button
+                  onClick={startPickMapLocation}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 text-sm font-bold transition-all transform hover:scale-[1.02]"
+                >
+                  <MapPin className="w-5 h-5 flex-shrink-0" />
+                  Outra localização (clicar no mapa)
+                </button>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={reportCitySearch}
+                    onChange={(e) => setReportCitySearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && searchCityForReport()}
+                    placeholder="Buscar cidade…"
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder:text-slate-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
+                  />
+                  <button
+                    onClick={searchCityForReport}
+                    className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-slate-200 transition-colors"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Etapa 2: Formulário */}
+            {reportStep === 'form' && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold tracking-widest uppercase text-cyan-400">Dados do relato</h3>
+                  <button onClick={cancelReport} className="text-slate-400 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+                          </div>
+
+                <div className="flex gap-3 text-[10px] font-mono text-slate-400 bg-black/20 p-2 rounded-lg border border-white/5">
+                  <span>Lat: {reportLat}</span>
+                  <span>Lon: {reportLng}</span>
+                          </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Tipo de relato</label>
+                  <div className="flex gap-2">
+                    {([['ven', 'Vento', '#3b82f6'], ['gra', 'Granizo', '#22c55e'], ['tor', 'Tornado', '#ef4444']] as const).map(([val, lbl, clr]) => (
+                      <button
+                        key={val}
+                        onClick={() => { setReportType(val); setReportDetail(''); }}
+                        className={`flex-1 px-2 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all transform hover:scale-105 border ${
+                          reportType === val ? 'border-white/20 text-white shadow-lg' : 'border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
+                        }`}
+                        style={reportType === val ? { backgroundColor: `${clr}40`, boxShadow: `0 0 15px ${clr}40` } : undefined}
+                      >
+                        {lbl}
+                        </button>
+                    ))}
+                  </div>
+                </div>
+
+                {reportType === 'ven' && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Velocidade estimada (km/h)</label>
+                    <input
+                      type="text"
+                      value={reportDetail}
+                      onChange={(e) => setReportDetail(e.target.value)}
+                      placeholder="Ex: 90 km/h"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                    />
+                  </motion.div>
+                )}
+                {reportType === 'gra' && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Tamanho estimado</label>
+                    <input
+                      type="text"
+                      value={reportDetail}
+                      onChange={(e) => setReportDetail(e.target.value)}
+                      placeholder="Ex: 3 cm"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none transition-all"
+                    />
+                  </motion.div>
+                )}
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Enviar mídia (obrigatório: foto, link ou vídeo)</label>
+                  <div className="flex gap-2 mb-3 bg-black/20 p-1 rounded-xl border border-white/5">
+                    <button
+                      onClick={() => setReportMediaMode('file')}
+                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                        reportMediaMode === 'file' ? 'bg-white/10 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Arquivo
+                    </button>
+                    <button
+                      onClick={() => setReportMediaMode('link')}
+                      className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                        reportMediaMode === 'link' ? 'bg-white/10 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                      Link
+                    </button>
+                  </div>
+                  {reportMediaMode === 'file' && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                      <input
+                        type="file"
+                        accept="image/*,video/*"
+                        onChange={(e) => setReportMediaFile(e.target.files?.[0] ?? null)}
+                        className="w-full text-xs text-slate-300 file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-white/10 file:text-white file:text-xs file:font-bold file:cursor-pointer file:transition-colors hover:file:bg-white/20"
+                      />
+                      {reportMediaFile && <p className="text-[10px] text-cyan-400 mt-2 truncate font-medium">{reportMediaFile.name}</p>}
+                    </motion.div>
+                  )}
+                  {reportMediaMode === 'link' && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                      <input
+                        type="url"
+                        value={reportMediaLink}
+                        onChange={(e) => setReportMediaLink(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none transition-all"
+                      />
+                    </motion.div>
+                  )}
+                </div>
+
+                <button
+                  onClick={submitReport}
+                  disabled={reportSending || (!reportMediaFile && !(reportMediaMode === 'link' && reportMediaLink?.trim()))}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-black text-sm uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all transform hover:scale-[1.02]"
+                >
+                  <Send className="w-4 h-4" />
+                  {reportSending ? 'Enviando…' : 'Enviar relato'}
+                </button>
+              </motion.div>
+            )}
+          </motion.div>
+          )}
+        </>
+      )}
+      </AnimatePresence>

@@ -347,9 +347,9 @@ if (baseMapId === 'dark') {
       for (let back = 0; back <= 60; back += 6) {
         const baseTs = back === 0 ? nominalTs : subtractMinutesFromTimestamp12UTC(nominalTs, back);
         const ts12 = getNearestRadarTimestamp(baseTs, station);
-        // Utiliza o proxy para não ter problemas de CORS ao tentar jogar no Canvas
+        // Não usar o getProxiedRadarUrl duplicado na string
         ipmetUrlsToTry.push({
-          url: getProxiedRadarUrl(`${IPMET_STATIC_URL}?t=${ts12}`),
+          url: `${IPMET_STATIC_URL}?t=${ts12}`,
           ts12,
         });
       }
@@ -476,12 +476,12 @@ if (baseMapId === 'dark') {
         ts12 = nominalTs.slice(0, 10) + String(roundedM).padStart(2, '0');
       }
     }
-    const isIpmet = selectedStation.type === 'cptec' && (selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru';
+    const isIpmet = selectedStation.type === 'cptec' && ((selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru' || (selectedStation.station as CptecRadarStation).slug === 'ipmet-prudente');
     const url = isIpmet ? IPMET_STATIC_URL + `?t=${Date.now()}` : buildRadarPngUrl(urlTemplate, ts12);
     setSampleUrl(url);
     setPreviewUrlsToTry([]);
     setLoadingPreview(true);
-    setPreviewImageUrl(isIpmet ? url : getProxiedRadarUrl(url));
+    setPreviewImageUrl(url);
     addToast('Carregando preview…', 'success');
   };
 
@@ -712,7 +712,8 @@ if (baseMapId === 'dark') {
           if (!res.ok) throw new Error('CORS');
           blob = await res.blob();
         } catch {
-          const res = await fetch(getProxiedRadarUrl(previewImageUrl));
+          const urlToFetch = previewImageUrl.includes('?t=') || previewImageUrl.includes('getradaripmet') ? previewImageUrl : getProxiedRadarUrl(previewImageUrl);
+          const res = await fetch(urlToFetch);
           if (!res.ok) return;
           blob = await res.blob();
         }
@@ -803,16 +804,22 @@ if (baseMapId === 'dark') {
           }
         }
         
-        // Se NENHUM filtro extra foi ativado E não for IPMet, não force a renderização para economizar processamento
-        if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0 && !isIpmet) {
-          setProcessedImageUrl(null);
+        const isIpmet = selectedStation?.type === 'cptec' && (selectedStation.station as CptecRadarStation).slug.startsWith('ipmet-');
+        // Se NENHUM filtro extra foi ativado, não force a renderização para economizar processamento
+        if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0 && !isIpmet && maskRadiusKm >= rangeKm && !superRes) {
+          if (active) {
+            setProcessedImageUrl(null);
+            setLoadingPreview(false);
+          }
           return;
         }
 
         const dataUrl = canvas.toDataURL('image/png');
         if (active) setProcessedImageUrl(dataUrl);
+        if (active) setLoadingPreview(false);
       } catch (e) {
         console.error("Canvas Studio Filter Error:", e);
+        if (active) setLoadingPreview(false);
       }
     };
     runFilter();

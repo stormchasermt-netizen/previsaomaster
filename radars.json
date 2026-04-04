@@ -1,0 +1,636 @@
+{
+  "tipo": "Geo",
+  "nome": "Precipitação por Radar",
+  "status": "A",
+  "regioes": [
+    {
+      "nome": "Norte",
+      "tipo": "Geo",
+      "status": "A",
+      "subprodutos": [
+        {
+          "codigo": 2136,
+          "nome": "CAPPI Bel&eacute;m - PA",
+          "animacao": 20,
+          "informacao": "Cappi do radar de Bel&eacute;m/PA - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 16
+        },
+        {
+          "codigo": 2137,
+          "nome": "CAPPI Boa Vista - RR",
+          "animacao": 20,
+          "informacao": "Cappi do radar de Boa Vista/RR - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 17
+        },
+        {
+          "codigo": 7361,
+          "nome": "VENTO Boa Vista - RR",
+          "animacao": 20,
+          "informacao": "Vento do radar de Boa Vista/RR - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 17
+        },
+        {
+          "codigo": 2138,
+          "nome": "CAPPI Cruzeiro do Sul - AC",
+          "animacao": 20,
+          "informacao": "Cappi do radar de Cruzeiro do Sul/AC - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 18
+        },
+        {
+          "codigo": 2255,
+          "nome": "CAPPI Macap&atilde; - AP",
+          "animacao": 20,
+          "informacao": "Cappi do radar Macap&aacute;/AP - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 19
+        },
+        {
+          "codigo": 7366,
+          "nome": "VENTO Macap&atilde; - AP",
+          "animacao": 20,
+          "informacao": "Vento do radar de Macap&aacute;/AP - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 19
+        },
+        {
+          "codigo": 2140,
+          "nome": "CAPPI Manaus - AM",
+          "animacao": 20,
+          "informacao": "Cappi do radar de Manaus/AM - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 20
+        },
+        {
+          "codigo": 7367,
+          "nome": "VENTO Manaus - AM",
+          "animacao": 20,
+          "informacao": "Vento do radar de Manaus/AM - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 20
+        },
+        {
+          "codigo": 2141,
+          "nome": "CAPPI Porto Velho - RO",
+          "animacao": 20,
+          "informacao": "Cappi do radar de Porto Velho/RO - 3km",
+          "legenda": "legenda-radar.jpg",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 21
+        },
+        {
+          "codigo": 7370,
+          "nome": "VENTO Porto Velho - RO",
+          "animacao": 20,
+          "informacao": "Vento do radar de Porto Velho/RO - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 21
+        },
+        {
+          "codigo": 2142,
+          "nome": "CAPPI Santarem - PA",
+          "animacao": 20,
+          "informacao": "Cappi do radar de Santar&eacute;m/PA - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 22
+        },
+        {
+          "codigo": 7372,
+          "nome": "VENTO Santarem - PA",
+          "animacao": 20,
+          "informacao": "Vento do radar de Santar&eacute;m/PA - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 22
+        },
+        {
+          "codigo": 2144,
+          "nome": "CAPPI Tabatinga - AM",
+          "animacao": 20,
+          "informacao": "Cappi do radar de Tabatinga/AM - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 25
+        },
+        {
+          "codigo": 2258,
+          "nome": "CAPPI Tef&eacute; - AM",
+          "animacao": 20,
+          "informacao": "Cappi do radar Tefe/AM - 3km",
+          "legenda": "legenda-radar.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 26
+        },
+        {
+          "codigo": 7377,
+          "nome": "VENTO Tef&eacute; - AM",
+          "animacao": 20,
+          "informacao": "Vento do radar Tef&eacute;/AM - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 26
+        },
+        {
+          "codigo": 2143,
+          "nome": "CAPPI S&atilde;o Gabriel - AM",
+          "animacao": 20,
+          "informacao": "Cappi do radar de S&atilde;o Gabriel/AM - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 23
+        },
+        {
+          "codigo": 7374,
+          "nome": "VENTO S&atilde;o Gabriel - AM",
+          "animacao": 20,
+          "informacao": "Vento do radar de S&atilde;o Gabriel/AM - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 23
+        }
+      ]
+    },
+    {
+      "nome": "Nordeste",
+      "tipo": "Geo",
+      "status": "A",
+      "subprodutos": [
+        {
+          "codigo": 7011,
+          "nome": "CAPPI Quixeramobim - CE",
+          "animacao": 10,
+          "informacao": "CAPPI do radar de Quixeramobim/CE - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 14
+        },
+        {
+          "codigo": 7018,
+          "nome": "VENTO Quixeramobim - CE",
+          "animacao": 10,
+          "informacao": "Vento do radar de Quixeramobim/CE - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 14
+        },
+        {
+          "codigo": 8325,
+          "nome": "CAPPI Maceió - AL",
+          "animacao": 10,
+          "informacao": "CAPPI do radar de Maceió/AL - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 14
+        },
+        {
+          "codigo": 7386,
+          "nome": "VENTO Maceió - AL",
+          "animacao": 10,
+          "informacao": "Vento do radar de Maceió/AL - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 14
+        },
+        {
+          "codigo": 8343,
+          "nome": "CAPPI Natal - RN",
+          "animacao": 10,
+          "informacao": "Cappi do radar de Natal/RN - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 12
+        },
+        {
+          "codigo": 7380,
+          "nome": "VENTO Natal - RN",
+          "animacao": 10,
+          "informacao": "Vento do radar de Natal/RN - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 12
+        },
+        {
+          "codigo": 8342,
+          "nome": "CAPPI Petrolina - PE",
+          "animacao": 10,
+          "informacao": "Cappi do radar de Petrolina/PE - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 11
+        },
+        {
+          "codigo": 7382,
+          "nome": "VENTO Petrolina - PE",
+          "animacao": 10,
+          "informacao": "Vento do radar de Petrolina/PE - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 11
+        },
+        {
+          "codigo": 8346,
+          "nome": "CAPPI Salvador - BA",
+          "animacao": 10,
+          "informacao": "Cappi do radar de Salvador/BA - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 9
+        },
+        {
+          "codigo": 7390,
+          "nome": "VENTO Salvador - BA",
+          "animacao": 10,
+          "informacao": "Vento do radar de Salvador/BA - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 9
+        },
+        {
+          "codigo": 4967,
+          "nome": "CAPPI S&atilde;o Luiz - MA",
+          "animacao": 20,
+          "informacao": "Cappi do radar de S&atilde;o Luiz/MA - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 24
+        },
+        {
+          "codigo": 7766,
+          "nome": "VENTO S&atilde;o Luiz - MA",
+          "animacao": 20,
+          "informacao": "Vento do radar de S&atilde;o Luiz/MA - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "radar",
+          "status": "A",
+          "inicial": 1,
+          "contorno": 24
+        }
+      ]
+    },
+    {
+      "nome": "Centro-Oeste",
+      "tipo": "Geo",
+      "status": "A",
+      "subprodutos": [
+        {
+          "codigo": 4961,
+          "nome": "CAPPI Gama - DF",
+          "animacao": 10,
+          "informacao": "Vento do radar de S&atilde;o Luiz - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 1
+        },
+        {
+          "codigo": 7562,
+          "nome": "VENTO Gama - DF",
+          "animacao": 10,
+          "informacao": "Vento do radar de Gama - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 1
+        },
+        {
+          "codigo": 8344,
+          "nome": "CAPPI Jaraguari - MS",
+          "animacao": 10,
+          "informacao": "Cappi do radar de Jaraguari - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 13
+        },
+        {
+          "codigo": 7384,
+          "nome": "VENTO Jaraguari - MS",
+          "animacao": 10,
+          "informacao": "Vento do radar de Jaraguari - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 13
+        }
+      ]
+    },
+    {
+      "nome": "Sudeste",
+      "tipo": "Geo",
+      "status": "A",
+      "subprodutos": [
+        {
+          "codigo": 4966,
+          "nome": "CAPPI Almenara - MG",
+          "animacao": 10,
+          "informacao": "Cappi do radar de Almenara - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 14
+        },
+        {
+          "codigo": 7396,
+          "nome": "VENTO Almenara - MG",
+          "animacao": 10,
+          "informacao": "Vento do radar de Almenara - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 14
+        },
+        {
+          "codigo": 4963,
+          "nome": "CAPPI Pico do Couto - RJ",
+          "animacao": 10,
+          "informacao": "Cappi do radar Pico do Couto - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 2
+        },
+        {
+          "codigo": 7537,
+          "nome": "VENTO Pico do Couto - RJ",
+          "animacao": 10,
+          "informacao": "Vento do radar Pico do Couto - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 2
+        },
+        {
+          "codigo": 4960,
+          "nome": "CAPPI São Roque - SP",
+          "animacao": 10,
+          "informacao": "Cappi do radar São Roque - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 4
+        },
+        {
+          "codigo": 7536,
+          "nome": "VENTO São Roque - SP",
+          "animacao": 10,
+          "informacao": "Vento do radar São Roque - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 4
+        },
+        {
+          "codigo": 8335,
+          "nome": "CAPPI Bauru e Pres.Prud - SP",
+          "animacao": 10,
+          "informacao": "Cappi do radar Bauru e Pres. Prud - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 7
+        },
+        {
+          "codigo": 8345,
+          "nome": "CAPPI São Francisco - MG",
+          "animacao": 10,
+          "informacao": "Cappi do radar São Francisco - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 10
+        },
+        {
+          "codigo": 7388,
+          "nome": "VENTO São Francisco - MG",
+          "animacao": 10,
+          "informacao": "Vento do radar São Francisco - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 10
+        },
+        {
+          "codigo": 5984,
+          "nome": "CAPPI Três Marias - MG",
+          "animacao": 10,
+          "informacao": "Cappi do radar Três Marias - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 15
+        },
+        {
+          "codigo": 7392,
+          "nome": "VENTO Três Marias - MG",
+          "animacao": 10,
+          "informacao": "Vento do radar Três Marias - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 15
+        }
+      ]
+    },
+    {
+      "nome": "Sul",
+      "tipo": "Geo",
+      "status": "A",
+      "subprodutos": [
+        {
+          "codigo": 4962,
+          "nome": "CAPPI Canguçu - RS",
+          "animacao": 10,
+          "informacao": "Cappi do radar Canguçu - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 6
+        },
+        {
+          "codigo": 7538,
+          "nome": "VENTO canguçu - RS",
+          "animacao": 10,
+          "informacao": "Vento do radar Canguçu - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 6
+        },
+        {
+          "codigo": 2247,
+          "nome": "CAPPI Chapecó - SC",
+          "animacao": 10,
+          "informacao": "Cappi do radar Chapecó - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 27
+        },
+        {
+          "codigo": 7762,
+          "nome": "VENTO Chapecó - SC",
+          "animacao": 10,
+          "informacao": "Vento do radar Chapecó - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 27
+        },
+        {
+          "codigo": 2244,
+          "nome": "CAPPI Lontras - SC",
+          "animacao": 10,
+          "informacao": "Cappi do radar Lontras - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 28
+        },
+        {
+          "codigo": 7760,
+          "nome": "VENTO Lontras - SC",
+          "animacao": 10,
+          "informacao": "Vento do radar Lontras - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 28
+        },
+        {
+          "codigo": 4964,
+          "nome": "CAPPI Morro Igreja - SC",
+          "animacao": 10,
+          "informacao": "Cappi do radar Lontras - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 3
+        },
+        {
+          "codigo": 4956,
+          "nome": "VENTO Morro Igreja - SC",
+          "animacao": 10,
+          "informacao": "Vento do radar Morro da Igreja - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 3
+        },
+        {
+          "codigo": 4965,
+          "nome": "CAPPI Santiago - RS",
+          "animacao": 10,
+          "informacao": "Cappi do radar Santiag - 3km",
+          "legenda": "legenda-cappi.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 5
+        },
+        {
+          "codigo": 8323,
+          "nome": "VENTO Santiago - RS",
+          "animacao": 10,
+          "informacao": "Vento do radar Santiag - 3km",
+          "legenda": "legenda-vento.png",
+          "tipo": "imagem",
+          "status": "A",
+          "inicial": "I",
+          "contorno": 5
+        }
+      ]
+    }
+  ]
+}
