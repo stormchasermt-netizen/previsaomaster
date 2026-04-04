@@ -23,6 +23,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { CPTEC_RADAR_STATIONS, getRadarImageBounds, type CptecRadarStation } from '@/lib/cptecRadarStations';
 import { hasRedemetFallback, getRedemetBucketSlugForCptecBucket } from '@/lib/redemetRadar';
+import { hasSigmaFallback, getSigmaBucketSlugForCptecBucket } from '@/lib/cptecRadarStations';
 import {
   filterClimatempoRadarImage,
   filterReflectivitySuperRes,
@@ -73,18 +74,20 @@ export type RadarProductMode = 'ppi' | 'doppler';
 
 /** Pasta no GCS pode ser `riobranco`; no catálogo CPTEC o slug é `rio-branco`. */
 function bucketSlugToCatalogSlug(slug: string): string {
+  if (slug.startsWith('redemet-')) return bucketSlugToCatalogSlug(slug.replace('redemet-', ''));
+  if (slug.startsWith('sigma-')) return bucketSlugToCatalogSlug(slug.replace('sigma-', ''));
   if (slug === 'riobranco') return 'rio-branco';
   return slug;
 }
 
-function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadarStation & { iconLat?: number, iconLng?: number } | undefined {
+function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadarStation & { iconLat?: number, iconLng?: number, maskRadiusKm?: number } | undefined {
   const base = CPTEC_RADAR_STATIONS.find((s) => s.slug === bucketSlugToCatalogSlug(slug));
   if (!base) return undefined;
 
   if (radarConfigs) {
     const config = radarConfigs.find(c => c.stationSlug === base.slug);
     if (config) {
-      const merged = { ...base, iconLat: base.lat, iconLng: base.lng };
+      const merged = { ...base, iconLat: base.lat, iconLng: base.lng, maskRadiusKm: base.rangeKm };
       
       if (config.lat !== undefined && config.lat !== 0) merged.iconLat = config.lat;
       if (config.lng !== undefined && config.lng !== 0) merged.iconLng = config.lng;
@@ -93,6 +96,7 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
       merged.lng = merged.iconLng;
 
       if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
+      if (config.maskRadiusKm !== undefined && config.maskRadiusKm !== 0) merged.maskRadiusKm = config.maskRadiusKm;
       
       if (config.customBounds && config.customBounds.north) {
         merged.bounds = {
@@ -178,7 +182,7 @@ function isCptecPpiRecent(imgs: { name: string }[], maxAgeMs: number): boolean {
   return Date.now() - newest <= maxAgeMs;
 }
 
-export type FocusedRadarSourceMode = 'auto' | 'cptec' | 'redemet';
+export type FocusedRadarSourceMode = 'auto' | 'cptec' | 'redemet' | 'sigma';
 
 function ts12ToUtcMs(ts: string): number {
   const y = +ts.slice(0, 4);
@@ -410,6 +414,12 @@ export default function AoVivo2Content() {
   const [imagesRedemetPpiByCptec, setImagesRedemetPpiByCptec] = useState<
     Record<string, { name: string; url: string }[]>
   >({});
+  const [imagesSigmaPpiByCptec, setImagesSigmaPpiByCptec] = useState<
+    Record<string, { name: string; url: string }[]>
+  >({});
+  const [imagesSigmaDopplerByCptec, setImagesSigmaDopplerByCptec] = useState<
+    Record<string, { name: string; url: string }[]>
+  >({});
   /** Com radar em foco e par CPTEC+REDEMET: escolha de fonte (Automático = recente no CPTEC senão REDEMET). */
   const [focusedRadarSource, setFocusedRadarSource] = useState<FocusedRadarSourceMode>('auto');
   /** `null` = sempre o último instante da timeline (abertura / “ao vivo”); número = frame fixo após interação. */
@@ -450,26 +460,41 @@ export default function AoVivo2Content() {
     [stations, radarConfigs]
   );
 
-  /** Por radar: PPI do CPTEC (bucket `slug`) vs REDEMET (bucket `redemet-xx`) — raio REDEMET maior no mapa. */
   const ppiSourceBySlug = useMemo(() => {
-    const out: Record<string, 'cptec' | 'redemet'> = {};
+    const out: Record<string, 'cptec' | 'redemet' | 'sigma'> = {};
     for (const slug of stationsWithBounds) {
       const catalog = bucketSlugToCatalogSlug(slug);
       const cptec = imagesByStationPpi[slug] ?? [];
       const red = imagesRedemetPpiByCptec[slug] ?? [];
+      const sig = imagesSigmaPpiByCptec[slug] ?? [];
       const hasRed = hasRedemetFallback(catalog) && red.length > 0;
+      const hasSig = hasSigmaFallback(catalog) && sig.length > 0;
 
-      let src: 'cptec' | 'redemet';
+      let src: 'cptec' | 'redemet' | 'sigma';
       if (focusedSlug === slug && focusedRadarSource !== 'auto') {
         src = focusedRadarSource;
-        if (src === 'cptec' && cptec.length === 0 && red.length > 0) src = 'redemet';
-        if (src === 'redemet' && red.length === 0 && cptec.length > 0) src = 'cptec';
+        if (src === 'cptec' && cptec.length === 0) {
+          if (hasSig) src = 'sigma';
+          else if (hasRed) src = 'redemet';
+        }
+        if (src === 'redemet' && !hasRed) {
+          if (hasSig) src = 'sigma';
+          else src = 'cptec';
+        }
+        if (src === 'sigma' && !hasSig) {
+          if (hasRed) src = 'redemet';
+          else src = 'cptec';
+        }
       } else {
-        src = isCptecPpiRecent(cptec, CPTEC_PPI_RECENT_MAX_AGE_MS)
-          ? 'cptec'
-          : hasRed
-            ? 'redemet'
-            : 'cptec';
+        if (isCptecPpiRecent(cptec, CPTEC_PPI_RECENT_MAX_AGE_MS)) {
+          src = 'cptec';
+        } else if (hasSig) {
+          src = 'sigma';
+        } else if (hasRed) {
+          src = 'redemet';
+        } else {
+          src = 'cptec';
+        }
       }
       out[slug] = src;
     }
@@ -478,6 +503,7 @@ export default function AoVivo2Content() {
     stationsWithBounds,
     imagesByStationPpi,
     imagesRedemetPpiByCptec,
+    imagesSigmaPpiByCptec,
     focusedSlug,
     focusedRadarSource,
   ]);
@@ -488,10 +514,23 @@ export default function AoVivo2Content() {
       const src = ppiSourceBySlug[slug];
       const cptec = imagesByStationPpi[slug] ?? [];
       const red = imagesRedemetPpiByCptec[slug] ?? [];
-      out[slug] = src === 'redemet' ? red : cptec;
+      const sig = imagesSigmaPpiByCptec[slug] ?? [];
+      out[slug] = src === 'sigma' ? sig : (src === 'redemet' ? red : cptec);
     }
     return out;
-  }, [stationsWithBounds, ppiSourceBySlug, imagesByStationPpi, imagesRedemetPpiByCptec]);
+  }, [stationsWithBounds, ppiSourceBySlug, imagesByStationPpi, imagesRedemetPpiByCptec, imagesSigmaPpiByCptec]);
+
+  const effectiveDopplerImagesBySlug = useMemo(() => {
+    const out: Record<string, { name: string; url: string }[]> = {};
+    for (const slug of stationsWithBounds) {
+      // Usamos a mesma lógica de source do PPI para o Doppler para manter sincronia
+      const src = ppiSourceBySlug[slug] === 'sigma' ? 'sigma' : 'cptec';
+      const cptec = imagesByStationDoppler[slug] ?? [];
+      const sig = imagesSigmaDopplerByCptec[slug] ?? [];
+      out[slug] = src === 'sigma' && sig.length > 0 ? sig : cptec;
+    }
+    return out;
+  }, [stationsWithBounds, ppiSourceBySlug, imagesByStationDoppler, imagesSigmaDopplerByCptec]);
 
   const lookupsPpi = useMemo(() => {
     const out: Record<string, Map<string, { name: string; url: string }>> = {};
@@ -503,11 +542,11 @@ export default function AoVivo2Content() {
 
   const lookupsDoppler = useMemo(() => {
     const out: Record<string, Map<string, { name: string; url: string }>> = {};
-    for (const slug of Object.keys(imagesByStationDoppler)) {
-      out[slug] = buildTsLookup(imagesByStationDoppler[slug] || [], 'doppler');
+    for (const slug of Object.keys(effectiveDopplerImagesBySlug)) {
+      out[slug] = buildTsLookup(effectiveDopplerImagesBySlug[slug] || [], 'doppler');
     }
     return out;
-  }, [imagesByStationDoppler]);
+  }, [effectiveDopplerImagesBySlug]);
 
   const lookups = useMemo(
     () => (product === 'ppi' ? lookupsPpi : lookupsDoppler),
@@ -515,7 +554,7 @@ export default function AoVivo2Content() {
   );
 
   const imagesByStationActive =
-    product === 'ppi' ? effectivePpiImagesBySlug : imagesByStationDoppler;
+    product === 'ppi' ? effectivePpiImagesBySlug : effectiveDopplerImagesBySlug;
 
   /** Mosaico (modo produto único): última hora + sincronização. */
   const mosaicSync = useMemo(() => {
@@ -531,8 +570,8 @@ export default function AoVivo2Content() {
 
   const mosaicSyncDop = useMemo(() => {
     if (focusedSlug) return null;
-    return buildMosaicSyncPlan(imagesByStationDoppler, stationsWithBounds, 'doppler');
-  }, [focusedSlug, imagesByStationDoppler, stationsWithBounds]);
+    return buildMosaicSyncPlan(effectiveDopplerImagesBySlug, stationsWithBounds, 'doppler');
+  }, [focusedSlug, effectiveDopplerImagesBySlug, stationsWithBounds]);
 
   /**
    * Slider: dividido = mesma timeline (PPI como referência no mosaico; foco = união de instantes);
@@ -597,8 +636,15 @@ export default function AoVivo2Content() {
     () =>
       Object.values(imagesByStationPpi).some((imgs) => imgs.length > 0) ||
       Object.values(imagesByStationDoppler).some((imgs) => imgs.length > 0) ||
-      Object.values(imagesRedemetPpiByCptec).some((imgs) => imgs.length > 0),
-    [imagesByStationPpi, imagesByStationDoppler, imagesRedemetPpiByCptec]
+      Object.values(imagesRedemetPpiByCptec).some((imgs) => imgs.length > 0) ||
+      Object.values(imagesSigmaPpiByCptec).some((imgs) => imgs.length > 0) ||
+      Object.values(imagesSigmaDopplerByCptec).some((imgs) => imgs.length > 0),
+    [imagesByStationPpi, imagesByStationDoppler, imagesRedemetPpiByCptec, imagesSigmaPpiByCptec, imagesSigmaDopplerByCptec]
+  );
+
+  const isDataReady = useMemo(
+    () => hasAnyStationImages,
+    [hasAnyStationImages]
   );
 
   const displaySlugs = useMemo(() => {
@@ -624,6 +670,8 @@ export default function AoVivo2Content() {
       setImagesByStationPpi({});
       setImagesByStationDoppler({});
       setImagesRedemetPpiByCptec({});
+      setImagesSigmaPpiByCptec({});
+      setImagesSigmaDopplerByCptec({});
       setTimelineCursor(null);
       return;
     }
@@ -668,9 +716,26 @@ export default function AoVivo2Content() {
           })
           .filter((x): x is Promise<{ cptecSlug: string; images: { name: string; url: string }[] }> => x != null);
 
-        return Promise.all(redTasks);
+        const sigTasks = stationsWithBounds
+          .map((slug) => {
+            const catalog = bucketSlugToCatalogSlug(slug);
+            if (!hasSigmaFallback(catalog)) return null;
+            const rs = getSigmaBucketSlugForCptecBucket(slug);
+            if (!rs) return null;
+            return Promise.all([
+              fetchStationProduct(rs, 'ppi').catch(() => ({ images: [] })),
+              fetchStationProduct(rs, 'doppler').catch(() => ({ images: [] }))
+            ]).then(([ppiRow, dopRow]) => ({
+              cptecSlug: slug,
+              imagesPpi: ppiRow.images,
+              imagesDop: dopRow.images,
+            }));
+          })
+          .filter((x): x is Promise<{ cptecSlug: string; imagesPpi: { name: string; url: string }[], imagesDop: { name: string; url: string }[] }> => x != null);
+
+        return Promise.all([Promise.all(redTasks), Promise.all(sigTasks)]);
       })
-      .then((redRows) => {
+      .then(([redRows, sigRows]) => {
         const nextRed: Record<string, { name: string; url: string }[]> = {};
         if (redRows) {
           for (const r of redRows) {
@@ -678,6 +743,18 @@ export default function AoVivo2Content() {
           }
         }
         setImagesRedemetPpiByCptec(nextRed);
+
+        const nextSigPpi: Record<string, { name: string; url: string }[]> = {};
+        const nextSigDop: Record<string, { name: string; url: string }[]> = {};
+        if (sigRows) {
+          for (const r of sigRows) {
+            nextSigPpi[r.cptecSlug] = r.imagesPpi;
+            nextSigDop[r.cptecSlug] = r.imagesDop;
+          }
+        }
+        setImagesSigmaPpiByCptec(nextSigPpi);
+        setImagesSigmaDopplerByCptec(nextSigDop);
+
         setTimelineCursor(null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -868,6 +945,8 @@ export default function AoVivo2Content() {
         const hasAny =
           (imagesByStationPpi[slug]?.length ?? 0) > 0 ||
           (imagesRedemetPpiByCptec[slug]?.length ?? 0) > 0 ||
+          (imagesSigmaPpiByCptec[slug]?.length ?? 0) > 0 ||
+          (imagesSigmaDopplerByCptec[slug]?.length ?? 0) > 0 ||
           (imagesByStationDoppler[slug]?.length ?? 0) > 0;
 
         const el = document.createElement('div');
@@ -919,6 +998,8 @@ export default function AoVivo2Content() {
     stationsWithBounds,
     imagesByStationPpi,
     imagesRedemetPpiByCptec,
+    imagesSigmaPpiByCptec,
+    imagesSigmaDopplerByCptec,
     imagesByStationDoppler,
     focusedSlug,
     splitScreen,
@@ -948,11 +1029,19 @@ export default function AoVivo2Content() {
     ) => {
       const boundsStation =
         kind === 'doppler'
-          ? findCptecBySlug(slug, radarConfigs)
+          ? (() => {
+              const ss = getSigmaBucketSlugForCptecBucket(slug);
+              // if sigma is selected for doppler
+              // effectiveDopplerImagesBySlug determines source. Since we forced it to match ppiSourceBySlug
+              if (ppiSourceBySlug[slug] === 'sigma' && ss) return findCptecBySlug(ss, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
+              return findCptecBySlug(slug, radarConfigs);
+            })()
           : (() => {
               const src = ppiSourceBySlug[slug];
               const rs = getRedemetBucketSlugForCptecBucket(slug);
-              if (src === 'redemet' && rs) return findCptecBySlug(rs, radarConfigs);
+              const ss = getSigmaBucketSlugForCptecBucket(slug);
+              if (src === 'redemet' && rs) return findCptecBySlug(rs, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
+              if (src === 'sigma' && ss) return findCptecBySlug(ss, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
               return findCptecBySlug(slug, radarConfigs);
             })();
       if (!boundsStation) return;
@@ -960,7 +1049,7 @@ export default function AoVivo2Content() {
       let coordinates = imageCoordinatesFromBounds(bounds);
       
       const config = radarConfigs.find(c => c.stationSlug === boundsStation.slug);
-      const targetOpacity = config?.opacity ?? (superResMode ? 0.95 : 0.88);
+      const targetOpacity = (config?.opacity !== undefined && config?.opacity !== null) ? config.opacity : (superResMode ? 0.95 : 0.88);
 
       if (config?.rotationDegrees) {
         // Rotate the 4 corners around the center
@@ -1029,7 +1118,8 @@ export default function AoVivo2Content() {
           nextUrl = filtered ?? nextUrl;
         }
         if (slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
-          const masked = await filterRadarImageCircularMask(nextUrl, boundsStation.lat, boundsStation.lng, boundsStation.rangeKm, bounds);
+          const mRadius = boundsStation.maskRadiusKm ?? boundsStation.rangeKm;
+          const masked = await filterRadarImageCircularMask(nextUrl, boundsStation.lat, boundsStation.lng, mRadius, bounds);
           if (gen !== layerUpdateGenerationRef.current) return;
           nextUrl = masked ?? nextUrl;
         }
@@ -1311,12 +1401,11 @@ export default function AoVivo2Content() {
         </div>
       )}
 
-      {/* UI flutuante (MapLibre GL — mesmo ecossistema Mapbox) */}
+        {/* UI flutuante (MapLibre GL — mesmo ecossistema Mapbox) */}
       {!showEmptyBucketHelp && (
         <div className="absolute inset-0 z-20 pointer-events-none">
-          {/* Barra vertical — topo esquerdo */}
+          {/* Menu Dropdown - Canto Esquerdo */}
           <div className="absolute left-3 top-3 flex items-start gap-3 pointer-events-auto sm:left-4 sm:top-4 z-50">
-            
             {/* Hambúrguer Menu original */}
             <div className="flex flex-col gap-2 relative">
               <button
@@ -1357,29 +1446,18 @@ export default function AoVivo2Content() {
                 <button
                   type="button"
                   onClick={() => setSplitScreen((s) => !s)}
-                  title={splitScreen ? 'Voltar a ecrã único' : 'Dividir Tela — PPI à esquerda, Doppler à direita (mesmo instante)'}
-                  className={`flex min-h-[3.25rem] w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 shadow-lg ring-1 ring-black/5 transition ${
-                    splitScreen ? 'bg-teal-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl shadow-lg ring-1 ring-black/5 transition ${
+                    splitScreen ? 'bg-sky-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
                   }`}
+                  title={splitScreen ? 'Desativar Visão Dupla' : 'Ativar Visão Dupla'}
                 >
-                  <Columns2 className="h-4 w-4 shrink-0" />
-                  <span className="max-w-full text-center text-[6px] font-bold leading-[1.1]">
-                    {splitScreen ? (
-                      'Único'
-                    ) : (
-                      <>
-                        Dividir
-                        <br />
-                        Tela
-                      </>
-                    )}
-                  </span>
+                  <Columns2 className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={flyToUserLocation}
-                  title="Ir para a minha localização"
                   className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
+                  title="Minha Localização"
                 >
                   <Navigation className="h-5 w-5" />
                 </button>
@@ -1417,51 +1495,61 @@ export default function AoVivo2Content() {
                 )}
               </div>
             </div>
+          </div>
 
-            {/* BaseMap Picker */}
+          {/* Galeria de Mapa Base - Canto Direito */}
+          <div className="absolute right-3 top-3 flex items-start gap-3 pointer-events-auto sm:right-4 sm:top-4 z-50">
+            {/* Base Map Picker */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowBaseMapGallery((v) => !v)}
-                className={`flex h-[60px] w-[60px] items-center justify-center transition-all z-50 hover:scale-105 hover:shadow-[0_0_20px_rgba(56,189,248,0.8)] rounded-full overflow-hidden shadow-lg bg-[#0f172a] border border-white/10 ${showBaseMapGallery ? 'text-cyan-400' : 'text-slate-300 hover:text-white'}`}
+                className={`flex h-[60px] w-[60px] items-center justify-center rounded-full transition-all hover:scale-105 shadow-lg border border-white/10 ${showBaseMapGallery ? 'bg-cyan-600 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)]' : 'bg-[#0f172a] text-slate-300 hover:text-white'}`}
                 title="Tipo de mapa"
               >
-                <Layers className="w-6 h-6" />
+                <Layers className="h-6 w-6" />
               </button>
               <AnimatePresence>
                 {showBaseMapGallery && (
                   <>
-                    <div className="fixed inset-0 z-30 cursor-default" onClick={() => setShowBaseMapGallery(false)} aria-hidden />
-                    <motion.div 
-                      initial={{ opacity: 0, x: -10 }} 
-                      animate={{ opacity: 1, x: 0 }} 
-                      exit={{ opacity: 0, x: -10 }}
-                      className="absolute top-0 left-full ml-3 z-40 w-[280px] rounded-2xl bg-[#0A0E17]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-3 overflow-hidden grid grid-cols-2 gap-2 sm:gap-3"
+                    <div className="fixed inset-0 z-[49] cursor-default" onClick={() => setShowBaseMapGallery(false)} aria-hidden />
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute right-0 top-full mt-2 z-[60] grid w-[280px] grid-cols-2 gap-2 rounded-2xl bg-[#0F131C]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl sm:w-[320px]"
                     >
-                      <div className="col-span-2 px-1 pb-1">
-                        <p className="text-[10px] sm:text-xs font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
-                          <Layers className="w-3.5 h-3.5" />
-                          Estilo do Mapa
-                        </p>
-                      </div>
                       {BASE_MAP_OPTIONS.map((opt) => (
                         <button
                           key={opt.id}
-                          onClick={() => { setBaseMapId(opt.id); setShowBaseMapGallery(false); }}
-                          className={`rounded-xl overflow-hidden border-2 text-left transition-all duration-200 hover:scale-[1.03] ${baseMapId === opt.id ? 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'border-white/5 hover:border-white/20'}`}
+                          onClick={() => {
+                            setBaseMapId(opt.id);
+                            setShowBaseMapGallery(false);
+                          }}
+                          className={`group relative flex aspect-video flex-col overflow-hidden rounded-xl border text-left transition-all ${
+                            baseMapId === opt.id
+                              ? 'border-cyan-500 ring-2 ring-cyan-500/30'
+                              : 'border-white/10 hover:border-white/30'
+                          }`}
                         >
-                          <div className="relative aspect-video">
-                            <img src={opt.previewUrl} alt={opt.label} className="absolute inset-0 w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                            <div className="absolute bottom-0 left-0 right-0 p-1.5 sm:p-2 flex justify-between items-end">
-                              <span className="text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-wider">{opt.label}</span>
-                              {baseMapId === opt.id && (
-                                <div className="w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center text-[#0A0E17]">
-                                  <Check className="w-2.5 h-2.5" />
-                                </div>
-                              )}
+                          <img
+                            src={opt.previewUrl}
+                            alt={opt.label}
+                            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#0F131C]/90 via-[#0F131C]/20 to-transparent" />
+                          
+                          {baseMapId === opt.id && (
+                            <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-slate-950 shadow-sm">
+                              <Check className="h-3 w-3" strokeWidth={3} />
                             </div>
-                          </div>
+                          )}
+                          
+                          <span className="absolute bottom-1.5 left-2 right-2 truncate text-[11px] font-medium text-white drop-shadow-md sm:bottom-2 sm:left-2.5 sm:text-xs">
+                            {opt.label}
+                          </span>
                         </button>
                       ))}
                     </motion.div>
@@ -1469,7 +1557,6 @@ export default function AoVivo2Content() {
                 )}
               </AnimatePresence>
             </div>
-
           </div>
 
           {/* Legenda — centro superior (dividido: PPI + Doppler m/s) */}
@@ -1584,7 +1671,7 @@ export default function AoVivo2Content() {
                       <p className="min-w-0 truncate text-[11px] font-semibold text-white sm:text-sm">
                         {stationTitle}
                       </p>
-                      {focusedSlug && hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) && (
+                      {(focusedSlug && (hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) || hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)))) && (
                         <select
                           value={focusedRadarSource}
                           onChange={(e) => {
@@ -1592,12 +1679,13 @@ export default function AoVivo2Content() {
                             setTimelineCursor(null);
                           }}
                           className="pointer-events-auto max-w-[10rem] shrink-0 rounded-lg border border-white/25 bg-slate-900/90 px-2 py-1 text-[10px] font-semibold text-white ring-1 ring-white/10 sm:max-w-[12rem] sm:text-xs"
-                          title="Fonte PPI: REDEMET usa imagens do bucket redemet-• e alcance maior no mapa"
-                          aria-label="Fonte do radar (CPTEC ou REDEMET)"
+                          title="Fonte do radar"
+                          aria-label="Fonte do radar (CPTEC, REDEMET ou SIGMA)"
                         >
                           <option value="auto">Automático</option>
                           <option value="cptec">CPTEC</option>
-                          <option value="redemet">REDEMET</option>
+                          {hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="redemet">REDEMET</option>}
+                          {hasSigmaFallback(bucketSlugToCatalogSlug(focusedSlug)) && <option value="sigma">SIGMA</option>}
                         </select>
                       )}
                     </div>

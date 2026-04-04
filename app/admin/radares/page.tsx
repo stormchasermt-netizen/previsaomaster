@@ -9,6 +9,7 @@ import { ChevronLeft, Plus, Check, X, Radar, Loader2, Save, MapPin, Layers } fro
 import { MAP_STYLE_DARK } from '@/lib/constants';
 import { CPTEC_RADAR_STATIONS, calculateRadarBounds, calculateRadarBoundsGeodesic, buildNowcastingPngUrl, getNowMinusMinutesTimestamp12UTC, getNearestRadarTimestamp, subtractMinutesFromTimestamp12UTC, type CptecRadarStation } from '@/lib/cptecRadarStations';
 import { hasRedemetFallback, getRedemetArea, buildRedemetPngUrl } from '@/lib/redemetRadar';
+import { hasSigmaFallback } from '@/lib/cptecRadarStations';
 import {
   ARGENTINA_RADAR_STATIONS,
   buildArgentinaRadarPngUrl,
@@ -115,6 +116,7 @@ export default function AdminRadaresPage() {
   const [imageCenterLng, setImageCenterLng] = useState<number>(0);
   const [pickingImageCenter, setPickingImageCenter] = useState<boolean>(false);
   const [rangeKm, setRangeKm] = useState<number>(250);
+  const [maskRadiusKm, setMaskRadiusKm] = useState<number>(250);
   const [panelOpen, setPanelOpen] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [baseMapId, setBaseMapId] = useState<BaseMapId>('satellite');
@@ -130,7 +132,7 @@ export default function AdminRadaresPage() {
   const [previewOpacity, setPreviewOpacity] = useState<number>(0.75);
   /** Lat/lng durante arraste — atualiza os inputs em tempo real. null quando não está arrastando. */
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
-  const [radarSource, setRadarSource] = useState<'cptec' | 'redemet'>('cptec');
+  const [radarSource, setRadarSource] = useState<'cptec' | 'redemet' | 'sigma'>('cptec');
 
   // === ESTÚDIO DE RADAR ===
   // Bounding Box (Arrasto e estiramento nas 4 pontas em vez de só centro/raio)
@@ -288,14 +290,14 @@ if (baseMapId === 'dark') {
   }
 
   /** Abre o painel para configurar um radar CPTEC */
-  const handleSelectStation = (station: CptecRadarStation, source: 'cptec' | 'redemet' = 'cptec') => {
-    const slug = source === 'redemet' ? `${station.slug}-redemet` : station.slug;
+  const handleSelectStation = (station: CptecRadarStation, source: 'cptec' | 'redemet' | 'sigma' = 'cptec') => {
+    const slug = source === 'redemet' ? `${station.slug}-redemet` : source === 'sigma' ? `sigma-${station.slug}` : station.slug;
     const existing = configs.find((c) => c.id === slug || c.stationSlug === slug);
     const interval = existing?.updateIntervalMinutes ?? station.updateIntervalMinutes ?? 10;
     
     setRadarSource(source);
 
-    const isIpmet = station.slug === 'ipmet-bauru';
+    const isIpmet = station.slug === 'ipmet-bauru' || station.slug === 'ipmet-prudente';
     let template: string;
     if (isIpmet) {
       template = existing?.urlTemplate || IPMET_STATIC_URL;
@@ -314,7 +316,23 @@ if (baseMapId === 'dark') {
     }
 
     const initialUrl = isIpmet ? IPMET_STATIC_URL : buildRadarPngUrl(template, getSampleTs12(interval));
-    const urlsToTry = (isIpmet || source === 'redemet') ? [] : buildLatestImageUrls(station, template);
+    
+        let ipmetUrlsToTry: { url: string; ts12: string }[] = [];
+    if (isIpmet) {
+      // Para o IPMet, tenta carregar do Storage para mostrar a imagem real (com timestamp recente)
+      const nominalTs = getNowMinusMinutesTimestamp12UTC(3);
+      for (let back = 0; back <= 60; back += 6) {
+        const baseTs = back === 0 ? nominalTs : subtractMinutesFromTimestamp12UTC(nominalTs, back);
+        const ts12 = getNearestRadarTimestamp(baseTs, station);
+        // Utiliza o proxy para não ter problemas de CORS ao tentar jogar no Canvas
+        ipmetUrlsToTry.push({
+          url: getProxiedRadarUrl(`https://storage.googleapis.com/radar_ao_vivo_2/ipmet-bauru/${ts12}.png`),
+          ts12,
+        });
+      }
+    }
+    
+    const urlsToTry = isIpmet ? ipmetUrlsToTry : (source === 'redemet' ? [] : buildLatestImageUrls(station, template));
     setSelectedStation({ type: 'cptec', station });
     setConfig(existing || null);
     setUrlTemplate(template);
@@ -326,6 +344,7 @@ if (baseMapId === 'dark') {
     setImageCenterLat(existing?.imageCenterLat ?? 0);
     setImageCenterLng(existing?.imageCenterLng ?? 0);
     setRangeKm(existing?.rangeKm ?? station.rangeKm);
+    setMaskRadiusKm(existing?.maskRadiusKm ?? station.rangeKm);
     setRotationDegrees(existing?.rotationDegrees ?? 0);
     setPreviewOpacity(existing?.opacity ?? 0.75);
     setPreviewImageUrl(isIpmet ? initialUrl : (source === 'redemet' ? getProxiedRadarUrl(initialUrl) : (urlsToTry[0]?.url ?? initialUrl)));
@@ -391,6 +410,7 @@ if (baseMapId === 'dark') {
     setImageCenterLat(existing?.imageCenterLat ?? 0);
     setImageCenterLng(existing?.imageCenterLng ?? 0);
     setRangeKm(existing?.rangeKm ?? station.rangeKm);
+    setMaskRadiusKm(existing?.maskRadiusKm ?? station.rangeKm);
     setRotationDegrees(existing?.rotationDegrees ?? 0);
     setPreviewOpacity(existing?.opacity ?? 0.75);
     setPreviewImageUrl(urlsToTry[0]?.url ?? initialUrl);
@@ -442,6 +462,52 @@ if (baseMapId === 'dark') {
     addToast('Carregando preview…', 'success');
   };
 
+  const handleSaveImagePosition = useCallback(async (newImgLat: number, newImgLng: number) => {
+    if (!selectedStation || !urlTemplate.trim()) return;
+    setImageCenterLat(newImgLat);
+    setImageCenterLng(newImgLng);
+    const s = selectedStation.station;
+    const slug: string = selectedStation.type === 'cptec'
+      ? (s as CptecRadarStation).slug
+      : `argentina:${(s as ArgentinaRadarStation).id}`;
+    const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : (selectedStation.type === 'cptec' && radarSource === 'sigma') ? `sigma-${slug}` : slug;
+    
+    const isIpmet = selectedStation.type === 'cptec' && (s as CptecRadarStation).slug === 'ipmet-bauru';
+    
+    const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
+    const computedBounds = calcBounds(newImgLat, newImgLng, rangeKm);
+    
+    setSaving(true);
+    try {
+      await saveRadarConfig({
+        id,
+        stationSlug: slug,
+        name: s.name + (radarSource === 'redemet' ? ' (Redemet)' : radarSource === 'sigma' ? ' (Sigma)' : ''),
+        urlTemplate: urlTemplate.trim(),
+        bounds: computedBounds,
+        lat: centerLat,
+        lng: centerLng,
+        imageCenterLat: newImgLat,
+        imageCenterLng: newImgLng,
+        rangeKm,
+        maskRadiusKm: maskRadiusKm !== rangeKm ? maskRadiusKm : undefined,
+        updateIntervalMinutes: updateIntervalMinutes,
+        rotationDegrees: rotationDegrees,
+        opacity: previewOpacity,
+        customBounds: useCustomBounds && customBounds ? customBounds : undefined,
+        chromaKeyDeltaThreshold: chromaKeyDeltaThreshold > 0 ? chromaKeyDeltaThreshold : undefined,
+        cropConfig: (cropTop > 0 || cropBottom > 0 || cropLeft > 0 || cropRight > 0) ? { top: cropTop, bottom: cropBottom, left: cropLeft, right: cropRight } : undefined,
+        superRes: superRes || undefined,
+      });
+      addToast('Posição da imagem salva.', 'success');
+      await loadConfigs();
+    } catch (e: any) {
+      addToast(`Erro ao salvar: ${e.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [selectedStation, radarSource, urlTemplate, centerLat, centerLng, rangeKm, maskRadiusKm, updateIntervalMinutes, rotationDegrees, previewOpacity, customBounds, useCustomBounds, chromaKeyDeltaThreshold, cropTop, cropBottom, cropLeft, cropRight, superRes, addToast]);
+
   /** Salva posição (lat/lng) após arrastar. Usado no fim do drag. */
   const handleSavePosition = useCallback(async (lat: number, lng: number) => {
     if (!selectedStation || !urlTemplate.trim()) return;
@@ -451,7 +517,7 @@ if (baseMapId === 'dark') {
     const slug: string = selectedStation.type === 'cptec'
       ? (s as CptecRadarStation).slug
       : `argentina:${(s as ArgentinaRadarStation).id}`;
-    const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : slug;
+    const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : (selectedStation.type === 'cptec' && radarSource === 'sigma') ? `sigma-${slug}` : slug;
     
     const isIpmet = selectedStation.type === 'cptec' && (s as CptecRadarStation).slug === 'ipmet-bauru';
     
@@ -476,7 +542,7 @@ if (baseMapId === 'dark') {
       await saveRadarConfig({
         id,
         stationSlug: slug,
-        name: s.name + (radarSource === 'redemet' ? ' (Redemet)' : ''),
+        name: s.name + (radarSource === 'redemet' ? ' (Redemet)' : radarSource === 'sigma' ? ' (Sigma)' : ''),
         urlTemplate: urlTemplate.trim(),
         bounds: computedBounds,
         lat,
@@ -484,6 +550,7 @@ if (baseMapId === 'dark') {
         imageCenterLat: imageCenterLat !== 0 ? imageCenterLat : undefined,
         imageCenterLng: imageCenterLng !== 0 ? imageCenterLng : undefined,
         rangeKm,
+        maskRadiusKm: maskRadiusKm !== rangeKm ? maskRadiusKm : undefined,
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
         opacity: previewOpacity,
@@ -534,9 +601,15 @@ if (baseMapId === 'dark') {
     });
     originalAntennaMarkerRef.current = originalMarker;
 
-    // Marcador Editável (Centro da Máscara)
-    const lat = liveCenter ? liveCenter.lat : (imageCenterLat !== 0 ? imageCenterLat : centerLat);
-    const lng = liveCenter ? liveCenter.lng : (imageCenterLng !== 0 ? imageCenterLng : centerLng);
+    // Marcador Editável
+    const isImageDrag = dragMode === 'image';
+    const lat = isImageDrag 
+      ? (liveCenter ? liveCenter.lat : (imageCenterLat !== 0 ? imageCenterLat : centerLat))
+      : (liveCenter ? liveCenter.lat : centerLat);
+    const lng = isImageDrag
+      ? (liveCenter ? liveCenter.lng : (imageCenterLng !== 0 ? imageCenterLng : centerLng))
+      : (liveCenter ? liveCenter.lng : centerLng);
+
     const marker = new google.maps.Marker({
       map,
       position: { lat, lng },
@@ -544,12 +617,12 @@ if (baseMapId === 'dark') {
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 8,
-        fillColor: "#22d3ee",
+        fillColor: isImageDrag ? "#facc15" : "#22d3ee", // Yellow for image, cyan for mask center
         fillOpacity: 1,
         strokeColor: "#ffffff",
         strokeWeight: 2,
       },
-      title: 'Centro da Imagem (Arraste para mover)',
+      title: isImageDrag ? 'Posição da Imagem (Arraste)' : 'Centro do Radar/Máscara (Arraste)',
       zIndex: 1000,
     });
     marker.addListener('dragend', () => {
@@ -557,10 +630,12 @@ if (baseMapId === 'dark') {
       if (pos) {
         const newLat = pos.lat();
         const newLng = pos.lng();
-        setImageCenterLat(newLat);
-        setImageCenterLng(newLng);
         setLiveCenter(null);
-        handleSavePosition(newLat, newLng);
+        if (isImageDrag) {
+          handleSaveImagePosition(newLat, newLng);
+        } else {
+          handleSavePosition(newLat, newLng);
+        }
       }
     });
     positionMarkerRef.current = marker;
@@ -640,14 +715,8 @@ if (baseMapId === 'dark') {
         if (isIpmet && selectedStation?.type === 'cptec') {
           const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
           const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
-          const isDefaultIpmet = !!(selectedStation.station as CptecRadarStation).bounds;
           const calcBounds = typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
-          const defaultB = isDefaultIpmet
-            ? {
-                sw: { lat: (selectedStation.station as CptecRadarStation).bounds!.minLat, lng: (selectedStation.station as CptecRadarStation).bounds!.minLon },
-                ne: { lat: (selectedStation.station as CptecRadarStation).bounds!.maxLat, lng: (selectedStation.station as CptecRadarStation).bounds!.maxLon }
-              }
-            : calcBounds(latForBounds, lngForBounds, rangeKm);
+          const defaultB = calcBounds(latForBounds, lngForBounds, rangeKm);
           
           const currentB = (useCustomBounds && customBounds) ? { 
              sw: { lat: customBounds.south, lng: customBounds.west }, 
@@ -663,11 +732,15 @@ if (baseMapId === 'dark') {
           
           const W = canvas.width;
           const H = canvas.height;
-          const cx = W * (centerLng - boundsForMask.west) / (boundsForMask.east - boundsForMask.west);
-          const cy = H * (boundsForMask.north - centerLat) / (boundsForMask.north - boundsForMask.south);
+          // Usa lat/lng passados ou usa default de imageCenter ou center (pois pode ter sido alterado visualmente)
+          const maskCenterLat = centerLat;
+          const maskCenterLng = centerLng;
+
+          const cx = W * (maskCenterLng - boundsForMask.west) / (boundsForMask.east - boundsForMask.west);
+          const cy = H * (boundsForMask.north - maskCenterLat) / (boundsForMask.north - boundsForMask.south);
           
-          const radiusLatDeg = rangeKm / 111.32;
-          const radiusLonDeg = rangeKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
+          const radiusLatDeg = maskRadiusKm / 111.32;
+          const radiusLonDeg = maskRadiusKm / (111.32 * Math.cos((maskCenterLat * Math.PI) / 180));
           
           const rx = W * (radiusLonDeg / (boundsForMask.east - boundsForMask.west));
           const ry = H * (radiusLatDeg / (boundsForMask.north - boundsForMask.south));
@@ -688,7 +761,7 @@ if (baseMapId === 'dark') {
           }
         }
         
-        // Se NENHUM filtro extra foi ativado, não force a renderização para economizar processamento
+        // Se NENHUM filtro extra foi ativado E não for IPMet, não force a renderização para economizar processamento
         if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0 && !isIpmet) {
           setProcessedImageUrl(null);
           return;
@@ -702,7 +775,7 @@ if (baseMapId === 'dark') {
     };
     runFilter();
     return () => { active = false; };
-  }, [previewImageUrl, chromaKeyDeltaThreshold, cropTop, cropBottom, cropLeft, cropRight, selectedStation, centerLat, centerLng, imageCenterLat, imageCenterLng, rangeKm, customBounds, useCustomBounds]);
+  }, [previewImageUrl, chromaKeyDeltaThreshold, cropTop, cropBottom, cropLeft, cropRight, selectedStation, centerLat, centerLng, imageCenterLat, imageCenterLng, rangeKm, maskRadiusKm, customBounds, useCustomBounds]);
 
   /** Overlay da imagem no mapa — arrastável, e Suporte a Rectangle Bounds */
   useEffect(() => {
@@ -723,16 +796,7 @@ if (baseMapId === 'dark') {
 
     // Para radares com limites fixos (mosaicos como IPMet), usamos eles como defaultB em vez de calcular a partir do centro.
     // A imagem do mosaico tem um tamanho fixo e nunca deve ser espremida num quadrado.
-    const isDefaultIpmet = isIpmet && 
-                           selectedStation?.type === 'cptec' && 
-                           (selectedStation.station as CptecRadarStation).bounds;
-
-    const defaultB = isDefaultIpmet
-      ? {
-          sw: { lat: (selectedStation.station as CptecRadarStation).bounds!.minLat, lng: (selectedStation.station as CptecRadarStation).bounds!.minLon },
-          ne: { lat: (selectedStation.station as CptecRadarStation).bounds!.maxLat, lng: (selectedStation.station as CptecRadarStation).bounds!.maxLon }
-        }
-      : calcBounds(latForBounds, lngForBounds, rangeKm);
+    const defaultB = calcBounds(latForBounds, lngForBounds, rangeKm);
     
     // Matriz Fonte de Origem
     const currentB = (useCustomBounds && customBounds) ? { 
@@ -819,51 +883,30 @@ if (baseMapId === 'dark') {
             };
           } else {
             // dragMode === 'image'
-            // Move entire customBounds
-            const startCenterLat = (currentB.ne.lat + currentB.sw.lat) / 2;
-            const startCenterLng = (currentB.ne.lng + currentB.sw.lng) / 2;
-            const startPixelCenter = proj.fromLatLngToDivPixel(new google.maps.LatLng(startCenterLat, startCenterLng))!;
+            // Move the center of the image (imageCenterLat / imageCenterLng)
+            const startLat = imageCenterLat !== 0 ? imageCenterLat : centerLat;
+            const startLng = imageCenterLng !== 0 ? imageCenterLng : centerLng;
+            const startPixel = proj.fromLatLngToDivPixel(new google.maps.LatLng(startLat, startLng))!;
             
-            const offsetX = (e.clientX - rect.left) - startPixelCenter.x;
-            const offsetY = (e.clientY - rect.top) - startPixelCenter.y;
+            const offsetX = (e.clientX - rect.left) - startPixel.x;
+            const offsetY = (e.clientY - rect.top) - startPixel.y;
             divEl!.style.cursor = 'grabbing';
-            
-            let lastBounds = currentB;
             
             moveHandler = (e2: MouseEvent) => {
               const mx = e2.clientX - rect.left - offsetX;
               const my = e2.clientY - rect.top - offsetY;
               const pt = proj.fromDivPixelToLatLng(new google.maps.Point(mx, my));
               if (!pt || !divEl) return;
-              
-              const dLat = pt.lat() - startCenterLat;
-              const dLng = pt.lng() - startCenterLng;
-              
-              lastBounds = {
-                 sw: { lat: currentB.sw.lat + dLat, lng: currentB.sw.lng + dLng },
-                 ne: { lat: currentB.ne.lat + dLat, lng: currentB.ne.lng + dLng }
-              };
-              
-              const swP = proj.fromLatLngToDivPixel(new google.maps.LatLng(lastBounds.sw.lat, lastBounds.sw.lng));
-              const neP = proj.fromLatLngToDivPixel(new google.maps.LatLng(lastBounds.ne.lat, lastBounds.ne.lng));
-              if (swP && neP) {
-                divEl!.style.left = Math.min(swP.x, neP.x) + 'px';
-                divEl!.style.top = Math.min(swP.y, neP.y) + 'px';
-                divEl!.style.width = Math.abs(neP.x - swP.x) + 'px';
-                divEl!.style.height = Math.abs(neP.y - swP.y) + 'px';
-              }
+              setLiveCenter({ lat: pt.lat(), lng: pt.lng() });
             };
             
             upHandler = () => {
               divEl!.style.cursor = 'grab';
               document.removeEventListener('mousemove', moveHandler);
               document.removeEventListener('mouseup', upHandler);
-              setUseCustomBounds(true);
-              setCustomBounds({
-                  north: lastBounds.ne.lat,
-                  south: lastBounds.sw.lat,
-                  east: lastBounds.ne.lng,
-                  west: lastBounds.sw.lng
+              setLiveCenter(prev => { 
+                  if(prev) handleSaveImagePosition(prev.lat, prev.lng); 
+                  return null; 
               });
             };
           }
@@ -884,7 +927,10 @@ if (baseMapId === 'dark') {
         let tryIndex = 0;
         const tryNext = () => {
           if (urlsToTry.length > 0 && tryIndex < urlsToTry.length) {
-            img.src = urlsToTry[tryIndex].url; tryIndex += 1; return;
+            const nextUrl = urlsToTry[tryIndex].url;
+            img.src = nextUrl;
+            tryIndex += 1; 
+            return;
           }
           setLoadingPreview(false);
         };
@@ -895,9 +941,22 @@ if (baseMapId === 'dark') {
         if (processedImageUrl) {
            img.src = processedImageUrl;
         } else if (urlsToTry.length > 0) {
-          img.src = urlsToTry[0].url; tryIndex = 1;
+          const firstUrl = urlsToTry[0].url;
+          img.src = firstUrl;
+          tryIndex = 1;
+        } else if (previewImageUrl && (previewImageUrl.includes('getradaripmet') || previewImageUrl.includes('cloudfunctions.net') || previewImageUrl.includes('storage.googleapis.com') || previewImageUrl.startsWith('http'))) {
+          // Add a cache buster for direct URLs that might be cached
+          try {
+            const urlObj = new URL(previewImageUrl);
+            if (!urlObj.searchParams.has('v')) {
+              urlObj.searchParams.set('v', String(Date.now()));
+            }
+            img.src = urlObj.toString();
+          } catch (e) {
+             img.src = previewImageUrl;
+          }
         } else {
-          img.src = (previewImageUrl || '').includes('getradaripmet') || (previewImageUrl || '').includes('cloudfunctions.net') ? (previewImageUrl || '') : getProxiedRadarUrl(previewImageUrl || '');
+          img.src = getProxiedRadarUrl(previewImageUrl || '');
         }
         inner.appendChild(img);
       } else {
@@ -952,7 +1011,11 @@ if (baseMapId === 'dark') {
     const s = selectedStation.station;
     setCenterLat(s.lat);
     setCenterLng(s.lng);
+    setImageCenterLat(s.lat);
+    setImageCenterLng(s.lng);
     setRangeKm(s.rangeKm);
+    setMaskRadiusKm(s.rangeKm);
+    setLiveCenter(null);
     addToast('Centro e raio preenchidos da estação.', 'success');
   };
 
@@ -965,7 +1028,7 @@ if (baseMapId === 'dark') {
     const slug: string = selectedStation.type === 'cptec'
       ? (s as CptecRadarStation).slug
       : `argentina:${(s as ArgentinaRadarStation).id}`;
-    const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : slug;
+    const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : (selectedStation.type === 'cptec' && radarSource === 'sigma') ? `sigma-${slug}` : slug;
 
     const isIpmet = selectedStation.type === 'cptec' && 
       ((s as CptecRadarStation).slug === 'ipmet-bauru' || (s as CptecRadarStation).slug === 'ipmet-prudente');
@@ -976,7 +1039,7 @@ if (baseMapId === 'dark') {
     const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
     
     let computedBounds;
-    const isDefaultIpmetSave = isIpmet && (s as CptecRadarStation).bounds;
+    const isDefaultIpmetSave = isIpmet && (s as CptecRadarStation).bounds && imageCenterLat === 0 && imageCenterLng === 0 && rangeKm === (s as CptecRadarStation).rangeKm && !useCustomBounds;
     if (isDefaultIpmetSave) {
       computedBounds = {
         ne: { lat: (s as CptecRadarStation).bounds!.maxLat, lng: (s as CptecRadarStation).bounds!.maxLon },
@@ -991,7 +1054,7 @@ if (baseMapId === 'dark') {
       await saveRadarConfig({
         id,
         stationSlug: slug,
-        name: s.name + (radarSource === 'redemet' ? ' (Redemet)' : ''),
+        name: s.name + (radarSource === 'redemet' ? ' (Redemet)' : radarSource === 'sigma' ? ' (Sigma)' : ''),
         urlTemplate: urlTemplate.trim(),
         bounds: computedBounds,
         lat: centerLat,
@@ -999,6 +1062,7 @@ if (baseMapId === 'dark') {
         imageCenterLat: imageCenterLat !== 0 ? imageCenterLat : undefined,
         imageCenterLng: imageCenterLng !== 0 ? imageCenterLng : undefined,
         rangeKm,
+        maskRadiusKm: maskRadiusKm !== rangeKm ? maskRadiusKm : undefined,
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
         opacity: previewOpacity,
@@ -1392,19 +1456,22 @@ if (baseMapId === 'dark') {
               </div>
 
               <div>
-                <label className="text-slate-400 text-sm block mb-1">Centro da antena / Máscara (lat, lng)</label>
+                <label className="text-slate-400 text-sm block mb-1">
+                  {dragMode === 'image' ? 'Centro da Imagem (lat, lng)' : 'Centro do Radar/Máscara (lat, lng)'}
+                </label>
                 <p className="text-xs text-slate-500 mb-2">
-                  Arraste a imagem no mapa para posicionar (o ponto central define lat/lng). Salvamento automático ao soltar.
+                  Arraste a imagem no mapa para posicionar. Salvamento automático ao soltar.
                 </p>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <input
                     type="number"
                     step="any"
                     placeholder="Latitude"
-                    value={liveCenter ? liveCenter.lat : (centerLat || '')}
+                    value={liveCenter ? liveCenter.lat : (dragMode === 'image' ? (imageCenterLat || '') : (centerLat || ''))}
                     onChange={(e) => {
                       setLiveCenter(null);
-                      setCenterLat(parseFloat(e.target.value) || 0);
+                      const val = parseFloat(e.target.value) || 0;
+                      if (dragMode === 'image') setImageCenterLat(val); else setCenterLat(val);
                     }}
                     className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm"
                   />
@@ -1412,10 +1479,11 @@ if (baseMapId === 'dark') {
                     type="number"
                     step="any"
                     placeholder="Longitude"
-                    value={liveCenter ? liveCenter.lng : (centerLng || '')}
+                    value={liveCenter ? liveCenter.lng : (dragMode === 'image' ? (imageCenterLng || '') : (centerLng || ''))}
                     onChange={(e) => {
                       setLiveCenter(null);
-                      setCenterLng(parseFloat(e.target.value) || 0);
+                      const val = parseFloat(e.target.value) || 0;
+                      if (dragMode === 'image') setImageCenterLng(val); else setCenterLng(val);
                     }}
                     className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm"
                   />
@@ -1446,8 +1514,30 @@ if (baseMapId === 'dark') {
                   <span className="text-sm font-mono text-cyan-400 min-w-[3rem]">{rangeKm} km</span>
                 </div>
               </div>
+
+              {(selectedStation.type === 'cptec' && (selectedStation.station.slug === 'ipmet-bauru' || selectedStation.station.slug === 'ipmet-prudente')) && (
+                <div className="mt-4">
+                  <label className="text-slate-400 text-sm block mb-1 font-medium text-cyan-300">Alcance do Raio (IPMet - Corte Circular)</label>
+                  <p className="text-xs text-slate-500 mb-2">
+                    Corta a imagem circularmente em tempo real até o ponto em que a bolinha azul (Centro da Máscara) foi inserida.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={10}
+                      max={500}
+                      step={10}
+                      value={maskRadiusKm}
+                      onChange={(e) => setMaskRadiusKm(Number(e.target.value))}
+                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                    />
+                    <span className="text-sm font-mono text-cyan-400 min-w-[3rem]">{maskRadiusKm} km</span>
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="text-slate-400 text-sm block mb-1">Bounds (calculados, somente leitura)</label>
+                <label className="text-slate-400 text-sm block mt-4 mb-1">Bounds (calculados, somente leitura)</label>
                 <div className="grid grid-cols-2 gap-2 text-xs bg-slate-800/50 rounded px-3 py-2 border border-slate-700">
                   <div>
                     <span className="text-slate-500">NE</span>

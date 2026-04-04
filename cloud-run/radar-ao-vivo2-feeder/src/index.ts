@@ -12,6 +12,7 @@ import {
   downloadRedemetImagesInWindow,
   downloadSimeparImagesInWindow,
   downloadIpmetRainviewerInWindow,
+  downloadSigmaImagesInWindow,
   ts12ToUtcMs,
 } from './radarFetch.js';
 
@@ -184,6 +185,10 @@ async function executeSync(targetSlug?: string): Promise<{
       });
     } else if (slug.startsWith('redemet-')) {
       found = await downloadRedemetImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+        checkExists,
+      });
+    } else if (slug.startsWith('sigma-')) {
+      found = await downloadSigmaImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
         checkExists,
       });
     } else if (slug === 'simepar-cascavel') {

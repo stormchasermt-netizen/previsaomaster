@@ -19,6 +19,7 @@ export interface CptecStation {
   slug: string;
   org: string;
   server: string;
+  sigmaConfig?: { cappi?: number; vento?: number };
 }
 
 export const IPMET_URL = 'https://getradaripmet-kj7x6j3jsa-uc.a.run.app';
@@ -109,6 +110,37 @@ export const DEFAULT_SYNC_SLUGS = [
   'redemet-ua',
   // --- Simepar ---
   'simepar-cascavel',
+  // --- Sigma ---
+  'sigma-santiago',
+  'sigma-cangucu',
+  'sigma-chapeco',
+  'sigma-lontras',
+  'sigma-morroigreja',
+  'sigma-ipmet-prudente',
+  'sigma-ipmet-bauru',
+  'sigma-saoroque',
+  'sigma-picocouto',
+  'sigma-gama',
+  'sigma-almenara',
+  'sigma-saofrancisco',
+  'sigma-tresmarias',
+  'sigma-jaraguari',
+  'sigma-natal',
+  'sigma-maceio',
+  'sigma-salvador',
+  'sigma-petrolina',
+  'sigma-portovelho',
+  'sigma-cruzeirodosul',
+  'sigma-tabatinga',
+  'sigma-tefe',
+  'sigma-saogabriel',
+  'sigma-manaus',
+  'sigma-boavista',
+  'sigma-macapa',
+  'sigma-santarem',
+  'sigma-saoluis',
+  'sigma-belem',
+  'sigma-funceme-quixeramobim',
 ] as const;
 
 /**
@@ -1077,4 +1109,69 @@ export async function downloadIpmetRainviewerInWindow(
 ): Promise<CptecSyncedFile[]> {
   if (slug !== 'ipmet-bauru') return [];
   return processRainviewerImage(IPMET_RAINVIEWER_URL, slug, nowTs12, windowMinutes, options, 'BRPB');
+}
+
+
+export async function downloadSigmaImagesInWindow(
+  slug: string,
+  nominalTs12: string,
+  windowMinutes: number,
+  options?: { checkExists?: (fileName: string) => Promise<boolean> }
+): Promise<CptecSyncedFile[]> {
+  const cptecSlug = slug.replace('sigma-', '');
+  const station = CPTEC_STATIONS[cptecSlug] || Object.values(CPTEC_STATIONS).find(s => s.slug === cptecSlug);
+  if (!station || !station.sigmaConfig) {
+    return [];
+  }
+
+  const found: CptecSyncedFile[] = [];
+  const nominalMs = ts12ToUtcMs(nominalTs12);
+  const minMs = nominalMs - windowMinutes * 60 * 1000;
+
+  const fetchProduct = async (codigo: number, layer: 'ppi' | 'doppler') => {
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 8000);
+      const url = `https://sigma.cptec.inpe.br/logs/${codigo}/20`;
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(id);
+
+      if (!res.ok) return;
+      const data = await res.json() as any[];
+      if (!Array.isArray(data)) return;
+
+      for (const item of data) {
+        if (!item.url) continue;
+        
+        const m = /_(\d{12})\.(png|jpg|jpeg|gif)$/i.exec(item.url);
+        if (!m) continue;
+        const ts12 = m[1];
+        const tMs = ts12ToUtcMs(ts12);
+
+        if (tMs >= minMs && tMs <= nominalMs) {
+          const fileName = `${ts12}${layer === 'doppler' ? '-ppivr' : ''}.png`;
+          if (options?.checkExists) {
+            const exists = await options.checkExists(fileName);
+            if (exists) continue;
+          }
+
+          const c2 = new AbortController();
+          const id2 = setTimeout(() => c2.abort(), 15000);
+          const imgRes = await fetch(item.url, { signal: c2.signal });
+          clearTimeout(id2);
+          if (imgRes.ok) {
+            const buf = Buffer.from(await imgRes.arrayBuffer());
+            found.push({ ts12, layer, fileName, url: item.url, buffer: buf });
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`Sigma fetch error for ${slug} / ${layer}:`, e);
+    }
+  };
+
+  if (station.sigmaConfig.cappi) await fetchProduct(station.sigmaConfig.cappi, 'ppi');
+  if (station.sigmaConfig.vento) await fetchProduct(station.sigmaConfig.vento, 'doppler');
+
+  return found;
 }

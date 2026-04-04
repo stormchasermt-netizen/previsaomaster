@@ -35,6 +35,8 @@ export interface RadarConfig {
   lng: number;
   /** Alcance em km */
   rangeKm: number;
+  /** Raio do recorte circular (para radares como IPMet). */
+  maskRadiusKm?: number;
   /** Intervalo de atualização em minutos (6 ou 10). Santiago usa 10. */
   updateIntervalMinutes?: number;
   /** Rotação da imagem em graus (ex: -110, 1.5) para alinhamento no mapa. */
@@ -84,6 +86,7 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
     lat: typeof data.lat === 'number' ? data.lat : 0,
     lng: typeof data.lng === 'number' ? data.lng : 0,
     rangeKm,
+    maskRadiusKm: typeof data.maskRadiusKm === 'number' ? data.maskRadiusKm : undefined,
     updateIntervalMinutes: typeof data.updateIntervalMinutes === 'number' ? data.updateIntervalMinutes : undefined,
     rotationDegrees: typeof data.rotationDegrees === 'number' ? data.rotationDegrees : undefined,
     opacity: typeof data.opacity === 'number' ? data.opacity : undefined,
