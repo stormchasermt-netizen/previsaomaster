@@ -93,7 +93,7 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
   if (!base) return undefined;
 
   if (radarConfigs) {
-    const config = radarConfigs.find(c => c.stationSlug === base.slug);
+    const config = radarConfigs.find(c => c.id === slug) || radarConfigs.find(c => c.stationSlug === base.slug);
     if (config) {
       const merged = { ...base, iconLat: base.lat, iconLng: base.lng, maskRadiusKm: base.rangeKm };
       const isIpmet = base.slug === 'ipmet-bauru' || base.slug === 'ipmet-prudente';
@@ -1247,7 +1247,7 @@ export default function AoVivo2Content() {
       const bounds = getRadarImageBounds(boundsStation);
       let coordinates = imageCoordinatesFromBounds(bounds);
       
-      const config = radarConfigs.find(c => c.stationSlug === boundsStation.slug);
+      const config = radarConfigs.find(c => c.id === slug) || radarConfigs.find(c => c.stationSlug === boundsStation.slug);
       const targetOpacity = (config?.opacity !== undefined && config?.opacity !== null) ? config.opacity : (superResMode ? 0.95 : 0.88);
 
       if (config?.rotationDegrees) {
