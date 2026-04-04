@@ -276,8 +276,6 @@ if (baseMapId === 'dark') {
     const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
     
     let computed = calc(latForBounds, lngForBounds, rangeKm);
-    const isIpmet = selectedStation?.type === 'cptec' && ((s as CptecRadarStation).slug === 'ipmet-bauru' || (s as CptecRadarStation).slug === 'ipmet-prudente');
-    if (isIpmet) { computed = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     return computed;
   }, [centerLat, centerLng, imageCenterLat, imageCenterLng, rangeKm, selectedStation]);
 
@@ -351,7 +349,7 @@ if (baseMapId === 'dark') {
         const ts12 = getNearestRadarTimestamp(baseTs, station);
         // Utiliza o proxy para não ter problemas de CORS ao tentar jogar no Canvas
         ipmetUrlsToTry.push({
-          url: getProxiedRadarUrl(`https://storage.googleapis.com/radar_ao_vivo_2/ipmet-bauru/${ts12}.png`),
+          url: getProxiedRadarUrl(`${IPMET_STATIC_URL}?t=${ts12}`),
           ts12,
         });
       }
@@ -372,7 +370,7 @@ if (baseMapId === 'dark') {
     setMaskRadiusKm(existing?.maskRadiusKm ?? station.rangeKm);
     setRotationDegrees(existing?.rotationDegrees ?? 0);
     setPreviewOpacity(existing?.opacity ?? 0.75);
-    setPreviewImageUrl(isIpmet ? initialUrl : (source === 'redemet' ? getProxiedRadarUrl(initialUrl) : (urlsToTry[0]?.url ?? initialUrl)));
+    setPreviewImageUrl(isIpmet ? (urlsToTry[0]?.url ?? initialUrl) : (source === 'redemet' ? getProxiedRadarUrl(initialUrl) : (urlsToTry[0]?.url ?? initialUrl)));
     setPreviewUrlsToTry(urlsToTry);
     setLoadingPreview(true);
     setLiveCenter(null);
