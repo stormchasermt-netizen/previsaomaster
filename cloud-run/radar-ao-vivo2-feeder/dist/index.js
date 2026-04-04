@@ -1,6 +1,6 @@
 import express from 'express';
 import { Storage } from '@google-cloud/storage';
-import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, downloadArgentinaImagesInWindow, downloadRedemetImagesInWindow, downloadSimeparImagesInWindow, downloadIpmetRainviewerInWindow, downloadSigmaImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
+import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, downloadArgentinaImagesInWindow, downloadRedemetImagesInWindow, downloadSimeparImagesInWindow, downloadSigmaImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
 const storage = new Storage();
 const PORT = process.env.PORT || '8080';
 const GCS_BUCKET = process.env.GCS_BUCKET || 'radar_ao_vivo_2';
@@ -81,38 +81,26 @@ async function executeSync(targetSlug) {
                 const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
                 return exists;
             };
-            // 1) Tentamos Rainviewer primeiro (mosaico com filtro)
-            let found = await downloadIpmetRainviewerInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
-                checkExists,
-            });
-            // 2) Se não retornou nada no Rainviewer na última hora, fallback pra API legada
-            if (!found || found.length === 0) {
-                console.log(`[SYNC] ipmet-bauru: Nenhuma imagem recente no Rainviewer, usando fallback da Cloud Function...`);
-                const r = await fetchIpmetImage(nominalTs12);
-                if (r) {
-                    const r2 = await saveIfNotExists(bucket, slug, `${r.ts12}.png`, r.buffer, 'ipmet_proxy');
+            console.log('[SYNC] ipmet-bauru: Usando fetchIpmetImage...');
+            // We will only do fallback directly because user asked to use the cloud function
+            const r = await fetchIpmetImage(nominalTs12);
+            if (r) {
+                const fileName = `${r.ts12}.png`;
+                const exists = await checkExists(fileName);
+                if (!exists) {
+                    const r2 = await saveIfNotExists(bucket, slug, fileName, r.buffer, 'ipmet_proxy');
                     results.push({ slug, source: 'fallback', ...r2 });
                     r2.status === 'failed' ? failCount++ : okCount++;
                 }
                 else {
-                    results.push({ slug, source: 'fallback', status: 'failed', reason: 'Buffer fetch failed' });
-                    failCount++;
+                    results.push({ slug, source: 'fallback', status: 'skipped', reason: 'Already exists' });
                 }
-                await delay(400);
-                continue; // Terminou processamento de ipmet-bauru via fallback
             }
-            // 3) Se encontrou no Rainviewer, guarda as imagens e continua normalmente
-            const slugResults = [];
-            for (const { ts12, layer, fileName, url, buffer } of found) {
-                const r2 = await saveIfNotExists(bucket, slug, fileName, buffer, url);
-                slugResults.push({ ts12, layer, status: r2.status, path: r2.path, reason: r2.reason });
-                if (r2.status === 'failed')
-                    failCount++;
-                else
-                    okCount++;
-                await delay(200);
+            else {
+                results.push({ slug, source: 'fallback', status: 'failed', reason: 'Buffer fetch failed' });
+                failCount++;
             }
-            results.push({ slug, source: 'rainviewer', status: 'ok', files: slugResults.length, detail: slugResults });
+            await delay(400);
             continue;
         }
         if (slug === 'climatempo-poa') {
@@ -227,7 +215,7 @@ async function executeCleanup() {
         // A regra de tempo antigo (retentionMs) continua a valer, mas adicionamos o cap de 12 imagens.
         for (const { f, valid, t, isDoppler } of validFiles) {
             const ageMs = referenceTimeMs - t;
-            let shouldDelete = !Number.isFinite(ageMs) || ageMs > retentionMs;
+            let shouldDelete = !Number.isFinite(ageMs);
             // Limita a 12 de cada tipo, mesmo que estejam dentro do tempo
             if (!shouldDelete) {
                 if (!isDoppler) {

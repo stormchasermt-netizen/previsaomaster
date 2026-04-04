@@ -119,43 +119,30 @@ async function executeSync(targetSlug?: string): Promise<{
       continue;
     }
 
-    if (slug === 'ipmet-bauru') {
+        if (slug === 'ipmet-bauru') {
       const checkExists = async (fileName: string) => {
         const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
         return exists;
       };
 
-      // 1) Tentamos Rainviewer primeiro (mosaico com filtro)
-      let found = await downloadIpmetRainviewerInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
-        checkExists,
-      });
-
-      // 2) Se não retornou nada no Rainviewer na última hora, fallback pra API legada
-      if (!found || found.length === 0) {
-        console.log(`[SYNC] ipmet-bauru: Nenhuma imagem recente no Rainviewer, usando fallback da Cloud Function...`);
-        const r = await fetchIpmetImage(nominalTs12);
-        if (r) {
-          const r2 = await saveIfNotExists(bucket, slug, `${r.ts12}.png`, r.buffer, 'ipmet_proxy');
+      console.log('[SYNC] ipmet-bauru: Usando fetchIpmetImage...');
+      // We will only do fallback directly because user asked to use the cloud function
+      const r = await fetchIpmetImage(nominalTs12);
+      if (r) {
+        const fileName = `${r.ts12}.png`;
+        const exists = await checkExists(fileName);
+        if (!exists) {
+          const r2 = await saveIfNotExists(bucket, slug, fileName, r.buffer, 'ipmet_proxy');
           results.push({ slug, source: 'fallback', ...r2 });
           r2.status === 'failed' ? failCount++ : okCount++;
         } else {
-          results.push({ slug, source: 'fallback', status: 'failed', reason: 'Buffer fetch failed' });
-          failCount++;
+          results.push({ slug, source: 'fallback', status: 'skipped', reason: 'Already exists' });
         }
-        await delay(400);
-        continue; // Terminou processamento de ipmet-bauru via fallback
+      } else {
+        results.push({ slug, source: 'fallback', status: 'failed', reason: 'Buffer fetch failed' });
+        failCount++;
       }
-
-      // 3) Se encontrou no Rainviewer, guarda as imagens e continua normalmente
-      const slugResults: { ts12: string; layer?: string; status: string; path?: string; reason?: string }[] = [];
-      for (const { ts12, layer, fileName, url, buffer } of found) {
-        const r2 = await saveIfNotExists(bucket, slug, fileName, buffer, url);
-        slugResults.push({ ts12, layer, status: r2.status, path: r2.path, reason: r2.reason });
-        if (r2.status === 'failed') failCount++;
-        else okCount++;
-        await delay(200);
-      }
-      results.push({ slug, source: 'rainviewer', status: 'ok', files: slugResults.length, detail: slugResults });
+      await delay(400);
       continue;
     }
 
