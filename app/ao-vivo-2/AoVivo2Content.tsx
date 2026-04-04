@@ -574,7 +574,7 @@ export default function AoVivo2Content() {
   const [superResMode, setSuperResMode] = useState(false);
   const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
 
-  const [baseMapId, setBaseMapId] = useState<BaseMapId>('satellite');
+  const [baseMapId, setBaseMapId] = useState<BaseMapId>('streets');
   const [showBaseMapGallery, setShowBaseMapGallery] = useState(false);
 
   const mapContainerSingleRef = useRef<HTMLDivElement | null>(null);
@@ -1649,12 +1649,13 @@ export default function AoVivo2Content() {
                 <button
                   type="button"
                   onClick={() => setPrevotsOverlayVisible(!prevotsOverlayVisible)}
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl shadow-lg ring-1 ring-black/5 transition ${
+                  className={`flex h-11 w-auto px-3 items-center justify-center rounded-xl shadow-lg ring-1 ring-black/5 transition ${
                     prevotsOverlayVisible ? 'bg-[#ff00ff] text-white shadow-[0_0_15px_rgba(255,0,255,0.4)]' : 'bg-white/95 text-slate-700 hover:bg-white'
                   }`}
-                  title="Alternar Overlay Prevots"
+                  title="Alternar Prevots"
                 >
-                  <ShieldAlert className="h-5 w-5" />
+                  <ShieldAlert className="h-5 w-5 mr-2" />
+                  <span className="font-bold text-sm">Prevots</span>
                 </button>
                 <button
                   type="button"
