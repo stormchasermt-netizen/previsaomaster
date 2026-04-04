@@ -34,6 +34,68 @@ function filterPixels(data: Uint8ClampedArray): void {
   }
 }
 
+export async function filterRadarImageCircularMask(
+  imageUrl: string,
+  centerLat: number,
+  centerLng: number,
+  radiusKm: number,
+  bounds: { north: number; south: number; east: number; west: number }
+): Promise<string | null> {
+  try {
+    const res = await fetch(imageUrl, { mode: 'cors', signal: AbortSignal.timeout(8000) }).catch(() => null);
+    if (!res || !res.ok) return imageUrl; // fallback to original if fetch fails
+    const blob = await res.blob();
+    const bitmap = await createImageBitmap(blob);
+    
+    const canvas = document.createElement('canvas');
+    const W = bitmap.width;
+    const H = bitmap.height;
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return imageUrl;
+    }
+
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+
+    // Maplibre uses Web Mercator, but standard radar image bounds are typically mapped linearly (Plate Carree) in coordinates array.
+    // We'll calculate the center and radii assuming linear interpolation of lat/lon (Plate Carree).
+    const cx = W * (centerLng - bounds.west) / (bounds.east - bounds.west);
+    const cy = H * (bounds.north - centerLat) / (bounds.north - bounds.south);
+
+    // Approximate degrees for the radius
+    const radiusLatDeg = radiusKm / 111.32;
+    const radiusLonDeg = radiusKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
+
+    const rx = W * (radiusLonDeg / (bounds.east - bounds.west));
+    const ry = H * (radiusLatDeg / (bounds.north - bounds.south));
+
+    // Create a new canvas to hold the circular mask
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = W;
+    maskCanvas.height = H;
+    const maskCtx = maskCanvas.getContext('2d');
+    if (maskCtx) {
+      maskCtx.fillStyle = 'black';
+      maskCtx.beginPath();
+      maskCtx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+      maskCtx.fill();
+
+      // Apply mask to original image
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(maskCanvas, 0, 0);
+    }
+
+    return canvas.toDataURL('image/png');
+  } catch (err) {
+    console.error('Erro ao aplicar máscara circular:', err);
+    return imageUrl;
+  }
+}
+
 /**
  * Aplica filtro de ruído numa imagem de radar.
  * Faz fetch da URL com CORS, processa via Canvas, retorna data URL.

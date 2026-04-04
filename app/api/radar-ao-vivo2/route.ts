@@ -22,11 +22,16 @@ export async function GET(req: NextRequest) {
     if (action === 'listStations') {
       const [, , apiResponse] = await bucket.getFiles({ delimiter: '/' });
       const prefixes = (apiResponse.prefixes || []) as string[];
-      const stations = prefixes
+      let stations = prefixes
         .map((p: string) => p.replace(/\/$/, ''))
         .filter(Boolean)
-        .filter(isValidRadarAoVivo2StationSlug)
-        .sort();
+        .filter(isValidRadarAoVivo2StationSlug);
+
+      if (stations.includes('ipmet-bauru')) {
+        stations.push('ipmet-prudente');
+      }
+      
+      stations = stations.sort();
       return NextResponse.json({ stations });
     }
 
@@ -40,7 +45,8 @@ export async function GET(req: NextRequest) {
       const productParam = searchParams.get('product') || 'ppi';
       const product = productParam === 'doppler' ? 'doppler' : 'ppi';
 
-      const prefix = `${station}/`;
+      const actualStation = station === 'ipmet-prudente' ? 'ipmet-bauru' : station;
+      const prefix = `${actualStation}/`;
       const [files] = await bucket.getFiles({ prefix });
 
       const imageFiles = files

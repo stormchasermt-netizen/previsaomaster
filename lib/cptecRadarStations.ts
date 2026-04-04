@@ -139,7 +139,8 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.214725, lng: -49.4559, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12227760', vilId: 'R12222198', waldvogelId: 'R12224626', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -52.029, minLat: -29.46675, maxLon: -46.8827, maxLat: -24.9627 } },
   { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.1078451, lng: -49.4719928, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12544956', vilId: 'R12544955', waldvogelId: 'R12544489', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -52.0632, minLat: -30.3648, maxLon: -46.8704, maxLat: -25.8599 } },
 
-  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet Mosaico (PP/Bauru)', lat: -22.341270286631073, lng: -50.81852436342466, rangeKm: 450, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -26.4118, maxLat: -18.1209, minLon: -55.7506, maxLon: -44.6430 } },
+  { id: 'IPMET-PRUDENTE', slug: 'ipmet-prudente', name: 'IPMet (Pres. Prudente)', lat: -22.175000, lng: -51.372778, rangeKm: 450, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -26.4118, maxLat: -18.1209, minLon: -55.7506, maxLon: -44.6430 } },
+  { id: 'IPMET-BAURU', slug: 'ipmet-bauru', name: 'IPMet (Bauru)', lat: -22.357778, lng: -49.026667, rangeKm: 450, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -26.4118, maxLat: -18.1209, minLon: -55.7506, maxLon: -44.6430 } },
   { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0, bounds: { minLon: -58.0, minLat: -34.0, maxLon: -49.0, maxLat: -27.0 } },
 
   // DECEA - Sudeste/Centro-Oeste
@@ -510,7 +511,7 @@ export function getRadarImageBounds(station: CptecRadarStation, overrideRangeKm?
     };
   }
   
-  if (station.slug === 'ipmet-bauru') {
+  if (station.slug === 'ipmet-bauru' || station.slug === 'ipmet-prudente') {
     return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
   }
   if (station.slug === 'usp-starnet') {
@@ -710,7 +711,7 @@ export function buildNowcastingPngUrl(
     if (productType === 'vil' || productType === 'waldvogel' || productType === 'velocidade') return '';
     return GET_RADAR_USP_URL + `?t=${ts12}`;
   }
-  if (station.slug === 'ipmet-bauru') {
+  if (station.slug === 'ipmet-bauru' || station.slug === 'ipmet-prudente') {
     return GET_RADAR_IPMET_URL + `?t=${ts12}`;
   }
   if (station.slug === 'climatempo-poa') {

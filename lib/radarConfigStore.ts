@@ -94,9 +94,16 @@ function parseConfig(docId: string, data: Record<string, unknown>): RadarConfig 
 
 export async function fetchRadarConfigs(): Promise<RadarConfig[]> {
   if (!db) return [];
-  const col = collection(db, COLLECTION);
-  const snap = await getDocs(col);
-  return snap.docs.map((d) => parseConfig(d.id, d.data()));
+  try {
+    const col = collection(db, COLLECTION);
+    const snap = await getDocs(col);
+    return snap.docs.map((d) => parseConfig(d.id, d.data()));
+  } catch (err: any) {
+    console.error('Error fetching radar configs:', err);
+    // Ignore permissions error completely when viewing as guest
+    if (err.code === 'permission-denied' || err.message?.includes('Missing or insufficient permissions')) return [];
+    throw err;
+  }
 }
 
 export async function saveRadarConfig(config: Omit<RadarConfig, 'id'> & { id?: string }): Promise<string> {

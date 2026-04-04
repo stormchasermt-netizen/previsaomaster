@@ -24,6 +24,7 @@ import {
   filterClimatempoRadarImage,
   filterReflectivitySuperRes,
   filterDopplerPurpleGreenNeighborSuperRes,
+  filterRadarImageCircularMask,
 } from '@/lib/radarImageFilter';
 import { fetchRadarConfigs, type RadarConfig } from '@/lib/radarConfigStore';
 
@@ -956,6 +957,11 @@ export default function AoVivo2Content() {
           const filtered = await filterClimatempoRadarImage(nextUrl);
           if (gen !== layerUpdateGenerationRef.current) return;
           nextUrl = filtered ?? nextUrl;
+        }
+        if (slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
+          const masked = await filterRadarImageCircularMask(nextUrl, boundsStation.lat, boundsStation.lng, boundsStation.rangeKm, bounds);
+          if (gen !== layerUpdateGenerationRef.current) return;
+          nextUrl = masked ?? nextUrl;
         }
         if (superResMode) {
           if (kind === 'ppi') {
