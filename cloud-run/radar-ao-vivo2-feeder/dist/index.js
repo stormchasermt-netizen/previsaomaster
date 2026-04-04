@@ -1,6 +1,6 @@
 import express from 'express';
 import { Storage } from '@google-cloud/storage';
-import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, downloadArgentinaImagesInWindow, downloadRedemetImagesInWindow, downloadSimeparImagesInWindow, downloadIpmetRainviewerInWindow, ts12ToUtcMs, } from './radarFetch.js';
+import { DEFAULT_SYNC_SLUGS, CPTEC_STATIONS, SLUGS_WITHOUT_CDN_SYNC, getNowTimestamp12UTC, fetchIpmetImage, fetchClimatempoPoa, downloadCptecImagesInWindow, downloadArgentinaImagesInWindow, downloadRedemetImagesInWindow, downloadSimeparImagesInWindow, ts12ToUtcMs, } from './radarFetch.js';
 const storage = new Storage();
 const PORT = process.env.PORT || '8080';
 const GCS_BUCKET = process.env.GCS_BUCKET || 'radar_ao_vivo_2';
@@ -77,42 +77,17 @@ async function executeSync(targetSlug) {
             continue;
         }
         if (slug === 'ipmet-bauru') {
-            const checkExists = async (fileName) => {
-                const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
-                return exists;
-            };
-            // 1) Tentamos Rainviewer primeiro (mosaico com filtro)
-            let found = await downloadIpmetRainviewerInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
-                checkExists,
-            });
-            // 2) Se não retornou nada no Rainviewer na última hora, fallback pra API legada
-            if (!found || found.length === 0) {
-                console.log(`[SYNC] ipmet-bauru: Nenhuma imagem recente no Rainviewer, usando fallback da Cloud Function...`);
-                const r = await fetchIpmetImage(nominalTs12);
-                if (r) {
-                    const r2 = await saveIfNotExists(bucket, slug, `${r.ts12}.png`, r.buffer, 'ipmet_proxy');
-                    results.push({ slug, source: 'fallback', ...r2 });
-                    r2.status === 'failed' ? failCount++ : okCount++;
-                }
-                else {
-                    results.push({ slug, source: 'fallback', status: 'failed', reason: 'Buffer fetch failed' });
-                    failCount++;
-                }
-                await delay(400);
-                continue; // Terminou processamento de ipmet-bauru via fallback
+            const r = await fetchIpmetImage(nominalTs12);
+            if (r) {
+                const r2 = await saveIfNotExists(bucket, slug, `${r.ts12}.png`, r.buffer, 'ipmet_proxy');
+                results.push({ slug, ...r2 });
+                r2.status === 'failed' ? failCount++ : okCount++;
             }
-            // 3) Se encontrou no Rainviewer, guarda as imagens e continua normalmente
-            const slugResults = [];
-            for (const { ts12, layer, fileName, url, buffer } of found) {
-                const r2 = await saveIfNotExists(bucket, slug, fileName, buffer, url);
-                slugResults.push({ ts12, layer, status: r2.status, path: r2.path, reason: r2.reason });
-                if (r2.status === 'failed')
-                    failCount++;
-                else
-                    okCount++;
-                await delay(200);
+            else {
+                results.push({ slug, status: 'failed', reason: 'Buffer fetch failed' });
+                failCount++;
             }
-            results.push({ slug, source: 'rainviewer', status: 'ok', files: slugResults.length, detail: slugResults });
+            await delay(400);
             continue;
         }
         if (slug === 'climatempo-poa') {

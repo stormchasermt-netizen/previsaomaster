@@ -789,41 +789,41 @@ export async function downloadRedemetImagesInWindow(slug, nowTs12, windowMinutes
     return out.sort((a, b) => b.ts12.localeCompare(a.ts12));
 }
 // =========================================================================
-// RAINVIEWER SOURCES (SIMEPAR / IPMET)
+// SIMEPAR CASCAVEL (Rainviewer BRSC3)
 // =========================================================================
 export const SIMEPAR_CASCAVEL_URL = 'https://data.rainviewer.com/images/BRSC3/';
-export const IPMET_RAINVIEWER_URL = 'https://data.rainviewer.com/images/BRPB/';
 import sharp from 'sharp';
 /**
- * Processa imagens Rainviewer (Simepar, IPMet, etc), filtra o mapa de fundo
- * (deixando transparente) e converte para PNG.
+ * Baixa as imagens recentes do Simepar Cascavel, filtra o mapa de fundo (deixando transparente),
+ * e converte para PNG.
  */
-async function processRainviewerImage(urlPrefix, slug, nowTs12, windowMinutes, options, prefixId = 'BRSC3') {
+export async function downloadSimeparImagesInWindow(slug, nowTs12, windowMinutes, options) {
     const out = [];
+    if (slug !== 'simepar-cascavel')
+        return out;
     try {
-        const res = await fetch(urlPrefix, { signal: AbortSignal.timeout(10000) });
+        const res = await fetch(SIMEPAR_CASCAVEL_URL, { signal: AbortSignal.timeout(10000) });
         if (!res.ok)
             return out;
         const text = await res.text();
-        // As imagens seguem o padrão PRE_YYYYMMDD_HHMM00_0_source.jpeg (em UTC) ou ..._2_map.png
-        // Ex: BRSC3_20260403_230000_0_source.jpeg ou BRPB_20250801_130000_2_map.png
-        const regex = new RegExp(`href="(${prefixId}_\\d{8}_\\d{4}00_[^"]+\\.(?:jpeg|png))"`, 'g');
-        const matches = [...text.matchAll(regex)];
+        // As imagens seguem o padrão BRSC3_YYYYMMDD_HHMM00_0_source.jpeg (em UTC)
+        const matches = [...text.matchAll(/href="([^"]+\.jpeg)"/g)];
         const files = matches.map(m => m[1]);
+        // End time
         const endMs = ts12ToUtcMs(nowTs12) - windowMinutes * 60 * 1000;
         // Vamos iterar de trás para a frente (mais recentes primeiro)
         files.reverse();
         for (const file of files) {
             if (out.length >= 12)
                 break; // Limite de 12 imagens
-            const m = new RegExp(`${prefixId}_(\\d{8})_(\\d{4})00_`).exec(file);
+            const m = /BRSC3_(\d{8})_(\d{4})00_/.exec(file);
             if (!m)
                 continue;
             const ts12 = `${m[1]}${m[2]}`; // YYYYMMDDHHMM
             const tMs = ts12ToUtcMs(ts12);
             if (tMs < endMs)
-                continue; // Muito antigo para a janela de sync
-            const fileName = `${ts12}.png`;
+                continue; // Muito antigo para a janela de sync (1h)
+            const fileName = `${ts12}.png`; // Vamos guardar como PNG para manter a transparência!
             if (options?.checkExists && (await options.checkExists(fileName))) {
                 out.push({
                     ts12,
@@ -835,7 +835,7 @@ async function processRainviewerImage(urlPrefix, slug, nowTs12, windowMinutes, o
                 continue;
             }
             // Download da imagem
-            const imgRes = await fetch(`${urlPrefix}${file}`, { signal: AbortSignal.timeout(10000) });
+            const imgRes = await fetch(`${SIMEPAR_CASCAVEL_URL}${file}`, { signal: AbortSignal.timeout(10000) });
             if (!imgRes.ok)
                 continue;
             const arrayBuffer = await imgRes.arrayBuffer();
@@ -880,23 +880,14 @@ async function processRainviewerImage(urlPrefix, slug, nowTs12, windowMinutes, o
                 ts12,
                 layer: 'ppi',
                 fileName,
-                url: `${urlPrefix}${file}`,
+                url: `${SIMEPAR_CASCAVEL_URL}${file}`,
                 buffer: outBuffer,
             });
         }
     }
     catch (err) {
-        console.error(`Erro a fazer fetch de ${slug} (Rainviewer):`, err);
+        console.error(`Erro a fazer fetch do Simepar Cascavel:`, err);
     }
+    // Ordenar de mais recente para mais antigo
     return out.sort((a, b) => b.ts12.localeCompare(a.ts12));
-}
-export async function downloadSimeparImagesInWindow(slug, nowTs12, windowMinutes, options) {
-    if (slug !== 'simepar-cascavel')
-        return [];
-    return processRainviewerImage(SIMEPAR_CASCAVEL_URL, slug, nowTs12, windowMinutes, options, 'BRSC3');
-}
-export async function downloadIpmetRainviewerInWindow(slug, nowTs12, windowMinutes, options) {
-    if (slug !== 'ipmet-bauru')
-        return [];
-    return processRainviewerImage(IPMET_RAINVIEWER_URL, slug, nowTs12, windowMinutes, options, 'BRPB');
 }

@@ -9,6 +9,9 @@ import {
   fetchClimatempoPoa,
   downloadCptecImagesInWindow,
   downloadArgentinaImagesInWindow,
+  downloadRedemetImagesInWindow,
+  downloadSimeparImagesInWindow,
+  downloadIpmetRainviewerInWindow,
   ts12ToUtcMs,
 } from './radarFetch.js';
 
@@ -116,16 +119,42 @@ async function executeSync(targetSlug?: string): Promise<{
     }
 
     if (slug === 'ipmet-bauru') {
-      const r = await fetchIpmetImage(nominalTs12);
-      if (r) {
-        const r2 = await saveIfNotExists(bucket, slug, `${r.ts12}.png`, r.buffer, 'ipmet_proxy');
-        results.push({ slug, ...r2 });
-        r2.status === 'failed' ? failCount++ : okCount++;
-      } else {
-        results.push({ slug, status: 'failed', reason: 'Buffer fetch failed' });
-        failCount++;
+      const checkExists = async (fileName: string) => {
+        const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
+        return exists;
+      };
+
+      // 1) Tentamos Rainviewer primeiro (mosaico com filtro)
+      let found = await downloadIpmetRainviewerInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+        checkExists,
+      });
+
+      // 2) Se não retornou nada no Rainviewer na última hora, fallback pra API legada
+      if (!found || found.length === 0) {
+        console.log(`[SYNC] ipmet-bauru: Nenhuma imagem recente no Rainviewer, usando fallback da Cloud Function...`);
+        const r = await fetchIpmetImage(nominalTs12);
+        if (r) {
+          const r2 = await saveIfNotExists(bucket, slug, `${r.ts12}.png`, r.buffer, 'ipmet_proxy');
+          results.push({ slug, source: 'fallback', ...r2 });
+          r2.status === 'failed' ? failCount++ : okCount++;
+        } else {
+          results.push({ slug, source: 'fallback', status: 'failed', reason: 'Buffer fetch failed' });
+          failCount++;
+        }
+        await delay(400);
+        continue; // Terminou processamento de ipmet-bauru via fallback
       }
-      await delay(400);
+
+      // 3) Se encontrou no Rainviewer, guarda as imagens e continua normalmente
+      const slugResults: { ts12: string; layer?: string; status: string; path?: string; reason?: string }[] = [];
+      for (const { ts12, layer, fileName, url, buffer } of found) {
+        const r2 = await saveIfNotExists(bucket, slug, fileName, buffer, url);
+        slugResults.push({ ts12, layer, status: r2.status, path: r2.path, reason: r2.reason });
+        if (r2.status === 'failed') failCount++;
+        else okCount++;
+        await delay(200);
+      }
+      results.push({ slug, source: 'rainviewer', status: 'ok', files: slugResults.length, detail: slugResults });
       continue;
     }
 
@@ -151,6 +180,14 @@ async function executeSync(targetSlug?: string): Promise<{
     let found;
     if (slug.startsWith('argentina-')) {
       found = await downloadArgentinaImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+        checkExists,
+      });
+    } else if (slug.startsWith('redemet-')) {
+      found = await downloadRedemetImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
+        checkExists,
+      });
+    } else if (slug === 'simepar-cascavel') {
+      found = await downloadSimeparImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
         checkExists,
       });
     } else {
@@ -219,24 +256,43 @@ async function executeCleanup(): Promise<{
     const fileData = files.map(f => {
       const base = f.name.split('/').pop() || '';
       const m = /^(\d{12})(?:-ppivr)?\.(png|jpg|jpeg|gif)$/i.exec(base);
-      if (!m) return { f, valid: false, t: 0 };
+      const isDoppler = /-ppivr\./i.test(base);
+      if (!m) return { f, valid: false, t: 0, isDoppler: false };
       const ts12 = m[1];
       const t = ts12ToUtcMs(ts12);
       if (t > maxTsMs) maxTsMs = t;
-      return { f, valid: true, t };
+      return { f, valid: true, t, isDoppler };
     });
 
     // Se a pasta estiver vazia ou sem imagens válidas, usamos Date.now()
     const referenceTimeMs = maxTsMs > 0 ? maxTsMs : Date.now();
 
-    for (const { f, valid, t } of fileData) {
-      if (!valid) {
-        skipped.push(f.name);
-        continue;
-      }
-      
+    // Contagem para reter apenas as 12 mais recentes (por layer)
+    const validFiles = fileData.filter((x) => x.valid).sort((a, b) => b.t - a.t);
+    const ppiRetained = new Set<string>();
+    const dopRetained = new Set<string>();
+    let ppiCount = 0;
+    let dopCount = 0;
+
+    // A regra de tempo antigo (retentionMs) continua a valer, mas adicionamos o cap de 12 imagens.
+    for (const { f, valid, t, isDoppler } of validFiles) {
       const ageMs = referenceTimeMs - t;
-      if (!Number.isFinite(ageMs) || ageMs > retentionMs) {
+      let shouldDelete = !Number.isFinite(ageMs) || ageMs > retentionMs;
+
+      // Limita a 12 de cada tipo, mesmo que estejam dentro do tempo
+      if (!shouldDelete) {
+        if (!isDoppler) {
+          ppiCount++;
+          if (ppiCount > 12) shouldDelete = true;
+          else ppiRetained.add(f.name);
+        } else {
+          dopCount++;
+          if (dopCount > 12) shouldDelete = true;
+          else dopRetained.add(f.name);
+        }
+      }
+
+      if (shouldDelete) {
         try {
           await f.delete();
           deleted.push(f.name);
@@ -245,6 +301,12 @@ async function executeCleanup(): Promise<{
         }
       }
     }
+
+    // Ficheiros inválidos
+    for (const { f, valid } of fileData) {
+      if (!valid) skipped.push(f.name);
+    }
+    
     await delay(100);
   }
 

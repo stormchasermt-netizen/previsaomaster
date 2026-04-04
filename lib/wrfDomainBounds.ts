@@ -1,5 +1,6 @@
 import proj4 from 'proj4';
 import { parseWrfRunFolder } from '@/lib/wrfModelRuns';
+import { topPxForVariable } from '@/lib/wrfMapFramePixels';
 
 const WGS84 = 'EPSG:4326';
 
@@ -50,50 +51,54 @@ export function imagePixelToLatLonCentroSul(
   offsetX: number,
   offsetY: number,
   rectWidth: number,
-  rectHeight: number
+  rectHeight: number,
+  variable: string = 'mdbz',
+  naturalWidth: number = 2171,
+  naturalHeight: number = 1978
 ): { lat: number; lon: number; gridX: number; gridY: number } | null {
-  // 1. Margens da Imagem JPG (Baseado nas tuas medições exatas 2318x1905)
-  // Mas vamos usar as métricas exatas do recorte real do script plot_wrf2.py lidas da VM:
-  // Largura: 2295, Altura: 1904
-  // Borda Esquerda Px: 19
-  // Borda Direita Px: 75
-  // Borda Topo Px: 345
-  // Borda Fundo Px: 364
-  const imgW = 2326;
-  const imgH = 2060;
-  const marginLeft = 20 / imgW;           
-  const marginRight = (imgW - 198) / imgW; 
-  const marginTop = 100 / imgH;             
-  const marginBottom = (imgH - 83) / imgH; 
+  // O recorte exato em píxeis do mapa LCC (descontando legendas, colorbar, e recortes variáveis do bbox_inches='tight')
+  // Estes valores foram medidos diretamente nas imagens do backend
+  const mapWidthPx = 2038;
+  const mapHeightPx = 1850;
+  
+  // A borda esquerda do mapa LCC é sempre de ~19 píxeis na imagem gerada (pode ser 18, usamos 19)
+  const marginLeftPx = 19;
+  
+  // A borda superior do mapa varia ligeiramente com o subtítulo da variável
+  const marginTopPx = topPxForVariable('centro-sul', variable);
 
-  const mapWidth = marginRight - marginLeft;
-  const mapHeight = marginBottom - marginTop;
+  // Proporções do mapa dentro da imagem recortada
+  const marginLeft = marginLeftPx / naturalWidth;
+  const marginTop = marginTopPx / naturalHeight;
+  const mapWidth = mapWidthPx / naturalWidth;
+  const mapHeight = mapHeightPx / naturalHeight;
 
+  // As coordenadas originais do rato dentro do contentor (0 a 1)
   const xRatioOriginal = offsetX / rectWidth;
   const yRatioOriginal = offsetY / rectHeight;
 
+  // As coordenadas transpostas APENAS para dentro da caixa LCC do mapa (0 a 1)
   const xRatio = (xRatioOriginal - marginLeft) / mapWidth;
   const yRatio = (yRatioOriginal - marginTop) / mapHeight;
   
+  // Se o rato estiver fora da área útil do mapa (legendas, colorbar, ou margens em branco), ignora
   if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) {
     return null;
   }
 
-  // 2. Limites EXATOS projetados do Matplotlib Axes
-  // A imagem não é retangular em Lat/Lon! É retangular na projeção LCC do WRF.
-  // Os limites em metros (LCC) extraídos do subplot_kw={'projection': cart_proj} são:
-  const lcc_xmin = -1190157.8789286374;
-  const lcc_xmax =  1190157.8789285964;
-  const lcc_ymin = -1018317.073233748;
+  // Limites projetados do LCC em metros (cartopy PlateCarree convertida)
+  const lcc_xmin = -1030124.162093648;
+  const lcc_xmax =  923352.7781214919;
+  const lcc_ymin = -1007058.191158448;
   const lcc_ymax =   956096.3317749603;
 
   const lcc_x = lcc_xmin + xRatio * (lcc_xmax - lcc_xmin);
-  const lcc_y = lcc_ymax - yRatio * (lcc_ymax - lcc_ymin); // y invertido no ecrã
+  const lcc_y = lcc_ymax - yRatio * (lcc_ymax - lcc_ymin); // web Y desce, proj Y sobe
 
-  // Converter LCC -> Lat/Lon (Para exibir na tela)
+  // Converter LCC -> Lat/Lon
   const [lon, lat] = proj4(CENTRO_SUL_LCC, WGS84, [lcc_x, lcc_y]);
   
-  // Converter LCC -> Índice da Matriz .npy.gz (Para o Hover de valor puro)
+  // Converter LCC -> Índice da Matriz WRF (.npy.gz)
   const wrf_left_x = -((CENTRO_SUL_E_WE - 1) / 2) * CENTRO_SUL_DX;
   const wrf_bottom_y = -((CENTRO_SUL_E_SN - 1) / 2) * CENTRO_SUL_DX;
 
@@ -150,22 +155,32 @@ export function imagePixelToLatLonParana(
   offsetX: number,
   offsetY: number,
   rectWidth: number,
-  rectHeight: number
+  rectHeight: number,
+  variable: string = 'mdbz',
+  naturalWidth: number = 2330,
+  naturalHeight: number = 1904
 ): { lat: number; lon: number; gridX: number; gridY: number } | null {
-  // 1. Margens da Imagem JPG (Assumindo a mesma caixa/medida para Paraná, extraida de plot_wrf2.py)
-  const imgW = 2326;
-  const imgH = 2060;
-  const marginLeft = 20 / imgW;           
-  const marginRight = (imgW - 198) / imgW; 
-  const marginTop = 100 / imgH;             
-  const marginBottom = (imgH - 83) / imgH; 
+  // O recorte exato em píxeis do mapa LCC para o Paraná
+  const mapWidthPx = 2202;
+  const mapHeightPx = 1196;
+  
+  // A borda esquerda do mapa LCC é sempre de ~19 píxeis na imagem gerada
+  const marginLeftPx = 19;
 
-  const mapWidth = marginRight - marginLeft;
-  const mapHeight = marginBottom - marginTop;
+  // A borda superior do mapa varia ligeiramente com o subtítulo da variável
+  const marginTopPx = topPxForVariable('parana', variable);
 
+  // Proporções do mapa dentro da imagem recortada
+  const marginLeft = marginLeftPx / naturalWidth;
+  const marginTop = marginTopPx / naturalHeight;
+  const mapWidth = mapWidthPx / naturalWidth;
+  const mapHeight = mapHeightPx / naturalHeight;
+
+  // As coordenadas originais do rato dentro do contentor (0 a 1)
   const xRatioOriginal = offsetX / rectWidth;
   const yRatioOriginal = offsetY / rectHeight;
 
+  // As coordenadas transpostas APENAS para dentro da caixa LCC do mapa (0 a 1)
   const xRatio = (xRatioOriginal - marginLeft) / mapWidth;
   const yRatio = (yRatioOriginal - marginTop) / mapHeight;
   
@@ -173,19 +188,19 @@ export function imagePixelToLatLonParana(
     return null;
   }
 
-  // 2. Limites EXATOS projetados do Matplotlib Axes extraídos da VM (Paraná)
+  // Limites EXATOS projetados do Matplotlib Axes extraídos da VM (Paraná)
   const lcc_xmin = -435236.6971430953;
   const lcc_xmax =  538811.4763422405;
   const lcc_ymin = -32828.08727992561;
   const lcc_ymax =  571665.4411961415;
 
   const lcc_x = lcc_xmin + xRatio * (lcc_xmax - lcc_xmin);
-  const lcc_y = lcc_ymax - yRatio * (lcc_ymax - lcc_ymin); // y invertido no ecrã
+  const lcc_y = lcc_ymax - yRatio * (lcc_ymax - lcc_ymin); // web Y desce, proj Y sobe
   
   // Converter LCC -> Lat/Lon
   const [lon, lat] = proj4(PARANA_LCC, WGS84, [lcc_x, lcc_y]);
   
-  // 4. Converter LCC -> Índice da Matriz .npy.gz 
+  // Converter LCC -> Índice da Matriz .npy.gz 
   const wrf_left_x = -((PARANA_E_WE - 1) / 2) * PARANA_DX;
   const wrf_bottom_y = -((PARANA_E_SN - 1) / 2) * PARANA_DX;
 

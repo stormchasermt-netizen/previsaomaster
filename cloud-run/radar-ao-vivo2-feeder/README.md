@@ -25,6 +25,14 @@ A lista por defeito (`DEFAULT_SYNC_SLUGS`) cobre as pastas do bucket `radar_ao_v
 - **Fontes especiais** (não CDN CPTEC): `ipmet-bauru` (Cloud Function), `climatempo-poa` (URL estática).
 - **Sem feed CPTEC neste serviço** (`SLUGS_WITHOUT_CDN_SYNC`): `almeirim`, `picos`, `usp-itaituba` — o **sync** ignora; o **cleanup** continua a apagar ficheiros antigos nesses prefixos se existirem.
 - **Pasta GCS ≠ URL CDN**: `riobranco` grava em `riobranco/` mas descarrega do CDN em `rio-branco`.
+- **REDEMET (DECEA)**: pastas `redemet-be`, `redemet-sg`, … — imagens via `plota_radar.php` + maxcappi (ver `downloadRedemetImagesInWindow` em `src/radarFetch.ts`). **No consola GCS não existe pasta vazia**: o prefixo `redemet-xx/` só aparece depois do **primeiro** `YYYYMMDDHHmm.png` gravado com sucesso.
+
+### Não vejo `redemet-*` no bucket
+
+1. **Deploy** — O serviço Cloud Run em produção tem de correr uma **imagem com este código** (com bloco `redemet-*` em `DEFAULT_SYNC_SLUGS` e ramo `slug.startsWith('redemet-')` em `index.ts`). Sem redeploy, o job antigo nunca grava REDEMET.
+2. **`SYNC_SLUGS`** — Se definiste esta variável à mão (lista antiga), pode **não incluir** `redemet-be`, … Remove a variável ou acrescenta todos os `redemet-*` necessários.
+3. **Testar um só radar** — `POST /sync?slug=redemet-sg` (com `x-cron-secret`) processa só essa pasta e é útil para validar credenciais + API DECEA.
+4. **Erros** — `GET /health` → `lastAutoError` se o ciclo automático falhar (timeout, 403 no bucket, etc.).
 
 ## Execução automática (sem comandos manuais)
 

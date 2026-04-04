@@ -58,7 +58,7 @@ async function fetchRadarStorageUrls(
       const data = await res.json().catch(() => null);
       if (data?.url) found.add(data.url);
     } catch {
-      /* abort */
+      /* abort */image.png
     }
   }
 

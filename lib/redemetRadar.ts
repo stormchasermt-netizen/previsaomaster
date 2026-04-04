@@ -57,6 +57,23 @@ export function getRedemetArea(slug: string): string | null {
   return CPTEC_TO_REDEMET[slug] ?? null;
 }
 
+/** Pasta no bucket `riobranco` ↔ slug de catálogo `rio-branco`. */
+export function bucketCatalogSlugFromBucketName(bucketSlug: string): string {
+  if (bucketSlug === 'riobranco') return 'rio-branco';
+  return bucketSlug;
+}
+
+/**
+ * Prefixo GCS `redemet-sg` para o radar CPTEC cuja pasta no bucket é `santiago`, etc.
+ * Retorna null se o radar não tiver par REDEMET no catálogo.
+ */
+export function getRedemetBucketSlugForCptecBucket(bucketSlug: string): string | null {
+  const catalog = bucketCatalogSlugFromBucketName(bucketSlug);
+  if (!hasRedemetFallback(catalog)) return null;
+  const a = getRedemetArea(catalog);
+  return a ? `redemet-${a}` : null;
+}
+
 const REDEMET_BASE = 'https://estatico-redemet.decea.mil.br/radar';
 /** Path antigo REDEMET para imagens históricas (ex: 2018). redemet.decea.mil.br/old/radar/ */
 const REDEMET_OLD_BASE = 'https://redemet.decea.mil.br/old/radar';

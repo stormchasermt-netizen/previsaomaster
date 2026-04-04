@@ -1,0 +1,101 @@
+=== RAINVIEWER SOURCES ===
+- DATEMET
+
+  URL: https://www.redemet.aer.mil.br/
+  Description: The Meteorology Network of the Aeronautical Command of Brazil
+- STARNET
+
+  URL: http://www.starnet.iag.usp.br/chuvaonline/radar_xpol.php
+  Description: Sferics Timing and Ranging Network
+- Centro de Meteorologia de Bauru
+
+  URL: http://www.ipmet.unesp.br/2imagemRadar.php
+  Description: Bauru Meteorological Center
+- Sistema Meteorológico do Paraná
+
+  URL: http://www.simepar.br/prognozweb/simepar/radar_msc
+  Description: Meteorological System of Paraná
+- Instituto Estadual do Ambiente
+
+  URL: http://alertadecheias.inea.rj.gov.br/alertadecheias/radar.html
+  Description: State Environmental Institute
+- Fundação Cearense de Meteorologia e Recursos Hídricos
+
+  URL: http://www.funceme.br/app/radar/animacao/quixeramobim
+  Description: Cearense Foundation of Meteorology and Water Resources
+- RADARES METEOROLÓGICOS SC
+
+  URL: http://sigsc.sc.gov.br
+  Description: Meteorological Radars SC
+- Alerta Rio
+
+  URL: http://alertario.rio.rj.gov.br/radar-meteorologico-do-sumare/imgens-recentes/
+  Description: Rio de Janeiro Alert System
+- Universidade de São Paulo
+
+  URL: http://www.zeus.iag.usp.br/defesa_civil/radar_fixo.php
+  Description: University of São Paulo, Brazil
+- Monitoramento de Risco de Desastres Naturais do Cemaden
+
+  URL: http://www.cemaden.gov.br/mapainterativo/
+  Description: Mapa Interativo da Rede Observacional
+- CPMET - UFPEL
+
+  URL: https://wp.ufpel.edu.br/cppmet/radar/
+  Description: Centro de Pesquisas e Previsões Meteorológicas
+- Barbados Weather
+
+  URL: https://barbadosweather.org/
+  Description: Barbados Meteorological Services
+
+=== RAINVIEWER RADARS ===
+- [BRAL] Almenara | Lat: -16.201531, Lon: -40.674153 | Status: Ativo
+- [BR2970] Barueri mobile | Lat: -22.954444, Lon: -43.247778 | Status: Inativo
+- [BRBU] Bauru | Lat: -22.357778, Lon: -49.026667 | Status: Ativo
+- [BRBE] Belém | Lat: -1.406667, Lon: -48.461389 | Status: Ativo
+- [BRBV] Boa Vista | Lat: 2.844166667, Lon: -60.70027777778 | Status: Ativo
+- [BRCN] Canguçu | Lat: -31.404, Lon: -52.701644 | Status: Ativo
+- [BRSC] Cascavel | Lat: -24.875556, Lon: -53.525278 | Status: Ativo
+- [BRCP] Chapecó | Lat: -27.035323278, Lon: -52.60253201635 | Status: Ativo
+- [BRCZ] Cruzeiro do Sul | Lat: -7.595833, Lon: -72.767778 | Status: Ativo
+- [BRFC] Fortaleza | Lat: -3.794167, Lon: -38.5575 | Status: Ativo
+- [BRGA] Gama | Lat: -15.97643, Lon: -48.016142 | Status: Ativo
+- [BRGV] Gravata | Lat: -8.193825, Lon: -35.45575 | Status: Ativo
+- [BRGU] Guaratiba | Lat: -22.994167, Lon: -43.587778 | Status: Ativo
+- [BRJR] Jaraguari | Lat: -20.27855, Lon: -54.47396 | Status: Ativo
+- [BR3090] Lontras | Lat: -27.231111, Lon: -49.461667 | Status: Inativo
+- [BRMQ] Macapá | Lat: -.047222, Lon: -51.097778 | Status: Ativo
+- [BR3081] Macaé | Lat: -22.404722, Lon: -41.86 | Status: Inativo
+- [BRAC] Macaé | Lat: -22.404722, Lon: -41.859722 | Status: Ativo
+- [BRMO] Maceió | Lat: -9.55129, Lon: -35.77068 | Status: Ativo
+- [BRMN] Manaus | Lat: -3.149216, Lon: -59.991881 | Status: Ativo
+- [BR2965] Mateus Leme | Lat: -19.945278, Lon: -44.434444 | Status: Inativo
+- [BR2974] Mogi | Lat: -23.505, Lon: -46.095278 | Status: Inativo
+- [BRMI] Morro da Igreja | Lat: -28.128373, Lon: -49.471816 | Status: Ativo
+- [BRNT] Natal | Lat: -5.90448, Lon: -35.25401 | Status: Ativo
+- [BRPS] Pelotas | Lat: -31.716389, Lon: -52.31 | Status: Ativo
+- [BRPL] Petrolina | Lat: -9.367, Lon: -40.573 | Status: Ativo
+- [BRPC] Pico do Couto | Lat: -22.464278, Lon: -43.297476 | Status: Ativo
+- [BRPN] Ponte Nova | Lat: -23.6, Lon: -45.9722 | Status: Inativo
+- [BRPV] Porto Velho | Lat: -8.715, Lon: -63.893889 | Status: Ativo
+- [BRPP] Presidente Prudente | Lat: -22.175, Lon: -51.372778 | Status: Ativo
+- [BRQA] Quixeramobim | Lat: -5.069167, Lon: -39.266944 | Status: Ativo
+- [BR2967] Salesópolis | Lat: -23.600556, Lon: -45.972778 | Status: Inativo
+- [BR2968] Salesópolis (Nov 2013) | Lat: -23.600556, Lon: -45.972778 | Status: Inativo
+- [BRSV] Salvador | Lat: -12.9025, Lon: -38.32666 | Status: Ativo
+- [BRST] Santa Tereza | Lat: -19.98887, Lon: -40.5794 | Status: Ativo
+- [BRSN] Santarém | Lat: -2.429722, Lon: -54.798889 | Status: Ativo
+- [BRSG] Santiago | Lat: -29.225213, Lon: -54.930257 | Status: Ativo
+- [BR2973] Somar X | Lat: -23.563056, Lon: -46.706389 | Status: Inativo
+- [BRAA] Sul | Lat: -28.9320505, Lon: -49.36229435 | Status: Ativo
+- [BRSE] Sumaré | Lat: -22.954444, Lon: -43.247778 | Status: Ativo
+- [BRSF] São Francisco | Lat: -16.00889, Lon: -44.69588 | Status: Ativo
+- [BRUA] São Gabriel da Cachoeira | Lat: -.143611, Lon: -67.056944 | Status: Ativo
+- [BRSL] São Luiz | Lat: -2.597222, Lon: -44.2375 | Status: Ativo
+- [BRSR] São Roque | Lat: -23.601915, Lon: -47.094063 | Status: Ativo
+- [BRTT] Tabatinga | Lat: -4.248333, Lon: -69.935 | Status: Ativo
+- [BRTF] Tefé | Lat: -3.377222, Lon: -64.720556 | Status: Ativo
+- [BRTS] Teixeira Soares | Lat: -25.505278, Lon: -50.361111 | Status: Ativo
+- [BRTM] Três Marias | Lat: -18.207259, Lon: -45.460535 | Status: Ativo
+- [BRLN] Valley | Lat: -27.2197783, Lon: -49.46172895 | Status: Ativo
+- [BRWF] Água Funda | Lat: -23.6519, Lon: -46.6231 | Status: Inativo

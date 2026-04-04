@@ -2,11 +2,30 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronUp,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Columns2,
+  Sparkles,
+  Navigation,
+  Zap,
+  X,
+  Menu,
+} from 'lucide-react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { CPTEC_RADAR_STATIONS, getRadarImageBounds, type CptecRadarStation } from '@/lib/cptecRadarStations';
-import { filterClimatempoRadarImage } from '@/lib/radarImageFilter';
+import { hasRedemetFallback, getRedemetBucketSlugForCptecBucket } from '@/lib/redemetRadar';
+import {
+  filterClimatempoRadarImage,
+  filterReflectivitySuperRes,
+  filterDopplerPurpleGreenNeighborSuperRes,
+} from '@/lib/radarImageFilter';
+import { fetchRadarConfigs, type RadarConfig } from '@/lib/radarConfigStore';
 
 const MAPTILER_KEY = 'WyOGmI7ufyBLH3G7aX9o';
 const SAT_STYLE = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`;
@@ -25,8 +44,30 @@ function bucketSlugToCatalogSlug(slug: string): string {
   return slug;
 }
 
-function findCptecBySlug(slug: string): CptecRadarStation | undefined {
-  return CPTEC_RADAR_STATIONS.find((s) => s.slug === bucketSlugToCatalogSlug(slug));
+function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadarStation | undefined {
+  const base = CPTEC_RADAR_STATIONS.find((s) => s.slug === bucketSlugToCatalogSlug(slug));
+  if (!base) return undefined;
+
+  if (radarConfigs) {
+    const config = radarConfigs.find(c => c.stationSlug === base.slug);
+    if (config) {
+      const merged = { ...base };
+      if (config.lat !== undefined && config.lat !== 0) merged.lat = config.lat;
+      if (config.lng !== undefined && config.lng !== 0) merged.lng = config.lng;
+      if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
+      if (config.customBounds && config.customBounds.north) {
+        merged.bounds = {
+          maxLat: config.customBounds.north,
+          minLat: config.customBounds.south,
+          maxLon: config.customBounds.east,
+          minLon: config.customBounds.west
+        };
+      }
+      return merged;
+    }
+  }
+
+  return base;
 }
 
 function imageCoordinatesFromBounds(bounds: ReturnType<typeof getRadarImageBounds>): [
@@ -73,6 +114,25 @@ function collectSortedTimesFromImages(
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const SYNC_TOLERANCE_MS = 10 * 60 * 1000;
+/** CPTEC/Nowcasting no bucket: considerar “recente” se o PNG mais novo não for mais antigo que isto (UTC no nome). */
+const CPTEC_PPI_RECENT_MAX_AGE_MS = 90 * 60 * 1000;
+
+function getNewestPpiTsMs(imgs: { name: string }[]): number | null {
+  let best = -1;
+  for (const im of imgs) {
+    const ts = extractTsFromFilename(im.name, 'ppi');
+    if (ts) best = Math.max(best, ts12ToUtcMs(ts));
+  }
+  return best >= 0 ? best : null;
+}
+
+function isCptecPpiRecent(imgs: { name: string }[], maxAgeMs: number): boolean {
+  const newest = getNewestPpiTsMs(imgs);
+  if (newest === null) return false;
+  return Date.now() - newest <= maxAgeMs;
+}
+
+export type FocusedRadarSourceMode = 'auto' | 'cptec' | 'redemet';
 
 function ts12ToUtcMs(ts: string): number {
   const y = +ts.slice(0, 4);
@@ -209,8 +269,11 @@ function buildTsLookup(
   return m;
 }
 
-function mergeFitBounds(slugs: string[]): [[number, number], [number, number]] | null {
-  const stations = slugs.map((s) => findCptecBySlug(s)).filter(Boolean) as CptecRadarStation[];
+function mergeFitBounds(
+  slugs: string[],
+  getStationForBounds: (slug: string) => CptecRadarStation | undefined
+): [[number, number], [number, number]] | null {
+  const stations = slugs.map((s) => getStationForBounds(s)).filter(Boolean) as CptecRadarStation[];
   if (stations.length === 0) return null;
   let w = Infinity,
     e = -Infinity,
@@ -229,12 +292,38 @@ function mergeFitBounds(slugs: string[]): [[number, number], [number, number]] |
   ];
 }
 
-function sourceId(slug: string) {
-  return `radar-aovivo2-src-${slug}`;
+type MapPanel = 'single' | 'left' | 'right';
+
+function sourceId(slug: string, panel: MapPanel = 'single') {
+  if (panel === 'single') return `radar-aovivo2-src-${slug}`;
+  return `radar-aovivo2-src-${slug}-${panel}`;
 }
-function layerId(slug: string) {
-  return `radar-aovivo2-layer-${slug}`;
+function layerId(slug: string, panel: MapPanel = 'single') {
+  if (panel === 'single') return `radar-aovivo2-layer-${slug}`;
+  return `radar-aovivo2-layer-${slug}-${panel}`;
 }
+
+/** Mesmo instante: URL Doppler mais próximo ao ts alvo (±10 min). */
+function dopplerUrlForTs(
+  lookup: Map<string, { name: string; url: string }>,
+  ts: string
+): string | null {
+  const exact = lookup.get(ts);
+  if (exact) return exact.url;
+  const sorted = Array.from(lookup.keys()).sort();
+  const targetMs = ts12ToUtcMs(ts);
+  const match = pickClosestWithinTolerance(sorted, targetMs, SYNC_TOLERANCE_MS);
+  if (match) return lookup.get(match)!.url;
+  const hold = lastTsAtOrBefore(sorted, targetMs);
+  return hold ? lookup.get(hold)!.url : null;
+}
+
+/** Legenda Doppler típica (velocidade radial), −60 … +60 m/s. */
+const DOPPLER_LEGEND_GRADIENT_MS = `linear-gradient(90deg,
+  #ff2fd8 0%, #b020c8 4%, #401090 8%, #000080 12%, #0060c8 16%, #00c8e8 20%, #40ffa0 24%,
+  #2a3828 50%,
+  #5c2018 58%, #e01010 64%, #ff6010 70%, #ffd800 78%, #a0c010 88%, #101010 100%)`;
+const DOPPLER_LEGEND_TICKS_MS = [-60, -50, -40, -30, -20, -10, 0, 10, 20, 30, 40, 50, 60];
 
 export default function AoVivo2Content() {
   // Injectar CSS para renderização "crocante" dos radares (pixel-perfect zoom)
@@ -255,57 +344,181 @@ export default function AoVivo2Content() {
     };
   }, []);
 
+  // Carregar RadarConfigs (admin overrides) do Firestore
+  useEffect(() => {
+    fetchRadarConfigs().then(configs => {
+      setRadarConfigs(configs);
+    }).catch(err => {
+      console.error("Erro ao carregar RadarConfigs", err);
+    });
+  }, []);
+
   const [stations, setStations] = useState<string[]>([]);
+  const [radarConfigs, setRadarConfigs] = useState<RadarConfig[]>([]);
   const [product, setProduct] = useState<RadarProductMode>('ppi');
-  const [imagesByStation, setImagesByStation] = useState<Record<string, { name: string; url: string }[]>>({});
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [imagesByStationPpi, setImagesByStationPpi] = useState<Record<string, { name: string; url: string }[]>>({});
+  const [imagesByStationDoppler, setImagesByStationDoppler] = useState<
+    Record<string, { name: string; url: string }[]>
+  >({});
+  /** PPI na pasta `redemet-xx` do bucket, indexado pelo slug CPTEC (`santiago` → imagens de `redemet-sg`). */
+  const [imagesRedemetPpiByCptec, setImagesRedemetPpiByCptec] = useState<
+    Record<string, { name: string; url: string }[]>
+  >({});
+  /** Com radar em foco e par CPTEC+REDEMET: escolha de fonte (Automático = recente no CPTEC senão REDEMET). */
+  const [focusedRadarSource, setFocusedRadarSource] = useState<FocusedRadarSourceMode>('auto');
+  /** `null` = sempre o último instante da timeline (abertura / “ao vivo”); número = frame fixo após interação. */
+  const [timelineCursor, setTimelineCursor] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [animationSpeedMultiplier, setAnimationSpeedMultiplier] = useState(1);
 
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const [focusedSlug, setFocusedSlug] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  /** MapLibre: após `load` o estilo pode ainda animar; `idle` garante que raster/imagens aplicam no 1.º mosaico. */
+  const [mapRasterIdle, setMapRasterIdle] = useState(false);
+  const [splitScreen, setSplitScreen] = useState(false);
+  const [superResMode, setSuperResMode] = useState(false);
+  const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
 
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapContainerSingleRef = useRef<HTMLDivElement | null>(null);
+  const mapContainerSplitLeftRef = useRef<HTMLDivElement | null>(null);
+  const mapContainerSplitRightRef = useRef<HTMLDivElement | null>(null);
+  const mapSingleRef = useRef<maplibregl.Map | null>(null);
+  const mapSplitLeftRef = useRef<maplibregl.Map | null>(null);
+  const mapSplitRightRef = useRef<maplibregl.Map | null>(null);
   const radarMarkersRef = useRef<maplibregl.Marker[]>([]);
   const preloadedUrlsRef = useRef<Set<string>>(new Set());
   const layerUpdateGenerationRef = useRef(0);
-  const timelineJumpToLatestRef = useRef(true);
   const prevTimelineLenRef = useRef(0);
 
   const stationsWithBounds = useMemo(
-    () => stations.filter((s) => Boolean(findCptecBySlug(s))).sort(),
-    [stations]
+    () =>
+      stations.filter((s) => !s.startsWith('redemet-') && Boolean(findCptecBySlug(s, radarConfigs))).sort(),
+    [stations, radarConfigs]
   );
 
-  const lookups = useMemo(() => {
-    const out: Record<string, Map<string, { name: string; url: string }>> = {};
-    for (const slug of Object.keys(imagesByStation)) {
-      out[slug] = buildTsLookup(imagesByStation[slug] || [], product);
+  /** Por radar: PPI do CPTEC (bucket `slug`) vs REDEMET (bucket `redemet-xx`) — raio REDEMET maior no mapa. */
+  const ppiSourceBySlug = useMemo(() => {
+    const out: Record<string, 'cptec' | 'redemet'> = {};
+    for (const slug of stationsWithBounds) {
+      const catalog = bucketSlugToCatalogSlug(slug);
+      const cptec = imagesByStationPpi[slug] ?? [];
+      const red = imagesRedemetPpiByCptec[slug] ?? [];
+      const hasRed = hasRedemetFallback(catalog) && red.length > 0;
+
+      let src: 'cptec' | 'redemet';
+      if (focusedSlug === slug && focusedRadarSource !== 'auto') {
+        src = focusedRadarSource;
+        if (src === 'cptec' && cptec.length === 0 && red.length > 0) src = 'redemet';
+        if (src === 'redemet' && red.length === 0 && cptec.length > 0) src = 'cptec';
+      } else {
+        src = isCptecPpiRecent(cptec, CPTEC_PPI_RECENT_MAX_AGE_MS)
+          ? 'cptec'
+          : hasRed
+            ? 'redemet'
+            : 'cptec';
+      }
+      out[slug] = src;
     }
     return out;
-  }, [imagesByStation, product]);
+  }, [
+    stationsWithBounds,
+    imagesByStationPpi,
+    imagesRedemetPpiByCptec,
+    focusedSlug,
+    focusedRadarSource,
+  ]);
 
-  /** Mosaico: última hora + sincronização (radar líder, ±10 min, sticky). */
+  const effectivePpiImagesBySlug = useMemo(() => {
+    const out: Record<string, { name: string; url: string }[]> = {};
+    for (const slug of stationsWithBounds) {
+      const src = ppiSourceBySlug[slug];
+      const cptec = imagesByStationPpi[slug] ?? [];
+      const red = imagesRedemetPpiByCptec[slug] ?? [];
+      out[slug] = src === 'redemet' ? red : cptec;
+    }
+    return out;
+  }, [stationsWithBounds, ppiSourceBySlug, imagesByStationPpi, imagesRedemetPpiByCptec]);
+
+  const lookupsPpi = useMemo(() => {
+    const out: Record<string, Map<string, { name: string; url: string }>> = {};
+    for (const slug of stationsWithBounds) {
+      out[slug] = buildTsLookup(effectivePpiImagesBySlug[slug] || [], 'ppi');
+    }
+    return out;
+  }, [stationsWithBounds, effectivePpiImagesBySlug]);
+
+  const lookupsDoppler = useMemo(() => {
+    const out: Record<string, Map<string, { name: string; url: string }>> = {};
+    for (const slug of Object.keys(imagesByStationDoppler)) {
+      out[slug] = buildTsLookup(imagesByStationDoppler[slug] || [], 'doppler');
+    }
+    return out;
+  }, [imagesByStationDoppler]);
+
+  const lookups = useMemo(
+    () => (product === 'ppi' ? lookupsPpi : lookupsDoppler),
+    [product, lookupsPpi, lookupsDoppler]
+  );
+
+  const imagesByStationActive =
+    product === 'ppi' ? effectivePpiImagesBySlug : imagesByStationDoppler;
+
+  /** Mosaico (modo produto único): última hora + sincronização. */
   const mosaicSync = useMemo(() => {
     if (focusedSlug) return null;
-    return buildMosaicSyncPlan(imagesByStation, stationsWithBounds, product);
-  }, [focusedSlug, imagesByStation, product, stationsWithBounds]);
+    return buildMosaicSyncPlan(imagesByStationActive, stationsWithBounds, product);
+  }, [focusedSlug, imagesByStationActive, product, stationsWithBounds]);
+
+  /** Mosaico PPI e Doppler (para ecrã dividido). */
+  const mosaicSyncPpi = useMemo(() => {
+    if (focusedSlug) return null;
+    return buildMosaicSyncPlan(effectivePpiImagesBySlug, stationsWithBounds, 'ppi');
+  }, [focusedSlug, effectivePpiImagesBySlug, stationsWithBounds]);
+
+  const mosaicSyncDop = useMemo(() => {
+    if (focusedSlug) return null;
+    return buildMosaicSyncPlan(imagesByStationDoppler, stationsWithBounds, 'doppler');
+  }, [focusedSlug, imagesByStationDoppler, stationsWithBounds]);
 
   /**
-   * Slider: foco = todos os instantes daquele radar; mosaico = instantes do radar líder na última hora.
+   * Slider: dividido = mesma timeline (PPI como referência no mosaico; foco = união de instantes);
+   * único = instantes do produto selecionado.
    */
   const timelineTimes = useMemo(() => {
+    if (splitScreen) {
+      if (focusedSlug) {
+        const ppi = collectSortedTimesFromImages(effectivePpiImagesBySlug[focusedSlug] || [], 'ppi');
+        const dop = collectSortedTimesFromImages(imagesByStationDoppler[focusedSlug] || [], 'doppler');
+        return Array.from(new Set([...ppi, ...dop])).sort();
+      }
+      return mosaicSyncPpi?.masterTimes ?? [];
+    }
     if (focusedSlug) {
-      return collectSortedTimesFromImages(imagesByStation[focusedSlug] || [], product);
+      return collectSortedTimesFromImages(imagesByStationActive[focusedSlug] || [], product);
     }
     return mosaicSync?.masterTimes ?? [];
-  }, [focusedSlug, imagesByStation, product, mosaicSync]);
+  }, [
+    splitScreen,
+    focusedSlug,
+    imagesByStationDoppler,
+    imagesByStationActive,
+    effectivePpiImagesBySlug,
+    product,
+    mosaicSync,
+    mosaicSyncPpi,
+  ]);
 
-  const safeIndex = timelineTimes.length > 0 ? Math.min(currentIndex, timelineTimes.length - 1) : 0;
+  const safeIndex =
+    timelineTimes.length === 0
+      ? 0
+      : timelineCursor === null
+        ? timelineTimes.length - 1
+        : Math.min(timelineCursor, timelineTimes.length - 1);
   const currentTs = timelineTimes[safeIndex] ?? null;
 
   const mosaicFrameAtIndex = useMemo(() => {
@@ -314,9 +527,29 @@ export default function AoVivo2Content() {
     return mosaicSync.frames[i] ?? null;
   }, [focusedSlug, mosaicSync, safeIndex]);
 
+  const mosaicFramePpiAtIndex = useMemo(() => {
+    if (focusedSlug || !mosaicSyncPpi?.frames.length) return null;
+    const i = Math.min(safeIndex, mosaicSyncPpi.frames.length - 1);
+    return mosaicSyncPpi.frames[i] ?? null;
+  }, [focusedSlug, mosaicSyncPpi, safeIndex]);
+
+  const mosaicFrameDopAtIndex = useMemo(() => {
+    if (focusedSlug || !mosaicSyncPpi?.frames.length) return null;
+    const i = Math.min(safeIndex, mosaicSyncPpi.masterTimes.length - 1);
+    const masterTs = mosaicSyncPpi.masterTimes[i];
+    if (!mosaicSyncDop?.frames.length) return null;
+    const byTs = mosaicSyncDop.frames.find((f) => f.masterTs === masterTs);
+    if (byTs) return byTs;
+    const j = Math.min(safeIndex, mosaicSyncDop.frames.length - 1);
+    return mosaicSyncDop.frames[j] ?? null;
+  }, [focusedSlug, mosaicSyncPpi, mosaicSyncDop, safeIndex]);
+
   const hasAnyStationImages = useMemo(
-    () => Object.values(imagesByStation).some((imgs) => imgs.length > 0),
-    [imagesByStation]
+    () =>
+      Object.values(imagesByStationPpi).some((imgs) => imgs.length > 0) ||
+      Object.values(imagesByStationDoppler).some((imgs) => imgs.length > 0) ||
+      Object.values(imagesRedemetPpiByCptec).some((imgs) => imgs.length > 0),
+    [imagesByStationPpi, imagesByStationDoppler, imagesRedemetPpiByCptec]
   );
 
   const displaySlugs = useMemo(() => {
@@ -339,78 +572,170 @@ export default function AoVivo2Content() {
 
   useEffect(() => {
     if (stationsWithBounds.length === 0) {
-      setImagesByStation({});
-      setCurrentIndex(0);
-      timelineJumpToLatestRef.current = true;
+      setImagesByStationPpi({});
+      setImagesByStationDoppler({});
+      setImagesRedemetPpiByCptec({});
+      setTimelineCursor(null);
       return;
     }
 
     setIsLoading(true);
     setError(null);
-    timelineJumpToLatestRef.current = true;
 
-    const productParam = product === 'doppler' ? 'doppler' : 'ppi';
+    const fetchStationProduct = (slug: string, prod: 'ppi' | 'doppler') =>
+      fetch(
+        `/api/radar-ao-vivo2?action=listImages&station=${encodeURIComponent(slug)}&product=${prod}`
+      )
+        .then(async (r) => {
+          const data = (await r.json()) as { images?: { name: string; url: string }[]; error?: string };
+          if (!r.ok) throw new Error(data.error || slug);
+          return { slug, prod, images: data.images || [] };
+        })
+        .catch(() => ({ slug, prod, images: [] as { name: string; url: string }[] }));
 
     Promise.all(
-      stationsWithBounds.map((slug) =>
-        fetch(`/api/radar-ao-vivo2?action=listImages&station=${encodeURIComponent(slug)}&product=${productParam}`)
-          .then(async (r) => {
-            const data = (await r.json()) as { images?: { name: string; url: string }[]; error?: string };
-            if (!r.ok) throw new Error(data.error || slug);
-            return { slug, images: data.images || [] };
-          })
-          .catch(() => ({ slug, images: [] as { name: string; url: string }[] }))
-      )
+      stationsWithBounds.flatMap((slug) => [fetchStationProduct(slug, 'ppi'), fetchStationProduct(slug, 'doppler')])
     )
       .then((rows) => {
-        const next: Record<string, { name: string; url: string }[]> = {};
-        for (const { slug, images } of rows) next[slug] = images;
-        setImagesByStation(next);
+        const nextPpi: Record<string, { name: string; url: string }[]> = {};
+        const nextDop: Record<string, { name: string; url: string }[]> = {};
+        for (const row of rows) {
+          if (row.prod === 'ppi') nextPpi[row.slug] = row.images;
+          else nextDop[row.slug] = row.images;
+        }
+        setImagesByStationPpi(nextPpi);
+        setImagesByStationDoppler(nextDop);
+
+        const redTasks = stationsWithBounds
+          .map((slug) => {
+            const catalog = bucketSlugToCatalogSlug(slug);
+            if (!hasRedemetFallback(catalog)) return null;
+            const rs = getRedemetBucketSlugForCptecBucket(slug);
+            if (!rs) return null;
+            return fetchStationProduct(rs, 'ppi').then((row) => ({
+              cptecSlug: slug,
+              images: row.images,
+            }));
+          })
+          .filter((x): x is Promise<{ cptecSlug: string; images: { name: string; url: string }[] }> => x != null);
+
+        return Promise.all(redTasks);
+      })
+      .then((redRows) => {
+        const nextRed: Record<string, { name: string; url: string }[]> = {};
+        if (redRows) {
+          for (const r of redRows) {
+            nextRed[r.cptecSlug] = r.images;
+          }
+        }
+        setImagesRedemetPpiByCptec(nextRed);
+        setTimelineCursor(null);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setIsLoading(false));
-  }, [stationsWithBounds, product]);
+  }, [stationsWithBounds]);
 
-  /** Novo produto ou dados recarregados: ir para o último frame disponível na timeline derivada. */
+  /** Ao mudar foco, produto ou modo dividido: voltar ao último instante disponível. */
   useEffect(() => {
-    if (!timelineJumpToLatestRef.current) return;
-    if (timelineTimes.length === 0) {
-      setCurrentIndex(0);
-      return;
-    }
-    setCurrentIndex(timelineTimes.length - 1);
-    timelineJumpToLatestRef.current = false;
-  }, [timelineTimes]);
+    setTimelineCursor(null);
+  }, [focusedSlug, product, splitScreen]);
 
-  /** Ao mudar o foco (ou voltar ao mosaico), alinha no último instante da timeline atual (derivada por radar ou união). */
+  /** Novo radar em foco: voltar ao modo Automático (CPTEC recente senão REDEMET). */
   useEffect(() => {
-    if (timelineTimes.length === 0) {
-      setCurrentIndex(0);
-      return;
-    }
-    setCurrentIndex(timelineTimes.length - 1);
+    setFocusedRadarSource('auto');
   }, [focusedSlug]);
 
-  /** Só ajusta índice quando a timeline encolhe (evita sobrescrever “último frame” ao passar de 0 → N). */
+  /** Quando a timeline encolhe, mantém índice válido (se não estiver em modo “ao vivo”). */
   useEffect(() => {
     const len = timelineTimes.length;
     if (len === 0) {
-      setCurrentIndex(0);
+      setTimelineCursor(null);
       prevTimelineLenRef.current = 0;
       return;
     }
     if (prevTimelineLenRef.current > len) {
-      setCurrentIndex((i) => Math.min(i, len - 1));
+      setTimelineCursor((c) => (c === null ? null : Math.min(c, len - 1)));
     }
     prevTimelineLenRef.current = len;
   }, [timelineTimes.length]);
 
-  /** Mapa: uma vez com vista Brasil; depois fit bounds */
+  /** Mapa único ou par sincronizado (PPI | Doppler). */
   useEffect(() => {
-    const container = mapContainerRef.current;
-    if (!container) return;
+    if (splitScreen) {
+      const leftEl = mapContainerSplitLeftRef.current;
+      const rightEl = mapContainerSplitRightRef.current;
+      if (!leftEl || !rightEl || mapSplitLeftRef.current) return;
 
-    if (mapRef.current) return;
+      let silent = false;
+      const mapL = new maplibregl.Map({
+        container: leftEl,
+        style: SAT_STYLE,
+        center: [-51, -22],
+        zoom: 4,
+      });
+      const mapR = new maplibregl.Map({
+        container: rightEl,
+        style: SAT_STYLE,
+        center: [-51, -22],
+        zoom: 4,
+      });
+      mapSplitLeftRef.current = mapL;
+      mapSplitRightRef.current = mapR;
+
+      mapL.on('move', () => {
+        if (silent) return;
+        silent = true;
+        mapR.jumpTo({
+          center: mapL.getCenter(),
+          zoom: mapL.getZoom(),
+          bearing: mapL.getBearing(),
+          pitch: mapL.getPitch(),
+        });
+        silent = false;
+      });
+      mapR.on('move', () => {
+        if (silent) return;
+        silent = true;
+        mapL.jumpTo({
+          center: mapR.getCenter(),
+          zoom: mapR.getZoom(),
+          bearing: mapR.getBearing(),
+          pitch: mapR.getPitch(),
+        });
+        silent = false;
+      });
+
+      let loads = 0;
+      const onLoad = () => {
+        loads += 1;
+        if (loads === 2) {
+          mapL.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+          setMapReady(true);
+        }
+      };
+      mapL.on('load', onLoad);
+      mapR.on('load', onLoad);
+
+      let idleCount = 0;
+      const onFirstIdle = () => {
+        idleCount += 1;
+        if (idleCount === 2) setMapRasterIdle(true);
+      };
+      mapL.once('idle', onFirstIdle);
+      mapR.once('idle', onFirstIdle);
+
+      return () => {
+        setMapReady(false);
+        setMapRasterIdle(false);
+        mapL.remove();
+        mapR.remove();
+        mapSplitLeftRef.current = null;
+        mapSplitRightRef.current = null;
+      };
+    }
+
+    const container = mapContainerSingleRef.current;
+    if (!container || mapSingleRef.current) return;
 
     const map = new maplibregl.Map({
       container,
@@ -418,86 +743,174 @@ export default function AoVivo2Content() {
       center: [-51, -22],
       zoom: 4,
     });
-    map.on('load', () => setMapReady(true));
-    mapRef.current = map;
+    map.on('load', () => {
+      setMapReady(true);
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+      map.once('idle', () => {
+        setMapRasterIdle(true);
+      });
+    });
+    mapSingleRef.current = map;
 
     return () => {
       setMapReady(false);
+      setMapRasterIdle(false);
       map.remove();
-      mapRef.current = null;
+      mapSingleRef.current = null;
     };
-  }, []);
+  }, [splitScreen]);
 
   /** Ajusta enquadramento */
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
     const slugs = focusedSlug ? [focusedSlug] : stationsWithBounds;
-    const b = mergeFitBounds(slugs);
+    const b = mergeFitBounds(slugs, (slug) => {
+      const redSlug = getRedemetBucketSlugForCptecBucket(slug);
+      const src = ppiSourceBySlug[slug];
+      if (src === 'redemet' && redSlug) return findCptecBySlug(redSlug, radarConfigs);
+      return findCptecBySlug(slug, radarConfigs);
+    });
     if (!b) return;
-    map.fitBounds(b, { padding: focusedSlug ? 56 : 80, duration: 500 });
-  }, [mapReady, focusedSlug, stationsWithBounds]);
+    const pad = superResMode ? (focusedSlug ? 36 : 52) : focusedSlug ? 56 : 80;
+    const opts = { padding: pad, duration: 500 };
+    if (splitScreen) {
+      const mapL = mapSplitLeftRef.current;
+      const mapR = mapSplitRightRef.current;
+      if (!mapL || !mapR || !mapReady) return;
+      mapL.fitBounds(b, opts);
+      mapR.fitBounds(b, opts);
+      return;
+    }
+    const map = mapSingleRef.current;
+    if (!map || !mapReady) return;
+    map.fitBounds(b, opts);
+  }, [mapReady, focusedSlug, stationsWithBounds, superResMode, splitScreen, ppiSourceBySlug, radarConfigs]);
 
   /** Marcadores (ícones como ao-vivo-1) */
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    if (!mapReady) return;
 
     radarMarkersRef.current.forEach((m) => m.remove());
     radarMarkersRef.current = [];
 
-    for (const slug of stationsWithBounds) {
-      const st = findCptecBySlug(slug);
-      if (!st) continue;
-      const hasAny = (imagesByStation[slug]?.length ?? 0) > 0;
+    const addMarkersToMap = (map: maplibregl.Map) => {
+      for (const slug of stationsWithBounds) {
+        const st = findCptecBySlug(slug, radarConfigs);
+        if (!st) continue;
+        const hasAny =
+          (imagesByStationPpi[slug]?.length ?? 0) > 0 ||
+          (imagesRedemetPpiByCptec[slug]?.length ?? 0) > 0 ||
+          (imagesByStationDoppler[slug]?.length ?? 0) > 0;
 
-      const el = document.createElement('div');
-      el.className = 'w-8 h-8 cursor-pointer';
-      if (hasAny) {
-        el.innerHTML = `
+        const el = document.createElement('div');
+        el.className = 'w-8 h-8 cursor-pointer';
+        if (hasAny) {
+          el.innerHTML = `
           <div class="relative flex items-center justify-center w-full h-full transition-transform hover:scale-125">
             <div class="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping" style="animation-duration: 2.5s;"></div>
             <img src="${RADAR_ICON_AVAILABLE}" alt="Radar On" class="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
           </div>
         `;
-      } else {
-        el.innerHTML = `
+        } else {
+          el.innerHTML = `
           <div class="relative flex items-center justify-center w-full h-full opacity-50 transition-transform hover:scale-110 grayscale">
             <img src="${RADAR_ICON_UNAVAILABLE}" alt="Radar Off" class="w-8 h-8 object-contain" />
           </div>
         `;
-      }
+        }
 
-      const marker = new maplibregl.Marker({ element: el }).setLngLat([st.lng, st.lat]).addTo(map);
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        setFocusedSlug((prev) => (prev === slug ? null : slug));
-      });
-      radarMarkersRef.current.push(marker);
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([st.lng, st.lat]).addTo(map);
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setFocusedSlug((prev) => (prev === slug ? null : slug));
+        });
+        radarMarkersRef.current.push(marker);
+      }
+    };
+
+    if (splitScreen) {
+      const mapL = mapSplitLeftRef.current;
+      const mapR = mapSplitRightRef.current;
+      if (!mapL || !mapR) return;
+      addMarkersToMap(mapL);
+      addMarkersToMap(mapR);
+    } else {
+      const map = mapSingleRef.current;
+      if (!map) return;
+      addMarkersToMap(map);
     }
 
     return () => {
       radarMarkersRef.current.forEach((m) => m.remove());
       radarMarkersRef.current = [];
     };
-  }, [mapReady, stationsWithBounds, imagesByStation, focusedSlug]);
+  }, [
+    mapReady,
+    stationsWithBounds,
+    imagesByStationPpi,
+    imagesRedemetPpiByCptec,
+    imagesByStationDoppler,
+    focusedSlug,
+    splitScreen,
+    radarConfigs,
+  ]);
 
   /** Camadas raster por radar — troca com raster-fade-duration para transição suave */
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    if (focusedSlug && !currentTs) return;
-    if (!focusedSlug && !mosaicFrameAtIndex) return;
+    if (!mapReady || !mapRasterIdle) return;
+
+    if (splitScreen) {
+      if (focusedSlug && !currentTs) return;
+      if (!focusedSlug && !mosaicFramePpiAtIndex) return;
+    } else {
+      if (focusedSlug && !currentTs) return;
+      if (!focusedSlug && !mosaicFrameAtIndex) return;
+    }
 
     const gen = ++layerUpdateGenerationRef.current;
 
-    const applyLayer = (slug: string, url: string | null) => {
-      const st = findCptecBySlug(slug);
-      if (!st) return;
-      const bounds = getRadarImageBounds(st);
-      const coordinates = imageCoordinatesFromBounds(bounds);
-      const sid = sourceId(slug);
-      const lid = layerId(slug);
+    const applyLayerToMap = (
+      map: maplibregl.Map,
+      panel: MapPanel,
+      slug: string,
+      url: string | null,
+      kind: 'ppi' | 'doppler'
+    ) => {
+      const boundsStation =
+        kind === 'doppler'
+          ? findCptecBySlug(slug, radarConfigs)
+          : (() => {
+              const src = ppiSourceBySlug[slug];
+              const rs = getRedemetBucketSlugForCptecBucket(slug);
+              if (src === 'redemet' && rs) return findCptecBySlug(rs, radarConfigs);
+              return findCptecBySlug(slug, radarConfigs);
+            })();
+      if (!boundsStation) return;
+      const bounds = getRadarImageBounds(boundsStation);
+      let coordinates = imageCoordinatesFromBounds(bounds);
+      
+      const config = radarConfigs.find(c => c.stationSlug === boundsStation.slug);
+      const targetOpacity = config?.opacity ?? (superResMode ? 0.95 : 0.88);
+
+      if (config?.rotationDegrees) {
+        // Rotate the 4 corners around the center
+        const cx = (bounds.west + bounds.east) / 2;
+        const cy = (bounds.north + bounds.south) / 2;
+        const angleRad = (config.rotationDegrees * Math.PI) / 180;
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+        
+        coordinates = coordinates.map(([x, y]) => {
+          const dx = x - cx;
+          const dy = y - cy;
+          return [
+            cx + dx * cos - dy * sin,
+            cy + dx * sin + dy * cos
+          ];
+        }) as [[number, number], [number, number], [number, number], [number, number]];
+      }
+
+      const sid = sourceId(slug, panel);
+      const lid = layerId(slug, panel);
 
       if (!url) {
         if (map.getLayer(lid)) {
@@ -514,7 +927,7 @@ export default function AoVivo2Content() {
           if (src && typeof src.updateImage === 'function') {
             src.updateImage({ url: finalUrl, coordinates });
             if (map.getLayer(lid)) {
-              map.setPaintProperty(lid, 'raster-opacity', 0.88);
+              map.setPaintProperty(lid, 'raster-opacity', targetOpacity);
               map.setLayoutProperty(lid, 'visibility', 'visible');
             }
           } else {
@@ -526,7 +939,7 @@ export default function AoVivo2Content() {
               type: 'raster',
               source: sid,
               paint: {
-                'raster-opacity': 0.88,
+                'raster-opacity': targetOpacity,
                 'raster-fade-duration': 200,
                 'raster-resampling': 'nearest',
               },
@@ -538,30 +951,100 @@ export default function AoVivo2Content() {
       };
 
       void (async () => {
-        const base = absoluteUrl(url);
+        let nextUrl = absoluteUrl(url);
         if (slug === 'climatempo-poa') {
-          const filtered = await filterClimatempoRadarImage(base);
+          const filtered = await filterClimatempoRadarImage(nextUrl);
           if (gen !== layerUpdateGenerationRef.current) return;
-          run(filtered ?? base);
-        } else {
-          run(base);
+          nextUrl = filtered ?? nextUrl;
         }
+        if (superResMode) {
+          if (kind === 'ppi') {
+            const sr = await filterReflectivitySuperRes(nextUrl);
+            if (gen !== layerUpdateGenerationRef.current) return;
+            if (sr) nextUrl = sr;
+          } else {
+            const sr = await filterDopplerPurpleGreenNeighborSuperRes(nextUrl);
+            if (gen !== layerUpdateGenerationRef.current) return;
+            if (sr) nextUrl = sr;
+          }
+        }
+        run(nextUrl);
       })();
     };
+
+    const runForSlug = (
+      map: maplibregl.Map,
+      panel: MapPanel,
+      slug: string,
+      rawUrl: string | null,
+      kind: 'ppi' | 'doppler'
+    ) => {
+      applyLayerToMap(map, panel, slug, rawUrl, kind);
+    };
+
+    if (splitScreen) {
+      const mapL = mapSplitLeftRef.current;
+      const mapR = mapSplitRightRef.current;
+      if (!mapL || !mapR) return;
+
+      for (const slug of stationsWithBounds) {
+        const inDisplay = displaySlugs.includes(slug);
+        if (!inDisplay) {
+          if (mapL.getLayer(layerId(slug, 'left'))) mapL.setPaintProperty(layerId(slug, 'left'), 'raster-opacity', 0);
+          if (mapR.getLayer(layerId(slug, 'right')))
+            mapR.setPaintProperty(layerId(slug, 'right'), 'raster-opacity', 0);
+          continue;
+        }
+        let urlPpi: string | null = null;
+        let urlDop: string | null = null;
+        if (focusedSlug && currentTs) {
+          urlPpi = lookupsPpi[slug]?.get(currentTs)?.url ?? null;
+          urlDop = dopplerUrlForTs(lookupsDoppler[slug] ?? new Map(), currentTs);
+        } else {
+          urlPpi = mosaicFramePpiAtIndex?.urlBySlug[slug] ?? null;
+          urlDop = mosaicFrameDopAtIndex?.urlBySlug[slug] ?? null;
+        }
+        runForSlug(mapL, 'left', slug, urlPpi, 'ppi');
+        runForSlug(mapR, 'right', slug, urlDop, 'doppler');
+      }
+      return;
+    }
+
+    const map = mapSingleRef.current;
+    if (!map) return;
 
     for (const slug of stationsWithBounds) {
       const inDisplay = displaySlugs.includes(slug);
       if (!inDisplay) {
-        const lid = layerId(slug);
+        const lid = layerId(slug, 'single');
         if (map.getLayer(lid)) map.setPaintProperty(lid, 'raster-opacity', 0);
         continue;
       }
       const rawUrl = focusedSlug
         ? lookups[slug]?.get(currentTs!)?.url
         : mosaicFrameAtIndex?.urlBySlug[slug];
-      applyLayer(slug, rawUrl ?? null);
+      const kind: 'ppi' | 'doppler' = product === 'ppi' ? 'ppi' : 'doppler';
+      applyLayerToMap(map, 'single', slug, rawUrl ?? null, kind);
     }
-  }, [mapReady, currentTs, lookups, displaySlugs, stationsWithBounds, focusedSlug, mosaicFrameAtIndex]);
+  }, [
+    mapReady,
+    mapRasterIdle,
+    splitScreen,
+    currentTs,
+    lookups,
+    lookupsPpi,
+    lookupsDoppler,
+    displaySlugs,
+    stationsWithBounds,
+    focusedSlug,
+    mosaicFrameAtIndex,
+    mosaicFramePpiAtIndex,
+    mosaicFrameDopAtIndex,
+    superResMode,
+    product,
+    ppiSourceBySlug,
+    radarConfigs,
+  ]);
 
   /** Pré-carrega frames vizinhos (como modelo numérico — menos flicker) */
   useEffect(() => {
@@ -570,7 +1053,28 @@ export default function AoVivo2Content() {
     const n = timelineTimes.length;
     const indices = [si, (si + 1) % n, (si - 1 + n) % n];
     const urls = new Set<string>();
-    if (focusedSlug) {
+    if (splitScreen) {
+      if (focusedSlug) {
+        for (const idx of indices) {
+          const ts = timelineTimes[idx];
+          if (!ts) continue;
+          for (const slug of displaySlugs) {
+            const uP = lookupsPpi[slug]?.get(ts)?.url;
+            const uD = dopplerUrlForTs(lookupsDoppler[slug] ?? new Map(), ts);
+            if (uP) urls.add(absoluteUrl(uP));
+            if (uD) urls.add(absoluteUrl(uD));
+          }
+        }
+      } else if (mosaicSyncPpi?.frames.length && mosaicSyncDop?.frames.length) {
+        for (const idx of indices) {
+          const fp = mosaicSyncPpi.frames[idx];
+          const fd = mosaicSyncDop.frames[idx];
+          if (!fp || !fd) continue;
+          for (const u of Object.values(fp.urlBySlug)) urls.add(absoluteUrl(u));
+          for (const u of Object.values(fd.urlBySlug)) urls.add(absoluteUrl(u));
+        }
+      }
+    } else if (focusedSlug) {
       for (const idx of indices) {
         const ts = timelineTimes[idx];
         if (!ts) continue;
@@ -594,14 +1098,26 @@ export default function AoVivo2Content() {
       const im = new window.Image();
       im.src = u;
     });
-  }, [safeIndex, timelineTimes, displaySlugs, lookups, focusedSlug, mosaicSync?.frames]);
+  }, [
+    safeIndex,
+    timelineTimes,
+    displaySlugs,
+    lookups,
+    lookupsPpi,
+    lookupsDoppler,
+    focusedSlug,
+    mosaicSync?.frames,
+    splitScreen,
+    mosaicSyncPpi?.frames,
+    mosaicSyncDop?.frames,
+  ]);
 
   useEffect(() => {
     if (!isPlaying || timelineTimes.length < 2) return;
     const t = setInterval(() => {
-      setCurrentIndex((i) => {
+      setTimelineCursor((prev) => {
         const n = timelineTimes.length;
-        const si = Math.min(i, n - 1);
+        const si = prev === null ? n - 1 : Math.min(prev, n - 1);
         return (si + 1) % n;
       });
     }, 800 / animationSpeedMultiplier);
@@ -611,271 +1127,459 @@ export default function AoVivo2Content() {
   const togglePlay = () => setIsPlaying((p) => !p);
   const prevFrame = () => {
     setIsPlaying(false);
-    setCurrentIndex((i) => {
+    setTimelineCursor((prev) => {
       const n = timelineTimes.length;
-      if (n === 0) return 0;
-      const si = Math.min(i, n - 1);
+      if (n === 0) return null;
+      const si = prev === null ? n - 1 : Math.min(prev, n - 1);
       return (si - 1 + n) % n;
     });
   };
   const nextFrame = () => {
     setIsPlaying(false);
-    setCurrentIndex((i) => {
+    setTimelineCursor((prev) => {
       const n = timelineTimes.length;
-      if (n === 0) return 0;
-      const si = Math.min(i, n - 1);
+      if (n === 0) return null;
+      const si = prev === null ? n - 1 : Math.min(prev, n - 1);
       return (si + 1) % n;
     });
   };
 
   const showEmptyBucketHelp = stations.length === 0 && !isLoading && !error;
-  const formatTsLabel = (ts: string) => {
-    if (ts.length !== 12) return ts;
-    return `${ts.slice(8, 10)}:${ts.slice(10, 12)}`;
+
+  const stationTitle = focusedSlug
+    ? (findCptecBySlug(focusedSlug, radarConfigs)?.name ?? focusedSlug)
+    : 'Brasil — mosaico';
+  const productLabel = splitScreen
+    ? 'PPI + Doppler (mesmo instante)'
+    : product === 'ppi'
+      ? 'Refletividade (PPI)'
+      : 'Velocidade radial (Doppler)';
+
+  const fullDateTimeLabel =
+    currentTs && currentTs.length === 12
+      ? (() => {
+          const d = new Date(
+            Date.UTC(
+              parseInt(currentTs.slice(0, 4), 10),
+              parseInt(currentTs.slice(4, 6), 10) - 1,
+              parseInt(currentTs.slice(6, 8), 10),
+              parseInt(currentTs.slice(8, 10), 10),
+              parseInt(currentTs.slice(10, 12), 10)
+            )
+          );
+          return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' });
+        })()
+      : '—';
+
+  const flyToUserLocation = () => {
+    const map = splitScreen ? mapSplitLeftRef.current : mapSingleRef.current;
+    if (!map || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        map.flyTo({
+          center: [pos.coords.longitude, pos.coords.latitude],
+          zoom: Math.max(map.getZoom(), 8),
+          duration: 1200,
+        });
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
   };
 
-  const clearFocusButton = (
-    <button
-      type="button"
-      onClick={() => setFocusedSlug(null)}
-      className={`text-xs px-2 py-1 rounded border ${
-        focusedSlug
-          ? 'border-amber-500 text-amber-300 bg-amber-950/50 hover:bg-amber-900/50'
-          : 'border-slate-700 text-slate-600 cursor-default'
-      }`}
-      disabled={!focusedSlug}
-    >
-      Mosaico (todos)
-    </button>
-  );
+  const dbzLegendTicks = [-30, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-slate-950 text-white overflow-hidden">
-      <header className="relative z-20 flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#0F131C]/80 backdrop-blur-md border-b border-white/10 shrink-0 shadow-lg">
-        <div className="flex items-center gap-1.5 sm:gap-3">
-          <Link
-            href="/"
-            className="p-1 sm:p-2 -ml-1 rounded-lg text-slate-300 hover:bg-white/10 hover:text-white transition-colors flex items-center"
-            title="Voltar ao Início"
-          >
-            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-          </Link>
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-slate-900 text-slate-900">
+      {error && (
+        <div className="absolute inset-0 z-[40] flex items-center justify-center bg-black/70 p-4 text-center text-red-200 text-sm max-w-lg mx-auto pointer-events-auto">
+          {error}
         </div>
-        <div className="flex-1 min-w-0 text-center flex flex-col items-center justify-center -ml-2 sm:-ml-0">
-          <h1 className="text-[10px] sm:text-sm font-black tracking-wider text-cyan-400 truncate uppercase">
-            Radar Ao Vivo (Cache v2)
-          </h1>
-          <p className="text-[9px] sm:text-[10px] tracking-widest text-slate-400 uppercase font-medium mt-0 sm:mt-0.5 truncate">
-            {focusedSlug ? (
-              <span className="text-amber-300">Foco: {findCptecBySlug(focusedSlug)?.name ?? focusedSlug}</span>
-            ) : (
-              'Visão Mosaico'
-            )}
-          </p>
+      )}
+      {isLoading && stations.length === 0 && !error && (
+        <div className="absolute inset-0 z-[35] flex items-center justify-center bg-slate-950/90 pointer-events-auto">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-sky-500 border-t-transparent" />
         </div>
-        <div className="flex items-center gap-2">
-          <div className="hidden sm:flex rounded-lg border border-slate-600 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setProduct('ppi')}
-              className={`px-3 py-1 text-xs font-bold uppercase tracking-wider ${
-                product === 'ppi' ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.4)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-            >
-              PPI
-            </button>
-            <button
-              type="button"
-              onClick={() => setProduct('doppler')}
-              className={`px-3 py-1 text-xs font-bold uppercase tracking-wider border-l border-slate-600 ${
-                product === 'doppler' ? 'bg-emerald-600 text-white shadow-[0_0_10px_rgba(16,185,129,0.4)]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-            >
-              Doppler
-            </button>
+      )}
+
+      {showEmptyBucketHelp && (
+        <div className="absolute inset-0 z-[30] flex items-center justify-center p-6 pointer-events-auto">
+          <div className="max-w-md rounded-2xl border border-white/10 bg-white/95 p-6 text-center text-slate-600 text-sm space-y-3 shadow-xl">
+            <p className="font-semibold text-sky-700">Bucket vazio ou sem pastas</p>
+            <p>
+              Crie no GCS <code className="text-slate-800">radar_ao_vivo_2</code> uma pasta por radar. Refletividade:{' '}
+              <code className="text-sky-800">chapeco/20251107120000.png</code> — Doppler:{' '}
+              <code className="text-sky-800">chapeco/20251107120000-ppivr.png</code>
+            </p>
           </div>
-          {focusedSlug && (
-            <button
-              type="button"
-              onClick={() => setFocusedSlug(null)}
-              className="text-[9px] sm:text-[10px] font-bold px-2 py-1.5 rounded-lg border border-amber-500/50 text-amber-300 bg-amber-950/30 hover:bg-amber-900/50 uppercase tracking-widest"
-              title="Voltar ao mosaico"
-            >
-              <span className="hidden sm:inline">Limpar Foco</span>
-              <span className="sm:hidden">X</span>
-            </button>
+        </div>
+      )}
+
+      {!showEmptyBucketHelp && !error && (
+        <>
+          {splitScreen ? (
+            <div className="absolute inset-0 z-0 flex min-h-0 w-full">
+              <div ref={mapContainerSplitLeftRef} className="relative h-full min-h-0 min-w-0 flex-1" />
+              <div className="w-px shrink-0 bg-teal-500/70" aria-hidden />
+              <div ref={mapContainerSplitRightRef} className="relative h-full min-h-0 min-w-0 flex-1" />
+            </div>
+          ) : (
+            <div ref={mapContainerSingleRef} className="absolute inset-0 z-0 h-full w-full" />
           )}
+        </>
+      )}
+
+      {isLoading && stations.length > 0 && (
+        <div className="absolute inset-0 z-[15] flex items-center justify-center bg-slate-950/35 pointer-events-none">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-sky-500 border-t-transparent" />
         </div>
-      </header>
+      )}
 
-      {/* Controlos mobile para os produtos */}
-      <div className="sm:hidden flex items-center justify-center p-2 bg-[#0F131C] border-b border-white/5 z-10 shrink-0">
-        <div className="flex w-full max-w-[200px] rounded-lg border border-slate-700 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setProduct('ppi')}
-            className={`flex-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
-              product === 'ppi' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400'
-            }`}
-          >
-            PPI
-          </button>
-          <button
-            type="button"
-            onClick={() => setProduct('doppler')}
-            className={`flex-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border-l border-slate-700 ${
-              product === 'doppler' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
-            }`}
-          >
-            Doppler
-          </button>
-        </div>
-      </div>
+      {/* UI flutuante (MapLibre GL — mesmo ecossistema Mapbox) */}
+      {!showEmptyBucketHelp && (
+        <div className="absolute inset-0 z-20 pointer-events-none">
+          {/* Barra vertical — topo esquerdo */}
+          <div className="absolute left-3 top-3 flex flex-col gap-2 pointer-events-auto sm:left-4 sm:top-4 z-50">
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen((v) => !v)}
+              className="flex h-[60px] w-[60px] items-center justify-center transition-all z-50 hover:scale-105 hover:shadow-[0_0_20px_rgba(56,189,248,0.8)] rounded-full overflow-hidden shadow-lg bg-[#0f172a] border border-white/10"
+              title="Menu de Ferramentas"
+            >
+              <img 
+                src="https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/d74421978486f01e69b68cafcc5e311b5f407b59/%C3%8Dcone%20de%20trov%C3%A3o%20em%20fundo%20transparente.png" 
+                alt="Menu" 
+                className="h-full w-full object-cover scale-[1.35]"
+              />
+            </button>
 
-      <div className="flex-1 relative min-h-0 bg-slate-900">
-        {error && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4 text-center text-red-300 text-sm max-w-lg mx-auto">
-            {error}
-          </div>
-        )}
-        {isLoading && stations.length === 0 && !error && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/80">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-cyan-500 border-t-transparent" />
-          </div>
-        )}
-
-        {showEmptyBucketHelp && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
-            <div className="max-w-md rounded-lg border border-slate-600 bg-slate-900/95 p-6 text-center text-slate-300 text-sm space-y-3">
-              <p className="font-semibold text-cyan-400">Bucket vazio ou sem pastas</p>
-              <p>
-                Crie no GCS <code className="text-white">radar_ao_vivo_2</code> uma pasta por radar. Refletividade:{' '}
-                <code className="text-cyan-300">chapeco/20251107120000.png</code> — Doppler:{' '}
-                <code className="text-cyan-300">chapeco/20251107120000-ppivr.png</code>
-              </p>
+            <div className={`flex flex-col gap-2 transition-all duration-300 origin-top overflow-hidden ${isMenuOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
+              <Link
+                href="/"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
+                title="Início"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => setSuperResMode((v) => !v)}
+                title="Super Res — refletividade: remove ruído branco/cinza. Doppler: remove roxo isolado junto de verde (±2 px), preservando interfaces verde↔vermelho (couplets)."
+                className={`flex min-h-[3.25rem] w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center shadow-lg ring-1 ring-black/5 transition ${
+                  superResMode ? 'bg-sky-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
+                }`}
+              >
+                <Sparkles className="h-4 w-4 shrink-0" />
+                <span className="max-w-full text-[6px] font-bold leading-[1.1]">
+                  <span className="block">Super</span>
+                  <span className="block">Res</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitScreen((s) => !s)}
+                title={splitScreen ? 'Voltar a ecrã único' : 'Dividir Tela — PPI à esquerda, Doppler à direita (mesmo instante)'}
+                className={`flex min-h-[3.25rem] w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 shadow-lg ring-1 ring-black/5 transition ${
+                  splitScreen ? 'bg-teal-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
+                }`}
+              >
+                <Columns2 className="h-4 w-4 shrink-0" />
+                <span className="max-w-full text-center text-[6px] font-bold leading-[1.1]">
+                  {splitScreen ? (
+                    'Único'
+                  ) : (
+                    <>
+                      Dividir
+                      <br />
+                      Tela
+                    </>
+                  )}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={flyToUserLocation}
+                title="Ir para a minha localização"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
+              >
+                <Navigation className="h-5 w-5" />
+              </button>
+              {!splitScreen && (
+                <button
+                  type="button"
+                  title="Produto (atalho)"
+                  onClick={() => setProduct((p) => (p === 'ppi' ? 'doppler' : 'ppi'))}
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-amber-600 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
+                >
+                  <Zap className="h-5 w-5" />
+                </button>
+              )}
+              {!splitScreen && (
+                <div className="flex flex-col overflow-hidden rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setProduct('ppi')}
+                    className={`px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide ${
+                      product === 'ppi' ? 'bg-sky-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    PPI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProduct('doppler')}
+                    className={`border-t border-slate-200 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide ${
+                      product === 'doppler' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Dop
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        )}
 
-        {!showEmptyBucketHelp && !error && <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />}
-
-        {isLoading && stations.length > 0 && (
-          <div className="absolute inset-0 z-[5] flex items-center justify-center bg-slate-950/40 pointer-events-none">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-500 border-t-transparent" />
-          </div>
-        )}
-
-        {timelineTimes.length === 0 && stationsWithBounds.length > 0 && !isLoading && !error && (
-          <div className="absolute bottom-16 left-4 right-4 z-10 rounded-lg bg-black/70 border border-slate-600 p-4 text-sm text-slate-200">
-            {!focusedSlug && hasAnyStationImages ? (
-              <>
-                Nenhuma imagem {product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} na <strong className="text-white">última hora</strong> (relativa ao ficheiro mais recente no bucket) para montar o mosaico sincronizado.
-              </>
-            ) : (
-              <>
-                Nenhuma imagem {product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} nas pastas do bucket para os radares listados.
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {timelineTimes.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(95vw,400px)] pointer-events-auto flex flex-col gap-2 z-10">
-          <div className="w-full px-3 py-2 sm:px-4 sm:py-3 rounded-xl sm:rounded-2xl bg-[#0A0E17]/90 backdrop-blur-xl border border-cyan-500/20 shadow-[0_0_30px_rgba(6,182,212,0.15),0_8px_32px_rgba(0,0,0,0.6)] group/slider">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <span className="text-[9px] sm:text-[10px] font-black tracking-widest text-slate-500 flex-shrink-0 w-10 sm:w-12 uppercase">
-                {timelineTimes.length - 1 - safeIndex === 0 ? '-0m' : `-${(timelineTimes.length - 1 - safeIndex) * 5}m`}
-              </span>
-              
-              <div className="flex-1 flex flex-col gap-0 relative group/slider">
-                <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 px-1 flex justify-between items-center pointer-events-none opacity-40 group-hover/slider:opacity-70 transition-opacity">
-                  {timelineTimes.map((_, idx) => (
-                    <div key={idx} className="w-[2px] h-[2px] rounded-full bg-cyan-500 shadow-[0_0_5px_rgba(6,182,212,0.5)]" />
-                  ))}
-                </div>
-
-                <div className="absolute left-0 right-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-slate-800/50 overflow-hidden pointer-events-none">
-                  <div 
-                    className="h-full bg-gradient-to-r from-cyan-600 via-cyan-400 to-cyan-300 rounded-full shadow-[0_0_12px_rgba(6,182,212,0.8)] transition-all duration-150"
-                    style={{ width: `${(Math.max(0, safeIndex) / Math.max(1, timelineTimes.length - 1)) * 100}%` }}
+          {/* Legenda — centro superior (dividido: PPI + Doppler m/s) */}
+          <div
+            className={`pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 sm:top-4 ${
+              splitScreen ? 'w-[min(98vw,720px)]' : 'w-[min(96vw,520px)]'
+            }`}
+          >
+            {splitScreen ? (
+              <div className="flex gap-2 sm:gap-3">
+                <div className="min-w-0 flex-1 rounded-2xl bg-white/95 px-2 py-2 shadow-lg ring-1 ring-black/5 sm:px-3 sm:py-2.5">
+                  <div className="mb-1 flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-bold text-slate-900 sm:text-[11px]">dBZ</span>
+                    <span className="text-[8px] text-slate-600 sm:text-[9px]">Refletividade</span>
+                  </div>
+                  <div
+                    className="h-3 w-full rounded-md shadow-inner"
+                    style={{
+                      background:
+                        'linear-gradient(90deg,#6b6b6b 0%,#00c8ff 8%,#00ff66 22%,#ffff00 38%,#ff9900 52%,#ff0000 66%,#ff00ff 80%,#ffffff 100%)',
+                    }}
                   />
+                  <div className="mt-1 flex justify-between text-[7px] font-medium tabular-nums text-slate-700 sm:text-[8px]">
+                    {dbzLegendTicks.map((t) => (
+                      <span key={t}>{t}</span>
+                    ))}
+                  </div>
                 </div>
-                
-                <input
-                  type="range"
-                  min="0"
-                  max={timelineTimes.length - 1}
-                  step="1"
-                  value={safeIndex}
-                  onChange={(e) => {
-                    setIsPlaying(false);
-                    setCurrentIndex(parseInt(e.target.value, 10));
-                  }}
-                  className="relative z-10 w-full h-4 appearance-none bg-transparent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 sm:[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-3 sm:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-cyan-300 [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 [&::-moz-range-thumb]:w-3 sm:[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-3 sm:[&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-cyan-400 [&::-moz-range-thumb]:shadow-[0_0_12px_rgba(6,182,212,0.9)] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-cyan-300 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent"
-                  title={safeIndex === timelineTimes.length - 1 ? 'Ao vivo' : `${timelineTimes.length - 1 - safeIndex} frames atrás`}
-                />
-                
-                <div className="text-center leading-none mt-1">
-                  <span className="text-[10px] sm:text-sm font-black tracking-widest text-cyan-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]">
-                    {currentTs ? (() => {
-                      const d = new Date(Date.UTC(
-                        parseInt(currentTs.slice(0, 4), 10),
-                        parseInt(currentTs.slice(4, 6), 10) - 1,
-                        parseInt(currentTs.slice(6, 8), 10),
-                        parseInt(currentTs.slice(8, 10), 10),
-                        parseInt(currentTs.slice(10, 12), 10)
-                      ));
-                      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                    })() : '--:--'}
-                  </span>
+                <div className="min-w-0 flex-1 rounded-2xl bg-white/95 px-2 py-2 shadow-lg ring-1 ring-black/5 sm:px-3 sm:py-2.5">
+                  <div className="mb-1 flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-bold text-slate-900 sm:text-[11px]">m/s</span>
+                    <span className="text-[8px] text-slate-600 sm:text-[9px]">Doppler</span>
+                  </div>
+                  <div
+                    className="h-3 w-full rounded-md shadow-inner"
+                    style={{ background: DOPPLER_LEGEND_GRADIENT_MS }}
+                  />
+                  <div className="mt-1 flex justify-between text-[7px] font-medium tabular-nums text-slate-700 sm:text-[8px]">
+                    {DOPPLER_LEGEND_TICKS_MS.map((t) => (
+                      <span key={t} className="max-w-[2rem] truncate sm:max-w-none">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <button
-                type="button"
-                onClick={() => setAnimationSpeedMultiplier((prev) => (prev === 1 ? 2 : prev === 2 ? 5 : 1))}
-                className="px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-[9px] sm:text-[10px] font-bold text-white transition-all flex items-center justify-center shrink-0"
-              >
-                {animationSpeedMultiplier}x
-              </button>
-              
-              <span className={`text-[8px] sm:text-[10px] font-black tracking-widest flex-shrink-0 w-12 sm:w-14 text-right uppercase ${
-                safeIndex === timelineTimes.length - 1 ? 'text-emerald-400 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'text-slate-600'
-              }`}>
-                {safeIndex === timelineTimes.length - 1 ? '● LIVE' : 'Ao vivo'}
-              </span>
-            </div>
+            ) : (
+              <div className="rounded-2xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-black/5 sm:px-4 sm:py-2.5">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-slate-800">{product === 'ppi' ? 'dBZ' : 'm/s'}</span>
+                  <span className="text-[9px] text-slate-500">
+                    {product === 'ppi' ? 'Refletividade' : 'Doppler (aprox.)'}
+                  </span>
+                </div>
+                {product === 'ppi' ? (
+                  <>
+                    <div
+                      className="h-3 w-full rounded-md shadow-inner"
+                      style={{
+                        background:
+                          'linear-gradient(90deg,#6b6b6b 0%,#00c8ff 8%,#00ff66 22%,#ffff00 38%,#ff9900 52%,#ff0000 66%,#ff00ff 80%,#ffffff 100%)',
+                      }}
+                    />
+                    <div className="mt-1 flex justify-between text-[8px] font-medium tabular-nums text-slate-600 sm:text-[9px]">
+                      {dbzLegendTicks.map((t) => (
+                        <span key={t}>{t}</span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className="h-3 w-full rounded-md shadow-inner"
+                      style={{ background: DOPPLER_LEGEND_GRADIENT_MS }}
+                    />
+                    <div className="mt-1 flex justify-between text-[8px] font-medium tabular-nums text-slate-600 sm:text-[9px]">
+                      {DOPPLER_LEGEND_TICKS_MS.map((t) => (
+                        <span key={t}>{t}</span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="flex flex-col items-center gap-1.5 py-1">
-            <div className="flex justify-center items-center gap-4">
-              <button
-                type="button"
-                onClick={() => { setIsPlaying(false); prevFrame(); }}
-                title="Voltar 1 imagem"
-                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
-              >
-                <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-              <button
-                type="button"
-                onClick={togglePlay}
-                title={isPlaying ? 'Pausar animação' : 'Tocar animação'}
-                className="p-3 sm:p-4 rounded-full bg-gradient-to-tr from-cyan-600 to-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_30px_rgba(6,182,212,0.6)] hover:scale-110 transition-all"
-              >
-                {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 pl-1" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setIsPlaying(false); nextFrame(); }}
-                title="Avançar 1 imagem"
-                className="p-2 sm:p-2.5 bg-[#0A0E17]/80 backdrop-blur-md rounded-full border border-cyan-500/30 text-cyan-400 hover:text-white hover:bg-cyan-500/40 hover:border-cyan-400/80 transition-all hover:scale-110 shadow-lg"
-              >
-                <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
+          {/* Aviso sem timeline */}
+          {timelineTimes.length === 0 && stationsWithBounds.length > 0 && !isLoading && !error && (
+            <div className="absolute bottom-28 left-1/2 z-10 w-[min(calc(100%-2rem),28rem)] -translate-x-1/2 rounded-2xl bg-white/95 p-4 text-sm text-slate-700 shadow-lg ring-1 ring-black/5 pointer-events-auto sm:bottom-32">
+              {!focusedSlug && hasAnyStationImages ? (
+                <>
+                  Nenhuma imagem{' '}
+                  {splitScreen ? 'PPI ou Doppler (-ppivr)' : product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} na{' '}
+                  <strong className="text-slate-900">última hora</strong> para o mosaico sincronizado.
+                </>
+              ) : (
+                <>
+                  Nenhuma imagem{' '}
+                  {splitScreen ? 'PPI ou Doppler (-ppivr)' : product === 'ppi' ? 'PPI' : 'Doppler (-ppivr)'} nas pastas do bucket para os radares listados.
+                </>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Barra inferior — vidro escuro + texto branco (legível sobre o mapa) */}
+          {timelineTimes.length > 0 && (
+            <div className="absolute bottom-4 left-1/2 z-30 w-[min(96vw,560px)] -translate-x-1/2 pointer-events-auto sm:bottom-6">
+              <div className="rounded-[28px] border border-white/15 bg-slate-950/75 px-3 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-md sm:px-5 sm:py-4">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <p className="min-w-0 truncate text-[11px] font-semibold text-white sm:text-sm">
+                        {stationTitle}
+                      </p>
+                      {focusedSlug && hasRedemetFallback(bucketSlugToCatalogSlug(focusedSlug)) && (
+                        <select
+                          value={focusedRadarSource}
+                          onChange={(e) => {
+                            setFocusedRadarSource(e.target.value as FocusedRadarSourceMode);
+                            setTimelineCursor(null);
+                          }}
+                          className="pointer-events-auto max-w-[10rem] shrink-0 rounded-lg border border-white/25 bg-slate-900/90 px-2 py-1 text-[10px] font-semibold text-white ring-1 ring-white/10 sm:max-w-[12rem] sm:text-xs"
+                          title="Fonte PPI: REDEMET usa imagens do bucket redemet-• e alcance maior no mapa"
+                          aria-label="Fonte do radar (CPTEC ou REDEMET)"
+                        >
+                          <option value="auto">Automático</option>
+                          <option value="cptec">CPTEC</option>
+                          <option value="redemet">REDEMET</option>
+                        </select>
+                      )}
+                    </div>
+                    <p className="truncate text-[10px] text-white/75">{productLabel}</p>
+                    <p className="font-mono text-[11px] text-white sm:text-xs">{fullDateTimeLabel}</p>
+                  </div>
+
+                  <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPlaying(false);
+                        prevFrame();
+                      }}
+                      title="Anterior"
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-600 text-white shadow-md transition hover:bg-sky-700 sm:h-11 sm:w-11"
+                    >
+                      <SkipBack className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      title={isPlaying ? 'Pausar' : 'Reproduzir'}
+                      className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-600 text-white shadow-md transition hover:bg-sky-700 sm:h-14 sm:w-14"
+                    >
+                      {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 pl-0.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPlaying(false);
+                        nextFrame();
+                      }}
+                      title="Seguinte"
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-600 text-white shadow-md transition hover:bg-sky-700 sm:h-11 sm:w-11"
+                    >
+                      <SkipForward className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="ml-auto flex flex-shrink-0 items-center gap-1 sm:gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBottomPanelExpanded((e) => !e)}
+                      title={bottomPanelExpanded ? 'Ocultar linha do tempo' : 'Mostrar linha do tempo'}
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-white/85 transition hover:bg-white/15 hover:text-white"
+                    >
+                      <ChevronUp
+                        className={`h-5 w-5 transition-transform ${bottomPanelExpanded ? '' : 'rotate-180'}`}
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (focusedSlug) setFocusedSlug(null);
+                      }}
+                      title={focusedSlug ? 'Voltar ao mosaico' : 'Mosaico ativo'}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full transition ${
+                        focusedSlug
+                          ? 'text-white/90 hover:bg-white/15'
+                          : 'cursor-default text-white/35'
+                      }`}
+                      disabled={!focusedSlug}
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {bottomPanelExpanded && (
+                  <div className="mt-3 border-t border-white/25 pt-3">
+                    <div className="mb-2 flex items-center justify-between gap-2 text-[10px] text-white/90">
+                      <span>
+                        {timelineTimes.length - 1 - safeIndex === 0
+                          ? 'Instante atual'
+                          : `−${(timelineTimes.length - 1 - safeIndex) * 5} min (aprox.)`}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAnimationSpeedMultiplier((prev) => (prev === 1 ? 2 : prev === 2 ? 5 : 1))
+                          }
+                          className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white ring-1 ring-white/25"
+                        >
+                          {animationSpeedMultiplier}×
+                        </button>
+                        <span
+                          className={
+                            safeIndex === timelineTimes.length - 1
+                              ? 'font-bold text-emerald-300'
+                              : 'text-white/60'
+                          }
+                        >
+                          {safeIndex === timelineTimes.length - 1 ? '● Ao vivo' : 'Histórico'}
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max={timelineTimes.length - 1}
+                      step="1"
+                      value={safeIndex}
+                      onChange={(e) => {
+                        setIsPlaying(false);
+                        setTimelineCursor(parseInt(e.target.value, 10));
+                      }}
+                      className="h-3 w-full cursor-pointer accent-sky-400 [color-scheme:dark]"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,0 +1,54 @@
+- Norte: CAPPI Bel&eacute;m - PA | Lat: -1.406710, Lon: -48.461800 | Raio: 250km | Variáveis: Cappi do radar de Bel&eacute;m/PA - 3km
+- Norte: CAPPI Boa Vista - RR | Lat: 2.844210, Lon: -60.700200 | Raio: 250km | Variáveis: Cappi do radar de Boa Vista/RR - 3km
+- Norte: VENTO Boa Vista - RR | Lat: 2.844210, Lon: -60.700200 | Raio: 250km | Variáveis: Vento do radar de Boa Vista/RR - 3km
+- Norte: CAPPI Cruzeiro do Sul - AC | Lat: -7.595530, Lon: -72.769700 | Raio: 250km | Variáveis: Cappi do radar de Cruzeiro do Sul/AC - 3km
+- Norte: CAPPI Macap&atilde; - AP | Lat: 0.045597, Lon: -51.096900 | Raio: 250km | Variáveis: Cappi do radar Macap&aacute;/AP - 3km
+- Norte: VENTO Macap&atilde; - AP | Lat: 0.045597, Lon: -51.096900 | Raio: 250km | Variáveis: Vento do radar de Macap&aacute;/AP - 3km
+- Norte: CAPPI Manaus - AM | Lat: -3.148890, Lon: -59.991400 | Raio: 250km | Variáveis: Cappi do radar de Manaus/AM - 3km
+- Norte: VENTO Manaus - AM | Lat: -3.148890, Lon: -59.991400 | Raio: 250km | Variáveis: Vento do radar de Manaus/AM - 3km
+- Norte: CAPPI Porto Velho - RO | Lat: -8.715140, Lon: -63.893800 | Raio: 250km | Variáveis: Cappi do radar de Porto Velho/RO - 3km
+- Norte: VENTO Porto Velho - RO | Lat: -8.715140, Lon: -63.893800 | Raio: 250km | Variáveis: Vento do radar de Porto Velho/RO - 3km
+- Norte: CAPPI Santarem - PA | Lat: -2.429640, Lon: -54.799000 | Raio: 250km | Variáveis: Cappi do radar de Santar&eacute;m/PA - 3km
+- Norte: VENTO Santarem - PA | Lat: -2.429640, Lon: -54.799000 | Raio: 250km | Variáveis: Vento do radar de Santar&eacute;m/PA - 3km
+- Norte: CAPPI Tabatinga - AM | Lat: -4.248390, Lon: -69.935000 | Raio: 250km | Variáveis: Cappi do radar de Tabatinga/AM - 3km
+- Norte: CAPPI Tef&eacute; - AM | Lat: -3.372700, Lon: -64.693200 | Raio: 250km | Variáveis: Cappi do radar Tefe/AM - 3km
+- Norte: VENTO Tef&eacute; - AM | Lat: -3.372700, Lon: -64.693200 | Raio: 250km | Variáveis: Vento do radar Tef&eacute;/AM - 3km
+- Norte: CAPPI S&atilde;o Gabriel - AM | Lat: -0.143677, Lon: -67.057000 | Raio: 250km | Variáveis: Cappi do radar de S&atilde;o Gabriel/AM - 3km
+- Norte: VENTO S&atilde;o Gabriel - AM | Lat: -0.143677, Lon: -67.057000 | Raio: 250km | Variáveis: Vento do radar de S&atilde;o Gabriel/AM - 3km
+- Nordeste: CAPPI Quixeramobim - CE | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: CAPPI do radar de Quixeramobim/CE - 3km
+- Nordeste: VENTO Quixeramobim - CE | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Quixeramobim/CE - 3km
+- Nordeste: CAPPI Maceió - AL | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: CAPPI do radar de Maceió/AL - 3km
+- Nordeste: VENTO Maceió - AL | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Maceió/AL - 3km
+- Nordeste: CAPPI Natal - RN | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar de Natal/RN - 3km
+- Nordeste: VENTO Natal - RN | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Natal/RN - 3km
+- Nordeste: CAPPI Petrolina - PE | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar de Petrolina/PE - 3km
+- Nordeste: VENTO Petrolina - PE | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Petrolina/PE - 3km
+- Nordeste: CAPPI Salvador - BA | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar de Salvador/BA - 3km
+- Nordeste: VENTO Salvador - BA | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Salvador/BA - 3km
+- Nordeste: CAPPI S&atilde;o Luiz - MA | Lat: -2.600480, Lon: -44.239300 | Raio: 250km | Variáveis: Cappi do radar de S&atilde;o Luiz/MA - 3km
+- Nordeste: VENTO S&atilde;o Luiz - MA | Lat: -2.600480, Lon: -44.239300 | Raio: 250km | Variáveis: Vento do radar de S&atilde;o Luiz/MA - 3km
+- Centro-Oeste: CAPPI Gama - DF | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de S&atilde;o Luiz - 3km
+- Centro-Oeste: VENTO Gama - DF | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Gama - 3km
+- Centro-Oeste: CAPPI Jaraguari - MS | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar de Jaraguari - 3km
+- Centro-Oeste: VENTO Jaraguari - MS | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Jaraguari - 3km
+- Sudeste: CAPPI Almenara - MG | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar de Almenara - 3km
+- Sudeste: VENTO Almenara - MG | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar de Almenara - 3km
+- Sudeste: CAPPI Pico do Couto - RJ | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Pico do Couto - 3km
+- Sudeste: VENTO Pico do Couto - RJ | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar Pico do Couto - 3km
+- Sudeste: CAPPI São Roque - SP | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar São Roque - 3km
+- Sudeste: VENTO São Roque - SP | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar São Roque - 3km
+- Sudeste: CAPPI Bauru e Pres.Prud - SP | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Bauru e Pres. Prud - 3km
+- Sudeste: CAPPI São Francisco - MG | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar São Francisco - 3km
+- Sudeste: VENTO São Francisco - MG | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar São Francisco - 3km
+- Sudeste: CAPPI Três Marias - MG | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Três Marias - 3km
+- Sudeste: VENTO Três Marias - MG | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar Três Marias - 3km
+- Sul: CAPPI Canguçu - RS | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Canguçu - 3km
+- Sul: VENTO canguçu - RS | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar Canguçu - 3km
+- Sul: CAPPI Chapecó - SC | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Chapecó - 3km
+- Sul: VENTO Chapecó - SC | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar Chapecó - 3km
+- Sul: CAPPI Lontras - SC | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Lontras - 3km
+- Sul: VENTO Lontras - SC | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar Lontras - 3km
+- Sul: CAPPI Morro Igreja - SC | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Lontras - 3km
+- Sul: VENTO Morro Igreja - SC | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar Morro da Igreja - 3km
+- Sul: CAPPI Santiago - RS | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Cappi do radar Santiag - 3km
+- Sul: VENTO Santiago - RS | Lat: N/A, Lon: N/A | Raio: N/A | Variáveis: Vento do radar Santiag - 3km

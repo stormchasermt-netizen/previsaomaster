@@ -1,0 +1,428 @@
+{
+  "radars": [
+    {
+      "id": "BRAL",
+      "lon": "-40.674153",
+      "lat": "-16.201531",
+      "name": "Almenara",
+      "available": true
+    },
+    {
+      "id": "BR2970",
+      "lon": "-43.247778",
+      "lat": "-22.954444",
+      "name": "Barueri mobile",
+      "available": false
+    },
+    {
+      "id": "BRBU",
+      "lon": "-49.026667",
+      "lat": "-22.357778",
+      "name": "Bauru",
+      "available": true
+    },
+    {
+      "id": "BRBE",
+      "lon": "-48.461389",
+      "lat": "-1.406667",
+      "name": "Belém",
+      "available": true
+    },
+    {
+      "id": "BRBV",
+      "lon": "-60.70027777778",
+      "lat": "2.844166667",
+      "name": "Boa Vista",
+      "available": true
+    },
+    {
+      "id": "BRCN",
+      "lon": "-52.701644",
+      "lat": "-31.404",
+      "name": "Canguçu",
+      "available": true
+    },
+    {
+      "id": "BRSC",
+      "lon": "-53.525278",
+      "lat": "-24.875556",
+      "name": "Cascavel",
+      "available": true
+    },
+    {
+      "id": "BRCP",
+      "lon": "-52.60253201635",
+      "lat": "-27.035323278",
+      "name": "Chapecó",
+      "available": true
+    },
+    {
+      "id": "BRCZ",
+      "lon": "-72.767778",
+      "lat": "-7.595833",
+      "name": "Cruzeiro do Sul",
+      "available": true
+    },
+    {
+      "id": "BRFC",
+      "lon": "-38.5575",
+      "lat": "-3.794167",
+      "name": "Fortaleza",
+      "available": true
+    },
+    {
+      "id": "BRGA",
+      "lon": "-48.016142",
+      "lat": "-15.97643",
+      "name": "Gama",
+      "available": true
+    },
+    {
+      "id": "BRGV",
+      "lon": "-35.45575",
+      "lat": "-8.193825",
+      "name": "Gravata",
+      "available": true
+    },
+    {
+      "id": "BRGU",
+      "lon": "-43.587778",
+      "lat": "-22.994167",
+      "name": "Guaratiba",
+      "available": true
+    },
+    {
+      "id": "BRJR",
+      "lon": "-54.47396",
+      "lat": "-20.27855",
+      "name": "Jaraguari",
+      "available": true
+    },
+    {
+      "id": "BR3090",
+      "lon": "-49.461667",
+      "lat": "-27.231111",
+      "name": "Lontras",
+      "available": false
+    },
+    {
+      "id": "BRMQ",
+      "lon": "-51.097778",
+      "lat": "-.047222",
+      "name": "Macapá",
+      "available": true
+    },
+    {
+      "id": "BR3081",
+      "lon": "-41.86",
+      "lat": "-22.404722",
+      "name": "Macaé",
+      "available": false
+    },
+    {
+      "id": "BRAC",
+      "lon": "-41.859722",
+      "lat": "-22.404722",
+      "name": "Macaé",
+      "available": true
+    },
+    {
+      "id": "BRMO",
+      "lon": "-35.77068",
+      "lat": "-9.55129",
+      "name": "Maceió",
+      "available": true
+    },
+    {
+      "id": "BRMN",
+      "lon": "-59.991881",
+      "lat": "-3.149216",
+      "name": "Manaus",
+      "available": true
+    },
+    {
+      "id": "BR2965",
+      "lon": "-44.434444",
+      "lat": "-19.945278",
+      "name": "Mateus Leme",
+      "available": false
+    },
+    {
+      "id": "BR2974",
+      "lon": "-46.095278",
+      "lat": "-23.505",
+      "name": "Mogi",
+      "available": false
+    },
+    {
+      "id": "BRMI",
+      "lon": "-49.471816",
+      "lat": "-28.128373",
+      "name": "Morro da Igreja",
+      "available": true
+    },
+    {
+      "id": "BRNT",
+      "lon": "-35.25401",
+      "lat": "-5.90448",
+      "name": "Natal",
+      "available": true
+    },
+    {
+      "id": "BRPS",
+      "lon": "-52.31",
+      "lat": "-31.716389",
+      "name": "Pelotas",
+      "available": true
+    },
+    {
+      "id": "BRPL",
+      "lon": "-40.573",
+      "lat": "-9.367",
+      "name": "Petrolina",
+      "available": true
+    },
+    {
+      "id": "BRPC",
+      "lon": "-43.297476",
+      "lat": "-22.464278",
+      "name": "Pico do Couto",
+      "available": true
+    },
+    {
+      "id": "BRPN",
+      "lon": "-45.9722",
+      "lat": "-23.6",
+      "name": "Ponte Nova",
+      "available": false
+    },
+    {
+      "id": "BRPV",
+      "lon": "-63.893889",
+      "lat": "-8.715",
+      "name": "Porto Velho",
+      "available": true
+    },
+    {
+      "id": "BRPP",
+      "lon": "-51.372778",
+      "lat": "-22.175",
+      "name": "Presidente Prudente",
+      "available": true
+    },
+    {
+      "id": "BRQA",
+      "lon": "-39.266944",
+      "lat": "-5.069167",
+      "name": "Quixeramobim",
+      "available": true
+    },
+    {
+      "id": "BR2967",
+      "lon": "-45.972778",
+      "lat": "-23.600556",
+      "name": "Salesópolis",
+      "available": false
+    },
+    {
+      "id": "BR2968",
+      "lon": "-45.972778",
+      "lat": "-23.600556",
+      "name": "Salesópolis (Nov 2013)",
+      "available": false
+    },
+    {
+      "id": "BRSV",
+      "lon": "-38.32666",
+      "lat": "-12.9025",
+      "name": "Salvador",
+      "available": true
+    },
+    {
+      "id": "BRST",
+      "lon": "-40.5794",
+      "lat": "-19.98887",
+      "name": "Santa Tereza",
+      "available": true
+    },
+    {
+      "id": "BRSN",
+      "lon": "-54.798889",
+      "lat": "-2.429722",
+      "name": "Santarém",
+      "available": true
+    },
+    {
+      "id": "BRSG",
+      "lon": "-54.930257",
+      "lat": "-29.225213",
+      "name": "Santiago",
+      "available": true
+    },
+    {
+      "id": "BR2973",
+      "lon": "-46.706389",
+      "lat": "-23.563056",
+      "name": "Somar X",
+      "available": false
+    },
+    {
+      "id": "BRAA",
+      "lon": "-49.36229435",
+      "lat": "-28.9320505",
+      "name": "Sul",
+      "available": true
+    },
+    {
+      "id": "BRSE",
+      "lon": "-43.247778",
+      "lat": "-22.954444",
+      "name": "Sumaré",
+      "available": true
+    },
+    {
+      "id": "BRSF",
+      "lon": "-44.69588",
+      "lat": "-16.00889",
+      "name": "São Francisco",
+      "available": true
+    },
+    {
+      "id": "BRUA",
+      "lon": "-67.056944",
+      "lat": "-.143611",
+      "name": "São Gabriel da Cachoeira",
+      "available": true
+    },
+    {
+      "id": "BRSL",
+      "lon": "-44.2375",
+      "lat": "-2.597222",
+      "name": "São Luiz",
+      "available": true
+    },
+    {
+      "id": "BRSR",
+      "lon": "-47.094063",
+      "lat": "-23.601915",
+      "name": "São Roque",
+      "available": true
+    },
+    {
+      "id": "BRTT",
+      "lon": "-69.935",
+      "lat": "-4.248333",
+      "name": "Tabatinga",
+      "available": true
+    },
+    {
+      "id": "BRTF",
+      "lon": "-64.720556",
+      "lat": "-3.377222",
+      "name": "Tefé",
+      "available": true
+    },
+    {
+      "id": "BRTS",
+      "lon": "-50.361111",
+      "lat": "-25.505278",
+      "name": "Teixeira Soares",
+      "available": true
+    },
+    {
+      "id": "BRTM",
+      "lon": "-45.460535",
+      "lat": "-18.207259",
+      "name": "Três Marias",
+      "available": true
+    },
+    {
+      "id": "BRLN",
+      "lon": "-49.46172895",
+      "lat": "-27.2197783",
+      "name": "Valley",
+      "available": true
+    },
+    {
+      "id": "BRWF",
+      "lon": "-46.6231",
+      "lat": "-23.6519",
+      "name": "Água Funda",
+      "available": false
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://www.redemet.aer.mil.br/",
+      "title": "DATEMET",
+      "name": "DATEMET\n",
+      "desc": "The Meteorology Network of the Aeronautical Command of Brazil"
+    },
+    {
+      "url": "http://www.starnet.iag.usp.br/chuvaonline/radar_xpol.php",
+      "title": "STARNET",
+      "name": "STARNET\n",
+      "desc": "Sferics Timing and Ranging Network"
+    },
+    {
+      "url": "http://www.ipmet.unesp.br/2imagemRadar.php",
+      "title": "Centro de Meteorologia de Bauru",
+      "name": "Centro de Meteorologia de Bauru\n",
+      "desc": "Bauru Meteorological Center"
+    },
+    {
+      "url": "http://www.simepar.br/prognozweb/simepar/radar_msc",
+      "title": "Sistema Meteorológico do Paraná",
+      "name": "Sistema Meteorológico do Paraná\n",
+      "desc": "Meteorological System of Paraná"
+    },
+    {
+      "url": "http://alertadecheias.inea.rj.gov.br/alertadecheias/radar.html",
+      "title": "Instituto Estadual do Ambiente",
+      "name": "Instituto Estadual do Ambiente\n",
+      "desc": "State Environmental Institute"
+    },
+    {
+      "url": "http://www.funceme.br/app/radar/animacao/quixeramobim",
+      "title": "Fundação Cearense de Meteorologia e Recursos Hídricos",
+      "name": "Fundação Cearense de Meteorologia e Recursos Hídricos\n",
+      "desc": "Cearense Foundation of Meteorology and Water Resources"
+    },
+    {
+      "url": "http://sigsc.sc.gov.br",
+      "title": "RADARES METEOROLÓGICOS SC",
+      "name": "RADARES METEOROLÓGICOS SC\n",
+      "desc": "Meteorological Radars SC"
+    },
+    {
+      "url": "http://alertario.rio.rj.gov.br/radar-meteorologico-do-sumare/imgens-recentes/",
+      "title": "Alerta Rio",
+      "name": "Alerta Rio\n",
+      "desc": "Rio de Janeiro Alert System"
+    },
+    {
+      "url": "http://www.zeus.iag.usp.br/defesa_civil/radar_fixo.php",
+      "title": "Universidade de São Paulo",
+      "name": "Universidade de São Paulo\n",
+      "desc": "University of São Paulo, Brazil"
+    },
+    {
+      "url": "http://www.cemaden.gov.br/mapainterativo/",
+      "title": "Monitoramento de Risco de Desastres Naturais do Cemaden",
+      "name": "Monitoramento de Risco de Desastres Naturais do Cemaden\n",
+      "desc": "Mapa Interativo da Rede Observacional"
+    },
+    {
+      "url": "https://wp.ufpel.edu.br/cppmet/radar/",
+      "title": "CPMET - UFPEL",
+      "name": "CPMET - UFPEL\n",
+      "desc": "Centro de Pesquisas e Previsões Meteorológicas"
+    },
+    {
+      "url": "https://barbadosweather.org/",
+      "title": "Barbados Weather",
+      "name": "Barbados Weather\n",
+      "desc": "Barbados Meteorological Services"
+    }
+  ]
+}

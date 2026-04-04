@@ -575,3 +575,169 @@ export async function filterDopplerSuperRes(
     return null;
   }
 }
+
+// --- Super Res (ao-vivo-2): refletividade + Doppler por vizinhança (preserva couplets) ---
+
+function filterReflectivityPixelsSuper(data: Uint8ClampedArray): void {
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    const lightness = (max + min) / 2;
+    if (delta < 28 && lightness > 42) data[i + 3] = 0;
+    else if (delta < 18 && lightness > 32) data[i + 3] = 0;
+  }
+}
+
+/**
+ * Refletividade: remove ruído branco/cinza extra após o filtro base (Super Res).
+ */
+export async function filterReflectivitySuperRes(imageUrl: string): Promise<string | null> {
+  const base = await filterRadarImageFromUrl(imageUrl);
+  if (!base) return null;
+  try {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('img'));
+      img.src = base;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return base;
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    filterReflectivityPixelsSuper(imageData.data);
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return base;
+  }
+}
+
+function dilateBinaryMask(mask: Uint8Array, w: number, h: number, radius: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = 0;
+      for (let dy = -radius; dy <= radius && !v; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) > radius) continue;
+          const ny = y + dy;
+          const nx = x + dx;
+          if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+          if (mask[ny * w + nx]) {
+            v = 1;
+            break;
+          }
+        }
+      }
+      out[y * w + x] = v;
+    }
+  }
+  return out;
+}
+
+function isPurpleVel(r: number, g: number, b: number): boolean {
+  if (r < 40 || b < 40) return false;
+  if (g > Math.min(r, b) * 0.95) return false;
+  return r > 65 && b > 65 && r + b > g * 1.8;
+}
+
+function isGreenVel(r: number, g: number, b: number): boolean {
+  return g > r + 10 && g > b + 10 && g > 50;
+}
+
+function isRedVel(r: number, g: number, b: number): boolean {
+  return r > g + 10 && r > b + 10 && r > 50;
+}
+
+function medianInt(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+/**
+ * Doppler: remove “sal e pimenta” roxo em zona predominantemente verde.
+ * Vizinhança até 2 px (5×5); não altera pixels perto de interface verde↔vermelho (couplets).
+ */
+function applyDopplerPurpleSpeckleInGreenField(data: Uint8ClampedArray, w: number, h: number): void {
+  const coupletMask = getCoupletMask(data, w, h);
+  const protect = dilateBinaryMask(coupletMask, w, h, 4);
+  const copy = new Uint8ClampedArray(data);
+
+  for (let y = 2; y < h - 2; y++) {
+    for (let x = 2; x < w - 2; x++) {
+      const idx = y * w + x;
+      const i = idx * 4;
+      if (copy[i + 3] === 0) continue;
+      if (protect[idx]) continue;
+
+      const r = copy[i];
+      const g = copy[i + 1];
+      const b = copy[i + 2];
+      if (!isPurpleVel(r, g, b)) continue;
+
+      let greenN = 0;
+      let redN = 0;
+      const gr: number[] = [];
+      const gg: number[] = [];
+      const gb: number[] = [];
+
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const ni = ((y + dy) * w + (x + dx)) * 4;
+          if (copy[ni + 3] === 0) continue;
+          const nr = copy[ni];
+          const ng = copy[ni + 1];
+          const nb = copy[ni + 2];
+          if (isGreenVel(nr, ng, nb)) {
+            greenN++;
+            gr.push(nr);
+            gg.push(ng);
+            gb.push(nb);
+          } else if (isRedVel(nr, ng, nb)) {
+            redN++;
+          }
+        }
+      }
+
+      if (greenN >= 2 && redN >= 2) continue;
+      if (greenN >= 3 && redN <= 1) {
+        data[i] = medianInt(gr);
+        data[i + 1] = medianInt(gg);
+        data[i + 2] = medianInt(gb);
+      }
+    }
+  }
+}
+
+/**
+ * Doppler Super Res (vizinhança): roxo isolado em campo verde → mediana dos verdes (±2 px).
+ */
+export async function filterDopplerPurpleGreenNeighborSuperRes(imageUrl: string): Promise<string | null> {
+  try {
+    const got = await fetchImageData(imageUrl);
+    if (!got) return null;
+    const { data: imageData, width: w, height: h } = got;
+    applyDopplerPurpleSpeckleInGreenField(imageData.data, w, h);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}

@@ -1,0 +1,488 @@
+[
+  {
+    "nome": "CAPPI Bel&eacute;m - PA",
+    "contorno": 16,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de Bel&eacute;m/PA - 3km",
+    "lat": "-1.406710",
+    "lon": "-48.461800",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Boa Vista - RR",
+    "contorno": 17,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de Boa Vista/RR - 3km",
+    "lat": "2.844210",
+    "lon": "-60.700200",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO Boa Vista - RR",
+    "contorno": 17,
+    "regiao": "Norte",
+    "informacao": "Vento do radar de Boa Vista/RR - 3km",
+    "lat": "2.844210",
+    "lon": "-60.700200",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Cruzeiro do Sul - AC",
+    "contorno": 18,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de Cruzeiro do Sul/AC - 3km",
+    "lat": "-7.595530",
+    "lon": "-72.769700",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Macap&atilde; - AP",
+    "contorno": 19,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar Macap&aacute;/AP - 3km",
+    "lat": "0.045597",
+    "lon": "-51.096900",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO Macap&atilde; - AP",
+    "contorno": 19,
+    "regiao": "Norte",
+    "informacao": "Vento do radar de Macap&aacute;/AP - 3km",
+    "lat": "0.045597",
+    "lon": "-51.096900",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Manaus - AM",
+    "contorno": 20,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de Manaus/AM - 3km",
+    "lat": "-3.148890",
+    "lon": "-59.991400",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO Manaus - AM",
+    "contorno": 20,
+    "regiao": "Norte",
+    "informacao": "Vento do radar de Manaus/AM - 3km",
+    "lat": "-3.148890",
+    "lon": "-59.991400",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Porto Velho - RO",
+    "contorno": 21,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de Porto Velho/RO - 3km",
+    "lat": "-8.715140",
+    "lon": "-63.893800",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO Porto Velho - RO",
+    "contorno": 21,
+    "regiao": "Norte",
+    "informacao": "Vento do radar de Porto Velho/RO - 3km",
+    "lat": "-8.715140",
+    "lon": "-63.893800",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Santarem - PA",
+    "contorno": 22,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de Santar&eacute;m/PA - 3km",
+    "lat": "-2.429640",
+    "lon": "-54.799000",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO Santarem - PA",
+    "contorno": 22,
+    "regiao": "Norte",
+    "informacao": "Vento do radar de Santar&eacute;m/PA - 3km",
+    "lat": "-2.429640",
+    "lon": "-54.799000",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Tabatinga - AM",
+    "contorno": 25,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de Tabatinga/AM - 3km",
+    "lat": "-4.248390",
+    "lon": "-69.935000",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Tef&eacute; - AM",
+    "contorno": 26,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar Tefe/AM - 3km",
+    "lat": "-3.372700",
+    "lon": "-64.693200",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO Tef&eacute; - AM",
+    "contorno": 26,
+    "regiao": "Norte",
+    "informacao": "Vento do radar Tef&eacute;/AM - 3km",
+    "lat": "-3.372700",
+    "lon": "-64.693200",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI S&atilde;o Gabriel - AM",
+    "contorno": 23,
+    "regiao": "Norte",
+    "informacao": "Cappi do radar de S&atilde;o Gabriel/AM - 3km",
+    "lat": "-0.143677",
+    "lon": "-67.057000",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO S&atilde;o Gabriel - AM",
+    "contorno": 23,
+    "regiao": "Norte",
+    "informacao": "Vento do radar de S&atilde;o Gabriel/AM - 3km",
+    "lat": "-0.143677",
+    "lon": "-67.057000",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Quixeramobim - CE",
+    "contorno": 14,
+    "regiao": "Nordeste",
+    "informacao": "CAPPI do radar de Quixeramobim/CE - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Quixeramobim - CE",
+    "contorno": 14,
+    "regiao": "Nordeste",
+    "informacao": "Vento do radar de Quixeramobim/CE - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Maceió - AL",
+    "contorno": 14,
+    "regiao": "Nordeste",
+    "informacao": "CAPPI do radar de Maceió/AL - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Maceió - AL",
+    "contorno": 14,
+    "regiao": "Nordeste",
+    "informacao": "Vento do radar de Maceió/AL - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Natal - RN",
+    "contorno": 12,
+    "regiao": "Nordeste",
+    "informacao": "Cappi do radar de Natal/RN - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Natal - RN",
+    "contorno": 12,
+    "regiao": "Nordeste",
+    "informacao": "Vento do radar de Natal/RN - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Petrolina - PE",
+    "contorno": 11,
+    "regiao": "Nordeste",
+    "informacao": "Cappi do radar de Petrolina/PE - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Petrolina - PE",
+    "contorno": 11,
+    "regiao": "Nordeste",
+    "informacao": "Vento do radar de Petrolina/PE - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Salvador - BA",
+    "contorno": 9,
+    "regiao": "Nordeste",
+    "informacao": "Cappi do radar de Salvador/BA - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Salvador - BA",
+    "contorno": 9,
+    "regiao": "Nordeste",
+    "informacao": "Vento do radar de Salvador/BA - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI S&atilde;o Luiz - MA",
+    "contorno": 24,
+    "regiao": "Nordeste",
+    "informacao": "Cappi do radar de S&atilde;o Luiz/MA - 3km",
+    "lat": "-2.600480",
+    "lon": "-44.239300",
+    "radius": "250km"
+  },
+  {
+    "nome": "VENTO S&atilde;o Luiz - MA",
+    "contorno": 24,
+    "regiao": "Nordeste",
+    "informacao": "Vento do radar de S&atilde;o Luiz/MA - 3km",
+    "lat": "-2.600480",
+    "lon": "-44.239300",
+    "radius": "250km"
+  },
+  {
+    "nome": "CAPPI Gama - DF",
+    "contorno": 1,
+    "regiao": "Centro-Oeste",
+    "informacao": "Vento do radar de S&atilde;o Luiz - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Gama - DF",
+    "contorno": 1,
+    "regiao": "Centro-Oeste",
+    "informacao": "Vento do radar de Gama - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Jaraguari - MS",
+    "contorno": 13,
+    "regiao": "Centro-Oeste",
+    "informacao": "Cappi do radar de Jaraguari - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Jaraguari - MS",
+    "contorno": 13,
+    "regiao": "Centro-Oeste",
+    "informacao": "Vento do radar de Jaraguari - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Almenara - MG",
+    "contorno": 14,
+    "regiao": "Sudeste",
+    "informacao": "Cappi do radar de Almenara - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Almenara - MG",
+    "contorno": 14,
+    "regiao": "Sudeste",
+    "informacao": "Vento do radar de Almenara - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Pico do Couto - RJ",
+    "contorno": 2,
+    "regiao": "Sudeste",
+    "informacao": "Cappi do radar Pico do Couto - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Pico do Couto - RJ",
+    "contorno": 2,
+    "regiao": "Sudeste",
+    "informacao": "Vento do radar Pico do Couto - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI São Roque - SP",
+    "contorno": 4,
+    "regiao": "Sudeste",
+    "informacao": "Cappi do radar São Roque - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO São Roque - SP",
+    "contorno": 4,
+    "regiao": "Sudeste",
+    "informacao": "Vento do radar São Roque - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Bauru e Pres.Prud - SP",
+    "contorno": 7,
+    "regiao": "Sudeste",
+    "informacao": "Cappi do radar Bauru e Pres. Prud - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI São Francisco - MG",
+    "contorno": 10,
+    "regiao": "Sudeste",
+    "informacao": "Cappi do radar São Francisco - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO São Francisco - MG",
+    "contorno": 10,
+    "regiao": "Sudeste",
+    "informacao": "Vento do radar São Francisco - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Três Marias - MG",
+    "contorno": 15,
+    "regiao": "Sudeste",
+    "informacao": "Cappi do radar Três Marias - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Três Marias - MG",
+    "contorno": 15,
+    "regiao": "Sudeste",
+    "informacao": "Vento do radar Três Marias - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Canguçu - RS",
+    "contorno": 6,
+    "regiao": "Sul",
+    "informacao": "Cappi do radar Canguçu - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO canguçu - RS",
+    "contorno": 6,
+    "regiao": "Sul",
+    "informacao": "Vento do radar Canguçu - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Chapecó - SC",
+    "contorno": 27,
+    "regiao": "Sul",
+    "informacao": "Cappi do radar Chapecó - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Chapecó - SC",
+    "contorno": 27,
+    "regiao": "Sul",
+    "informacao": "Vento do radar Chapecó - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Lontras - SC",
+    "contorno": 28,
+    "regiao": "Sul",
+    "informacao": "Cappi do radar Lontras - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Lontras - SC",
+    "contorno": 28,
+    "regiao": "Sul",
+    "informacao": "Vento do radar Lontras - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Morro Igreja - SC",
+    "contorno": 3,
+    "regiao": "Sul",
+    "informacao": "Cappi do radar Lontras - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Morro Igreja - SC",
+    "contorno": 3,
+    "regiao": "Sul",
+    "informacao": "Vento do radar Morro da Igreja - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "CAPPI Santiago - RS",
+    "contorno": 5,
+    "regiao": "Sul",
+    "informacao": "Cappi do radar Santiag - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  },
+  {
+    "nome": "VENTO Santiago - RS",
+    "contorno": 5,
+    "regiao": "Sul",
+    "informacao": "Vento do radar Santiag - 3km",
+    "lat": "N/A",
+    "lon": "N/A",
+    "radius": "N/A"
+  }
+]

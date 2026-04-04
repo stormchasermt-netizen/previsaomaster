@@ -5,7 +5,7 @@ const AoVivo2Content = dynamic(() => import('./AoVivo2Content'), {
   loading: () => (
     <div className="min-h-[100dvh] bg-slate-950 flex items-center justify-center">
       <div className="animate-spin rounded-full h-10 w-10 border-2 border-cyan-500 border-t-transparent" />
-    </div>
+              </div>
   ),
 });
 
