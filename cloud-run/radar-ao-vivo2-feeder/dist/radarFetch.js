@@ -609,11 +609,29 @@ export async function listCptecImagesInWindow(station, nowTs12, windowMinutes, _
     return rows.map(({ ts12, url }) => ({ ts12, url }));
 }
 export async function fetchIpmetImage(nominalTs12) {
-    const url = `${IPMET_URL}?t=${encodeURIComponent(nominalTs12)}`;
+    let trueTs12 = '';
+    try {
+        const htmlReq = await fetch('https://www.ipmetradar.com.br/alerta/ppigis/index.php');
+        if (htmlReq.ok) {
+            const html = await htmlReq.text();
+            const m = html.match(/var dado_inicial = (\d{14});/);
+            if (m && m[1]) {
+                trueTs12 = m[1].substring(0, 12);
+            }
+        }
+    }
+    catch (e) {
+        console.error('Error fetching IPMet HTML for timestamp:', e);
+    }
+    if (!trueTs12) {
+        console.log('[fetchIpmetImage] Could not extract true ts12, falling back to nominalTs12');
+        trueTs12 = nominalTs12;
+    }
+    const url = `${IPMET_URL}?t=${encodeURIComponent(trueTs12)}`;
     const buf = await fetchPngBuffer(url);
     if (!buf)
         return null;
-    return { buffer: buf, ts12: nominalTs12 };
+    return { buffer: buf, ts12: trueTs12 };
 }
 export async function fetchClimatempoPoa(nominalTs12) {
     const url = `${CLIMATEMPO_POA_LATEST}?nocache=${encodeURIComponent(nominalTs12)}`;

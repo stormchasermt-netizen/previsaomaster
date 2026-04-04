@@ -599,8 +599,8 @@ export default function AoVivo2Content() {
       if (focusedSlug === slug && focusedRadarSource !== 'auto') {
         src = focusedRadarSource;
         if (src === 'cptec' && cptec.length === 0) {
-          if (hasSig) src = 'sigma';
-          else if (hasRed) src = 'redemet';
+          if (hasRed) src = 'redemet';
+          else if (hasSig) src = 'sigma';
         }
         if (src === 'redemet' && !hasRed) {
           if (hasSig) src = 'sigma';
@@ -613,10 +613,10 @@ export default function AoVivo2Content() {
       } else {
         if (isCptecPpiRecent(cptec, CPTEC_PPI_RECENT_MAX_AGE_MS)) {
           src = 'cptec';
-        } else if (hasSig) {
-          src = 'sigma';
         } else if (hasRed) {
           src = 'redemet';
+        } else if (hasSig) {
+          src = 'sigma';
         } else {
           src = 'cptec';
         }

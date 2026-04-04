@@ -119,13 +119,13 @@ async function executeSync(targetSlug?: string): Promise<{
       continue;
     }
 
-        if (slug === 'ipmet-bauru') {
+        if (slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
       const checkExists = async (fileName: string) => {
         const [exists] = await bucket.file(`${slug}/${fileName}`).exists();
         return exists;
       };
 
-      console.log('[SYNC] ipmet-bauru: Usando fetchIpmetImage...');
+      console.log(`[SYNC] ${slug}: Usando fetchIpmetImage...`);
       // We will only do fallback directly because user asked to use the cloud function
       const r = await fetchIpmetImage(nominalTs12);
       if (r) {
