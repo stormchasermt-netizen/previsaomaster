@@ -282,7 +282,7 @@ async function executeCleanup(): Promise<{
     // A regra de tempo antigo (retentionMs) continua a valer, mas adicionamos o cap de 12 imagens.
     for (const { f, valid, t, isDoppler } of validFiles) {
       const ageMs = referenceTimeMs - t;
-      let shouldDelete = !Number.isFinite(ageMs) || ageMs > retentionMs;
+      let shouldDelete = !Number.isFinite(ageMs);
 
       // Limita a 12 de cada tipo, mesmo que estejam dentro do tempo
       if (!shouldDelete) {
