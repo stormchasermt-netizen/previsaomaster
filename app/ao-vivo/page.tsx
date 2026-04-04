@@ -70,25 +70,25 @@ const BASE_MAP_OPTIONS: { id: BaseMapId; label: string; styleUrl: string; previe
     id: 'satellite', 
     label: 'Satélite', 
     styleUrl: `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/hybrid-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/4ce82048c73c1c91976331a5861911842755bbf4/Captura%20de%20tela%202026-03-30%20212709.png`
   },
   { 
     id: 'streets', 
     label: 'Ruas', 
     styleUrl: `https://api.maptiler.com/maps/streets-v4/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/streets-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/4ce82048c73c1c91976331a5861911842755bbf4/Captura%20de%20tela%202026-03-30%20212655.png`
   },
   { 
     id: 'topo', 
     label: 'Relevos', 
     styleUrl: `https://api.maptiler.com/maps/topo-v4/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/topo-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/4ce82048c73c1c91976331a5861911842755bbf4/Captura%20de%20tela%202026-03-30%20212638.png`
   },
   { 
     id: 'toner', 
     label: 'Branco', 
     styleUrl: `https://api.maptiler.com/maps/toner-v2/style.json?key=${MAPTILER_KEY}`,
-    previewUrl: `https://api.maptiler.com/maps/toner-v2/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+    previewUrl: `https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/4ce82048c73c1c91976331a5861911842755bbf4/Captura%20de%20tela%202026-03-30%20212551.png`
   },
 ];
 
