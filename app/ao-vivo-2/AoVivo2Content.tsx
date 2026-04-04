@@ -96,12 +96,17 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
     const config = radarConfigs.find(c => c.stationSlug === base.slug);
     if (config) {
       const merged = { ...base, iconLat: base.lat, iconLng: base.lng, maskRadiusKm: base.rangeKm };
+      const isIpmet = base.slug === 'ipmet-bauru' || base.slug === 'ipmet-prudente';
       
-      if (config.lat !== undefined && config.lat !== 0) merged.iconLat = config.lat;
-      if (config.lng !== undefined && config.lng !== 0) merged.iconLng = config.lng;
+      // O ícone do IPMet nunca deve sair do lugar, mesmo que o centro da máscara mude.
+      if (!isIpmet) {
+        if (config.lat !== undefined && config.lat !== 0) merged.iconLat = config.lat;
+        if (config.lng !== undefined && config.lng !== 0) merged.iconLng = config.lng;
+      }
       
-      merged.lat = merged.iconLat;
-      merged.lng = merged.iconLng;
+      // A máscara (ou o cálculo de bounds/corte) usa as configurações ajustadas pelo admin.
+      if (config.lat !== undefined && config.lat !== 0) merged.lat = config.lat;
+      if (config.lng !== undefined && config.lng !== 0) merged.lng = config.lng;
 
       if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
       if (config.maskRadiusKm !== undefined && config.maskRadiusKm !== 0) merged.maskRadiusKm = config.maskRadiusKm;
