@@ -1889,22 +1889,10 @@ export default function AoVivo2Content() {
             </div>
           </div>
 
-          {/* Galeria de Mapa Base - Canto Direito */}
-          <div className="absolute right-3 top-3 flex items-start gap-3 pointer-events-auto sm:right-4 sm:top-4 z-50">
-              {/* Theme Picker */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setRadarTheme(radarTheme === 'classic' ? 'gutoscope' : 'classic')}
-                  className={`flex h-[60px] w-[60px] items-center justify-center rounded-full transition-all hover:scale-105 shadow-lg border border-white/10 ${radarTheme === 'gutoscope' ? 'bg-cyan-600 text-white shadow-[0_0_20px_rgba(56,189,248,0.5)]' : 'bg-[#0f172a] text-slate-300 hover:text-white'}`}
-                  title="Mudar Tema do Radar"
-                >
-                  <Palette className="h-6 w-6" />
-                </button>
-              </div>
-              
+            {/* Galeria de Mapa Base - Canto Direito */}
+            <div className="absolute right-3 top-3 flex items-start gap-3 pointer-events-auto sm:right-4 sm:top-4 z-50">
               {/* Base Map Picker */}
-            <div className="relative">
+              <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowBaseMapGallery((v) => !v)}
@@ -1924,39 +1912,74 @@ export default function AoVivo2Content() {
                       transition={{ duration: 0.2 }}
                       className="absolute right-0 top-full mt-2 z-[60] grid w-[280px] grid-cols-2 gap-2 rounded-2xl bg-[#0F131C]/95 p-3 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl sm:w-[320px]"
                     >
-                      {BASE_MAP_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.id}
-                          onClick={() => {
-                            setBaseMapId(opt.id);
-                            setShowBaseMapGallery(false);
-                          }}
-                          className={`group relative flex aspect-video flex-col overflow-hidden rounded-xl border text-left transition-all ${
-                            baseMapId === opt.id
-                              ? 'border-cyan-500 ring-2 ring-cyan-500/30'
-                              : 'border-white/10 hover:border-white/30'
-                          }`}
-                        >
-                          <img
-                            src={opt.previewUrl}
-                            alt={opt.label}
-                            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-[#0F131C]/90 via-[#0F131C]/20 to-transparent" />
-                          
-                          {baseMapId === opt.id && (
-                            <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-slate-950 shadow-sm">
-                              <Check className="h-3 w-3" strokeWidth={3} />
-                            </div>
-                          )}
-                          
-                          <span className="absolute bottom-1.5 left-2 right-2 truncate text-[11px] font-medium text-white drop-shadow-md sm:bottom-2 sm:left-2.5 sm:text-xs">
-                            {opt.label}
-                          </span>
-                        </button>
-                      ))}
-                    </motion.div>
+                        {BASE_MAP_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.id}
+                            onClick={() => {
+                              setBaseMapId(opt.id);
+                              setShowBaseMapGallery(false);
+                            }}
+                            className={`group relative flex aspect-video flex-col overflow-hidden rounded-xl border text-left transition-all ${
+                              baseMapId === opt.id
+                                ? 'border-cyan-500 ring-2 ring-cyan-500/30'
+                                : 'border-white/10 hover:border-white/30'
+                            }`}
+                          >
+                            <img
+                              src={opt.previewUrl}
+                              alt={opt.label}
+                              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#0F131C]/90 via-[#0F131C]/20 to-transparent" />
+                            
+                            {baseMapId === opt.id && (
+                              <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-slate-950 shadow-sm">
+                                <Check className="h-3 w-3" strokeWidth={3} />
+                              </div>
+                            )}
+                            
+                            <span className="absolute bottom-1.5 left-2 right-2 truncate text-[11px] font-medium text-white drop-shadow-md sm:bottom-2 sm:left-2.5 sm:text-xs">
+                              {opt.label}
+                            </span>
+                          </button>
+                        ))}
+
+                        <div className="col-span-2 mt-2 pt-2 border-t border-white/10">
+                          <span className="text-[10px] uppercase text-white/50 mb-2 block font-bold tracking-wider px-1">Temas de Radar</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRadarTheme(radarTheme === 'classic' ? 'gutoscope' : 'classic');
+                              setShowBaseMapGallery(false);
+                            }}
+                            className={`group relative flex h-[60px] w-full flex-col overflow-hidden rounded-xl border text-left transition-all ${
+                              radarTheme === 'gutoscope'
+                                ? 'border-cyan-500 ring-2 ring-cyan-500/30'
+                                : 'border-white/10 hover:border-white/30'
+                            }`}
+                          >
+                            <img
+                              src="https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/61fd13debe1fc41d9c641b56472ea8128a7ad63b/Captura%20de%20tela%202026-04-04%20192427.png"
+                              alt="GutoScope Tema"
+                              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#0F131C]/90 via-[#0F131C]/20 to-transparent" />
+                            
+                            {radarTheme === 'gutoscope' && (
+                              <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-slate-950 shadow-sm">
+                                <Check className="h-3 w-3" strokeWidth={3} />
+                              </div>
+                            )}
+                            
+                            <span className="absolute bottom-1.5 left-2 right-2 truncate text-[11px] font-medium text-white drop-shadow-md sm:bottom-2 sm:left-2.5 sm:text-xs flex items-center gap-1.5">
+                              <Palette className="w-3 h-3 text-cyan-400" />
+                              GutoScope (BETA)
+                            </span>
+                          </button>
+                        </div>
+                      </motion.div>
                   </>
                 )}
               </AnimatePresence>
