@@ -77,6 +77,23 @@ export const DEFAULT_SYNC_SLUGS = [
     'argentina-RMA16',
     'argentina-RMA17',
     'argentina-RMA18',
+    // --- REDEMET (DECEA) — pastas redemet-{codigo} no GCS, alinhado a /api/radar-redemet-find ---
+    'redemet-be',
+    'redemet-bv',
+    'redemet-cn',
+    'redemet-mn',
+    'redemet-mo',
+    'redemet-mq',
+    'redemet-pc',
+    'redemet-pl',
+    'redemet-sg',
+    'redemet-sl',
+    'redemet-sn',
+    'redemet-sr',
+    'redemet-st',
+    'redemet-ua',
+    // --- Simepar ---
+    'simepar-cascavel',
 ];
 /**
  * Pastas no GCS sem feed CPTEC neste serviço (IDs placeholder ou fonte externa).
@@ -559,4 +576,327 @@ export async function downloadArgentinaImagesInWindow(slug, nowTs12, windowMinut
         }
     }
     return out.sort((a, b) => b.ts12.localeCompare(a.ts12));
+}
+// --- REDEMET (mesma resolução de URL que app/api/radar-redemet-find + lib/redemetRadar) ---
+const REDEMET_PLOTA_URL = 'https://redemet.decea.mil.br/old/produtos/radares-meteorologicos/plota_radar.php';
+const REDEMET_PRODUCTS_PAGE = 'https://redemet.decea.mil.br/old/produtos/radares-meteorologicos/';
+const REDEMET_SITE_BASE = 'https://redemet.decea.mil.br/';
+const REDEMET_ESTATICO_RADAR = 'https://estatico-redemet.decea.mil.br/radar';
+const REDEMET_OLD_RADAR = 'https://redemet.decea.mil.br/old/radar';
+const REDEMET_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const REDEMET_BROWSER_HEADERS = {
+    'User-Agent': REDEMET_UA,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+};
+function redemetExtractSessionCookie(headers) {
+    const getSetCookie = headers.getSetCookie;
+    if (typeof getSetCookie === 'function') {
+        const cookies = getSetCookie.call(headers);
+        for (const c of cookies) {
+            const m = c.match(/PHPSESSID=([^;]+)/);
+            if (m)
+                return `PHPSESSID=${m[1]}`;
+        }
+    }
+    const setCookie = headers.get('set-cookie') ?? '';
+    const match = setCookie.match(/PHPSESSID=([^;]+)/);
+    return match ? `PHPSESSID=${match[1]}` : '';
+}
+function addMinutesToTs12Redemet(ts12, deltaMin) {
+    const d = new Date(Date.UTC(parseInt(ts12.slice(0, 4), 10), parseInt(ts12.slice(4, 6), 10) - 1, parseInt(ts12.slice(6, 8), 10), parseInt(ts12.slice(8, 10), 10), parseInt(ts12.slice(10, 12), 10)));
+    d.setUTCMinutes(d.getUTCMinutes() + deltaMin);
+    return (d.getUTCFullYear().toString() +
+        String(d.getUTCMonth() + 1).padStart(2, '0') +
+        String(d.getUTCDate()).padStart(2, '0') +
+        String(d.getUTCHours()).padStart(2, '0') +
+        String(d.getUTCMinutes()).padStart(2, '0'));
+}
+/** Candidatos diretos maxcappi (estatico + old/radar), como em lib/redemetRadar.buildRedemetPngUrlsToTry — evita POST quando possível. */
+function buildRedemetMaxcappiUrlCandidates(area, ts12, useHistoricalPath) {
+    const baseUrl = useHistoricalPath ? REDEMET_OLD_RADAR : REDEMET_ESTATICO_RADAR;
+    const base = `${baseUrl}/${ts12.slice(0, 4)}/${ts12.slice(4, 6)}/${ts12.slice(6, 8)}/${area}/maxcappi/maps`;
+    const offsets = useHistoricalPath ? [12, 6, 0, -6, -12] : [6, 0, -6];
+    const secondsToTry = useHistoricalPath
+        ? ['00', '03', '04', '05', '09', '10', '12', '15', '20', '22', '23', '24', '25', '26', '30', '32', '33', '35', '36', '37']
+        : ['00', '22', '23', '24', '25', '30', '35', '36', '37', '05', '10', '15', '20'];
+    const urls = [];
+    for (const delta of offsets) {
+        const ts = delta === 0 ? ts12 : addMinutesToTs12Redemet(ts12, delta);
+        const hh = ts.slice(8, 10);
+        const mm = ts.slice(10, 12);
+        for (const ss of secondsToTry) {
+            urls.push(`${base}/${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}--${hh}:${mm}:${ss}.png`);
+        }
+    }
+    return urls;
+}
+async function fetchRedemetPngBuffer(url) {
+    try {
+        const res = await fetch(url, {
+            signal: AbortSignal.timeout(20000),
+            headers: {
+                'User-Agent': REDEMET_UA,
+                Referer: 'https://redemet.decea.mil.br/',
+                Accept: 'image/avif,image/webp,image/png,image/*;q=0.8,*/*;q=0.5',
+            },
+        });
+        if (!res.ok)
+            return null;
+        const arrayBuffer = await res.arrayBuffer();
+        const buf = Buffer.from(arrayBuffer);
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('image'))
+            return buf;
+        if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47)
+            return buf;
+        return null;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * POST plota_radar.php com radar[]=maxcappi (igual /api/radar-redemet-find).
+ */
+async function findRedemetImageUrlViaPlota(area, ts12) {
+    const y = ts12.slice(0, 4);
+    const mo = ts12.slice(4, 6);
+    const d = ts12.slice(6, 8);
+    const hh = ts12.slice(8, 10);
+    const mm = ts12.slice(10, 12);
+    const datahora = `${d}/${mo}/${y} ${hh}:${mm}`;
+    let sessionCookie = '';
+    try {
+        const pageRes = await fetch(REDEMET_PRODUCTS_PAGE, {
+            method: 'GET',
+            headers: REDEMET_BROWSER_HEADERS,
+            redirect: 'follow',
+            signal: AbortSignal.timeout(10_000),
+        });
+        sessionCookie = redemetExtractSessionCookie(pageRes.headers);
+    }
+    catch {
+        /* sem cookie */
+    }
+    const postHeaders = {
+        ...REDEMET_BROWSER_HEADERS,
+        Referer: REDEMET_PRODUCTS_PAGE,
+        Origin: 'https://redemet.decea.mil.br',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    };
+    if (sessionCookie)
+        postHeaders['Cookie'] = sessionCookie;
+    const params = new URLSearchParams();
+    params.append('radar[]', 'maxcappi');
+    params.append('datahora', datahora);
+    params.append('coordenadaVis[]', '1');
+    params.append('zoom', '1');
+    params.append('animar', '0');
+    params.append('radarNome', area);
+    const res = await fetch(REDEMET_PLOTA_URL, {
+        method: 'POST',
+        headers: postHeaders,
+        body: params.toString(),
+        redirect: 'follow',
+        signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok)
+        return null;
+    const html = await res.text();
+    const regex = new RegExp(`old/radar/.*?/${area}/.*?\\.png`);
+    const match = html.match(regex);
+    if (!match?.[0]) {
+        const oldRegex = new RegExp(`carrega_radar\\s*\\(\\s*\\d+\\s*,\\s*'${area}'\\s*,\\s*'([^']+)'`);
+        const oldMatch = html.match(oldRegex);
+        if (!oldMatch?.[1])
+            return null;
+        return `${REDEMET_SITE_BASE}${oldMatch[1]}`;
+    }
+    return `${REDEMET_SITE_BASE}${match[0]}`;
+}
+async function tryFetchRedemetImageForTs12(area, ts12) {
+    // 1) Igual ao ao-vivo: POST plota_radar resolve o PNG real (incl. path old/radar).
+    const plotaUrl = await findRedemetImageUrlViaPlota(area, ts12);
+    if (plotaUrl) {
+        const buf = await fetchRedemetPngBuffer(plotaUrl);
+        if (buf && buf.length > 0)
+            return { url: plotaUrl, buffer: buf };
+    }
+    // 2) Fallback: poucos GETs diretos maxcappi (estatico + old), como lib/redemetRadar — evita explosão de pedidos.
+    const fallback = [
+        ...buildRedemetMaxcappiUrlCandidates(area, ts12, false),
+        ...buildRedemetMaxcappiUrlCandidates(area, ts12, true),
+    ].slice(0, 48);
+    const seen = new Set();
+    for (const u of fallback) {
+        if (seen.has(u))
+            continue;
+        seen.add(u);
+        const buf = await fetchRedemetPngBuffer(u);
+        if (buf && buf.length > 0)
+            return { url: u, buffer: buf };
+    }
+    return null;
+}
+export function redemetSlugToAreaCode(slug) {
+    const m = /^redemet-([a-z]{2})$/.exec(slug);
+    return m ? m[1] : null;
+}
+/** Descarrega PNGs REDEMET (reflectividade maxcappi) preservando no máximo 12 imagens únicas na janela — pasta GCS = slug (ex.: redemet-sg). */
+export async function downloadRedemetImagesInWindow(slug, nowTs12, windowMinutes, options) {
+    const area = redemetSlugToAreaCode(slug);
+    if (!area)
+        return [];
+    // Tenta a cada 5 minutos ao longo da janela, do mais recente para o mais antigo
+    const out = [];
+    const maxImages = 12;
+    let currentTs = nowTs12;
+    const endMs = ts12ToUtcMs(nowTs12) - windowMinutes * 60 * 1000;
+    while (out.length < maxImages && ts12ToUtcMs(currentTs) >= endMs) {
+        const fileName = `${currentTs}.png`;
+        let shouldDownload = true;
+        if (options?.checkExists && (await options.checkExists(fileName))) {
+            // Se já existe no bucket, simulamos uma "descoberta" para não apagar e contar para as 12
+            out.push({
+                ts12: currentTs,
+                layer: 'ppi',
+                fileName,
+                url: `gcs://${slug}/${fileName}`, // Placeholder url, file exists
+                buffer: Buffer.alloc(0),
+            });
+            shouldDownload = false;
+        }
+        if (shouldDownload) {
+            const got = await tryFetchRedemetImageForTs12(area, currentTs);
+            if (got) {
+                out.push({
+                    ts12: currentTs,
+                    layer: 'ppi',
+                    fileName,
+                    url: got.url,
+                    buffer: got.buffer,
+                });
+            }
+            await new Promise((r) => setTimeout(r, 400));
+        }
+        currentTs = subtractMinutesFromTs12(currentTs, 5);
+    }
+    return out.sort((a, b) => b.ts12.localeCompare(a.ts12));
+}
+// =========================================================================
+// RAINVIEWER SOURCES (SIMEPAR / IPMET)
+// =========================================================================
+export const SIMEPAR_CASCAVEL_URL = 'https://data.rainviewer.com/images/BRSC3/';
+export const IPMET_RAINVIEWER_URL = 'https://data.rainviewer.com/images/BRPB/';
+import sharp from 'sharp';
+/**
+ * Processa imagens Rainviewer (Simepar, IPMet, etc), filtra o mapa de fundo
+ * (deixando transparente) e converte para PNG.
+ */
+async function processRainviewerImage(urlPrefix, slug, nowTs12, windowMinutes, options, prefixId = 'BRSC3') {
+    const out = [];
+    try {
+        const res = await fetch(urlPrefix, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok)
+            return out;
+        const text = await res.text();
+        // As imagens seguem o padrão PRE_YYYYMMDD_HHMM00_0_source.jpeg (em UTC) ou ..._2_map.png
+        // Ex: BRSC3_20260403_230000_0_source.jpeg ou BRPB_20250801_130000_2_map.png
+        const regex = new RegExp(`href="(${prefixId}_\\d{8}_\\d{4}00_[^"]+\\.(?:jpeg|png))"`, 'g');
+        const matches = [...text.matchAll(regex)];
+        const files = matches.map(m => m[1]);
+        const endMs = ts12ToUtcMs(nowTs12) - windowMinutes * 60 * 1000;
+        // Vamos iterar de trás para a frente (mais recentes primeiro)
+        files.reverse();
+        for (const file of files) {
+            if (out.length >= 12)
+                break; // Limite de 12 imagens
+            const m = new RegExp(`${prefixId}_(\\d{8})_(\\d{4})00_`).exec(file);
+            if (!m)
+                continue;
+            const ts12 = `${m[1]}${m[2]}`; // YYYYMMDDHHMM
+            const tMs = ts12ToUtcMs(ts12);
+            if (tMs < endMs)
+                continue; // Muito antigo para a janela de sync
+            const fileName = `${ts12}.png`;
+            if (options?.checkExists && (await options.checkExists(fileName))) {
+                out.push({
+                    ts12,
+                    layer: 'ppi',
+                    fileName,
+                    url: `gcs://${slug}/${fileName}`,
+                    buffer: Buffer.alloc(0),
+                });
+                continue;
+            }
+            // Download da imagem
+            const imgRes = await fetch(`${urlPrefix}${file}`, { signal: AbortSignal.timeout(10000) });
+            if (!imgRes.ok)
+                continue;
+            const arrayBuffer = await imgRes.arrayBuffer();
+            // Aplicar filtro canvas/sharp para remover fundo
+            const { data, info } = await sharp(arrayBuffer)
+                .ensureAlpha()
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+            const { width, height, channels } = info;
+            for (let i = 0; i < data.length; i += channels) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                const delta = max - min;
+                let keep = true;
+                if (max < 100) {
+                    keep = false; // Cores escuras (terra, ruas do mapa)
+                }
+                else if (b > max * 0.8 && r < 80 && g < 110) {
+                    keep = false; // Água do mapa (azul escuro)
+                }
+                else if (delta < 20) {
+                    keep = false; // Escala de cinzentos (texto, linhas, bordas, branco puro)
+                }
+                // Cortar legendas e logos
+                const y = Math.floor((i / channels) / width);
+                if (y > height - 60) {
+                    keep = false; // Legenda inferior
+                }
+                if (!keep) {
+                    data[i + 3] = 0; // Torna transparente
+                }
+            }
+            const outBuffer = await sharp(data, {
+                raw: { width, height, channels }
+            })
+                .png()
+                .toBuffer();
+            out.push({
+                ts12,
+                layer: 'ppi',
+                fileName,
+                url: `${urlPrefix}${file}`,
+                buffer: outBuffer,
+            });
+        }
+    }
+    catch (err) {
+        console.error(`Erro a fazer fetch de ${slug} (Rainviewer):`, err);
+    }
+    return out.sort((a, b) => b.ts12.localeCompare(a.ts12));
+}
+export async function downloadSimeparImagesInWindow(slug, nowTs12, windowMinutes, options) {
+    if (slug !== 'simepar-cascavel')
+        return [];
+    return processRainviewerImage(SIMEPAR_CASCAVEL_URL, slug, nowTs12, windowMinutes, options, 'BRSC3');
+}
+export async function downloadIpmetRainviewerInWindow(slug, nowTs12, windowMinutes, options) {
+    if (slug !== 'ipmet-bauru')
+        return [];
+    return processRainviewerImage(IPMET_RAINVIEWER_URL, slug, nowTs12, windowMinutes, options, 'BRPB');
 }

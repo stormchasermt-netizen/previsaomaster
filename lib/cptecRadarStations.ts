@@ -139,7 +139,7 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'R12227759', slug: 'lontras', name: 'Lontras', lat: -27.214725, lng: -49.4559, rangeKm: 250, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', velocityId: 'R12227760', vilId: 'R12222198', waldvogelId: 'R12224626', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -52.029, minLat: -29.46675, maxLon: -46.8827, maxLat: -24.9627 } },
   { id: 'R12544957', slug: 'morroigreja', name: 'Morro da Igreja', lat: -28.1078451, lng: -49.4719928, rangeKm: 250, org: 'decea', server: 's2', product: 'ppi', subtype: 'ppicz', velocityId: 'R12544956', vilId: 'R12544955', waldvogelId: 'R12544489', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -52.0632, minLat: -30.3648, maxLon: -46.8704, maxLat: -25.8599 } },
 
-  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet Mosaico (PP/Bauru)', lat: -22.116, lng: -51.385, rangeKm: 240, org: 'sdcsc', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0 },
+  { id: 'R12093557', slug: 'ipmet-bauru', name: 'IPMet Mosaico (PP/Bauru)', lat: -22.341270286631073, lng: -50.81852436342466, rangeKm: 240, org: 'ipmet', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 15, updateIntervalOffsetMinutes: 0, bounds: { minLat: -24.5199, maxLat: -20.0128, minLon: -53.7076, maxLon: -46.6887 } },
   { id: 'POA', slug: 'climatempo-poa', name: 'Porto Alegre (Climatempo)', lat: -29.6, lng: -51.8, rangeKm: 250, org: 'cemaden', server: 's1', product: 'ppi', subtype: 'ppicz', updateIntervalMinutes: 5, updateIntervalOffsetMinutes: 0, bounds: { minLon: -58.0, minLat: -34.0, maxLon: -49.0, maxLat: -27.0 } },
 
   // DECEA - Sudeste/Centro-Oeste
@@ -242,6 +242,23 @@ export const CPTEC_RADAR_STATIONS: CptecRadarStation[] = [
   { id: 'RMA17', slug: 'argentina-RMA17', name: 'Alejandro Roca', lat: -33.3514, lng: -63.7036, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'COLMAX', velocityId: 'argentina-RMA17', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -66.281474, minLat: -35.483375, maxLon: -61.125726, maxLat: -31.155556 } },
   { id: 'RMA13', slug: 'argentina-RMA13', name: 'Ituzaingó (Corrientes)', lat: -27.622289, lng: -56.841807, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'COLMAX', velocityId: 'argentina-RMA13', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -59.21546, minLat: -29.67647, maxLon: -54.37738, maxLat: -25.44618 } },
   { id: 'RMA18', slug: 'argentina-RMA18', name: 'Santa Isabel (La Pampa)', lat: -36.223167, lng: -66.936389, rangeKm: 240, org: 'argentina', server: 'webmet', product: 'ppi', subtype: 'COLMAX', velocityId: 'argentina-RMA18', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -69.545614, minLat: -38.244328, maxLon: -64.177172, maxLat: -33.929631 } },
+
+  // REDEMET-only (GCS redemet-{codigo}) — bounds/lat/lon do CSV radares Redemet (DECEA)
+  { id: 'REDEMET-be', slug: 'redemet-be', name: 'Belém/PA (REDEMET)', lat: -1.406667, lng: -48.461389, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -50.6124, minLat: -3.5522, maxLon: -46.3272222222, maxLat: 0.7478 } },
+  { id: 'REDEMET-bv', slug: 'redemet-bv', name: 'Boa Vista/RR (REDEMET)', lat: 2.844166667, lng: -60.70027777778, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -62.8548, minLat: 0.6957998116, maxLon: -58.5383974008, maxLat: 4.9983 } },
+  { id: 'REDEMET-cn', slug: 'redemet-cn', name: 'Canguçu/RS (REDEMET)', lat: -31.404, lng: -52.701644, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -55.3873, minLat: -33.6425, maxLon: -50.0073, maxLat: -29.1325 } },
+  { id: 'REDEMET-mn', slug: 'redemet-mn', name: 'Manaus/AM (REDEMET)', lat: -3.149216, lng: -59.991881, rangeKm: 400, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -62.1475, minLat: -6.7180555556, maxLon: -57.8461111111, maxLat: 0.4505555556 } },
+  { id: 'REDEMET-mo', slug: 'redemet-mo', name: 'Maceió/AL (REDEMET)', lat: -9.55129, lng: -35.77068, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -38.036766, minLat: -11.79153875, maxLon: -33.47447175, maxLat: -7.296182 } },
+  { id: 'REDEMET-mq', slug: 'redemet-mq', name: 'Macapá/AP (REDEMET)', lat: -0.047222, lng: -51.097778, rangeKm: 400, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -54.6794444444, minLat: -3.5119444444, maxLon: -47.5502777778, maxLat: 3.6388888889 } },
+  { id: 'REDEMET-pc', slug: 'redemet-pc', name: 'Pico do Couto/RJ (REDEMET)', lat: -22.464278, lng: -43.297476, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -45.7583, minLat: -24.701, maxLon: -40.8262, maxLat: -20.2013 } },
+  { id: 'REDEMET-pl', slug: 'redemet-pl', name: 'Petrolina/PE (REDEMET)', lat: -9.367, lng: -40.573, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.838165, minLat: -11.607397, maxLon: -38.27832025, maxLat: -7.112036 } },
+  { id: 'REDEMET-sg', slug: 'redemet-sg', name: 'Santiago/RS (REDEMET)', lat: -29.225213, lng: -54.930257, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -57.5513, minLat: -31.4619453696, maxLon: -52.2986220527, maxLat: -26.956 } },
+  { id: 'REDEMET-sl', slug: 'redemet-sl', name: 'São Luís/MA (REDEMET)', lat: -2.597222, lng: -44.2375, rangeKm: 400, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -47.8166666667, minLat: -6.1666666667, maxLon: -40.6833333333, maxLat: 0.9833333333 } },
+  { id: 'REDEMET-sn', slug: 'redemet-sn', name: 'Santarém/PA (REDEMET)', lat: -2.429722, lng: -54.798889, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -56.9522, minLat: -4.5765000922, maxLon: -52.6384982363, maxLat: -0.2744 } },
+  { id: 'REDEMET-sr', slug: 'redemet-sr', name: 'São Roque/SP (REDEMET)', lat: -23.601915, lng: -47.094063, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -49.5836753845, minLat: -25.8431473784, maxLon: -44.6049841568, maxLat: -21.342464447 } },
+  { id: 'REDEMET-st', slug: 'redemet-st', name: 'Santa Tereza/ES (REDEMET)', lat: -19.98887, lng: -40.5794, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -42.939214, minLat: -22.22030575, maxLon: -38.15125375, maxLat: -17.725309 } },
+  { id: 'REDEMET-ua', slug: 'redemet-ua', name: 'São Gabriel da Cachoeira/AM (REDEMET)', lat: -0.143611, lng: -67.056944, rangeKm: 250, org: 'redemet', server: 'decea', product: 'ppi', subtype: 'maxcappi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -69.2051, minLat: -2.2906000139, maxLon: -64.9017020167, maxLat: 2.0104 } },
+  { id: 'BRSC3', slug: 'simepar-cascavel', name: 'Simepar - Cascavel (Mosaico)', lat: -24.8755, lng: -53.5252, rangeKm: 500, org: 'simepar', server: 'rainviewer', product: 'ppi', subtype: 'ppi', updateIntervalMinutes: 10, updateIntervalOffsetMinutes: 0, bounds: { minLon: -57.149369633169535, minLat: -28.537878289124517, maxLon: -45.834686785981404, maxLat: -21.006712988730044 } },
 ];
 
 /** URL da Cloud Function getRadarIPMet (proxy WMS mosaico estadual). */
@@ -251,17 +268,20 @@ export const GET_RADAR_IPMET_URL = 'https://getradaripmet-kj7x6j3jsa-uc.a.run.ap
 export const GET_RADAR_USP_URL = 'https://us-central1-studio-4398873450-7cc8f.cloudfunctions.net/getRadarUSP';
 
 /**
- * Bounds fixos da imagem IPMet (BBOX do getRadarIPMet Cloud Function).
- * Fonte WMS: BBOX=-5635549.220625,-2817774.6103125,-5322463.1528125,-2504688.5425
- * Em EPSG:4326: oeste -55.876, sul -26.400, leste -44.516, norte -18.080
+ * Bounds fixos da imagem IPMet (Rainviewer / Mosaico)
+ * Bounding Box do Mosaico Completo (Bauru + Pres. Prudente)
+ * Latitude Mínima (Extremo Sul): -24.5199
+ * Longitude Mínima (Extremo Oeste): -53.7076
+ * Latitude Máxima (Extremo Norte): -20.0128
+ * Longitude Máxima (Extremo Leste): -46.6887
  */
 export const IPMET_FIXED_BOUNDS = {
-  north: -18.080,
-  south: -26.400,
-  east: -44.516,
-  west: -55.876,
-  ne: { lat: -18.080, lng: -44.516 },
-  sw: { lat: -26.400, lng: -55.876 },
+  north: -20.0128,
+  south: -24.5199,
+  east: -46.6887,
+  west: -53.7076,
+  ne: { lat: -20.0128, lng: -46.6887 },
+  sw: { lat: -24.5199, lng: -53.7076 },
 };
 
 /**
@@ -480,12 +500,23 @@ export function getRadarImageBounds(station: CptecRadarStation, overrideRangeKm?
   east: number;
   west: number;
 } {
+  // Se a estação já tiver bounds definidos (ex: via override do admin, Redemet, Simepar, Ipmet), usá-los
+  if (station.bounds) {
+    return { 
+      north: station.bounds.maxLat, 
+      south: station.bounds.minLat, 
+      east: station.bounds.maxLon, 
+      west: station.bounds.minLon 
+    };
+  }
+  
   if (station.slug === 'ipmet-bauru') {
     return { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west };
   }
   if (station.slug === 'usp-starnet') {
     return { north: USP_STARNET_FIXED_BOUNDS.north, south: USP_STARNET_FIXED_BOUNDS.south, east: USP_STARNET_FIXED_BOUNDS.east, west: USP_STARNET_FIXED_BOUNDS.west };
   }
+  
   const range = overrideRangeKm ?? station.rangeKm;
   const b = calculateRadarBoundsGeodesic(station.lat, station.lng, range);
   return {
