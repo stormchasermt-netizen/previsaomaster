@@ -84,6 +84,9 @@ export type RadarProductMode = 'ppi' | 'doppler';
 
 /** Pasta no GCS pode ser `riobranco`; no catálogo CPTEC o slug é `rio-branco`. */
 function bucketSlugToCatalogSlug(slug: string): string {
+  // Se o slug já existir diretamente no catálogo (ex: 'redemet-pc'), retorna ele mesmo
+  if (CPTEC_RADAR_STATIONS.some(s => s.slug === slug)) return slug;
+  
   if (slug.startsWith('redemet-')) return bucketSlugToCatalogSlug(slug.replace('redemet-', ''));
   if (slug.startsWith('sigma-')) return bucketSlugToCatalogSlug(slug.replace('sigma-', ''));
   if (slug.startsWith('sipam-')) return bucketSlugToCatalogSlug(slug.replace('sipam-', ''));
@@ -1395,8 +1398,8 @@ export default function AoVivo2Content() {
               if (src === 'sipam' && sip) return findCptecBySlug(sip, radarConfigs) ?? findCptecBySlug(slug, radarConfigs);
               return findCptecBySlug(slug, radarConfigs);
             })();
-      if (!boundsStation) return;
-        const bounds = getRadarImageBounds(boundsStation, boundsStation.rangeKm);
+        if (!boundsStation) return;
+        const bounds = getRadarImageBounds(boundsStation);
         let coordinates = imageCoordinatesFromBounds(bounds);
         
         let targetConfigId = boundsStation.slug;
@@ -1480,12 +1483,16 @@ export default function AoVivo2Content() {
             nextUrl = baseFiltered ?? nextUrl;
           }
           const mRadius = boundsStation.maskRadiusKm;
-          if (mRadius !== undefined && mRadius !== boundsStation.rangeKm || slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
+          // Apply circular mask if:
+          // 1. It's IPMet (which needs to be cut from a mosaic)
+          // 2. It's Redemet, Sigma or Sipam (to ensure clean circles when scaled)
+          // 3. mRadius is explicitly different from rangeKm (admin specifically shrank the mask)
+          if (mRadius !== undefined && mRadius !== boundsStation.rangeKm || src === 'redemet' || src === 'sigma' || src === 'sipam' || slug === 'ipmet-bauru' || slug === 'ipmet-prudente') {
             const radiusToUse = mRadius ?? boundsStation.rangeKm;
-          const masked = await filterRadarImageCircularMask(nextUrl, boundsStation.lat, boundsStation.lng, radiusToUse, bounds);
-          if (gen !== layerUpdateGenerationRef.current) return;
-          nextUrl = masked ?? nextUrl;
-        }
+            const masked = await filterRadarImageCircularMask(nextUrl, boundsStation.lat, boundsStation.lng, radiusToUse, bounds);
+            if (gen !== layerUpdateGenerationRef.current) return;
+            nextUrl = masked ?? nextUrl;
+          }
         if (superResMode) {
           if (kind === 'ppi') {
             const sr = await filterReflectivitySuperRes(nextUrl);
