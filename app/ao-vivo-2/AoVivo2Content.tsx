@@ -15,7 +15,10 @@ import {
   Zap,
   X,
   Menu,
+  Layers,
+  Check,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { CPTEC_RADAR_STATIONS, getRadarImageBounds, type CptecRadarStation } from '@/lib/cptecRadarStations';
@@ -30,6 +33,35 @@ import { fetchRadarConfigs, type RadarConfig } from '@/lib/radarConfigStore';
 
 const MAPTILER_KEY = 'WyOGmI7ufyBLH3G7aX9o';
 const SAT_STYLE = `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`;
+
+type BaseMapId = 'satellite' | 'streets' | 'topo' | 'toner';
+
+const BASE_MAP_OPTIONS: { id: BaseMapId; label: string; styleUrl: string; previewUrl: string }[] = [
+  { 
+    id: 'satellite', 
+    label: 'Satélite', 
+    styleUrl: `https://api.maptiler.com/maps/hybrid-v4/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/hybrid-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
+  { 
+    id: 'streets', 
+    label: 'Ruas', 
+    styleUrl: `https://api.maptiler.com/maps/streets-v4/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/streets-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
+  { 
+    id: 'topo', 
+    label: 'Relevos', 
+    styleUrl: `https://api.maptiler.com/maps/topo-v4/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/topo-v4/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
+  { 
+    id: 'toner', 
+    label: 'Branco', 
+    styleUrl: `https://api.maptiler.com/maps/toner-v2/style.json?key=${MAPTILER_KEY}`,
+    previewUrl: `https://api.maptiler.com/maps/toner-v2/static/-55,-15,3/180x120.png?key=${MAPTILER_KEY}`
+  },
+];
 
 /** Mesmos URLs que em app/ao-vivo/page.tsx */
 const RADAR_ICON_AVAILABLE =
@@ -398,6 +430,9 @@ export default function AoVivo2Content() {
   const [superResMode, setSuperResMode] = useState(false);
   const [bottomPanelExpanded, setBottomPanelExpanded] = useState(true);
 
+  const [baseMapId, setBaseMapId] = useState<BaseMapId>('satellite');
+  const [showBaseMapGallery, setShowBaseMapGallery] = useState(false);
+
   const mapContainerSingleRef = useRef<HTMLDivElement | null>(null);
   const mapContainerSplitLeftRef = useRef<HTMLDivElement | null>(null);
   const mapContainerSplitRightRef = useRef<HTMLDivElement | null>(null);
@@ -683,13 +718,13 @@ export default function AoVivo2Content() {
       let silent = false;
       const mapL = new maplibregl.Map({
         container: leftEl,
-        style: SAT_STYLE,
+        style: BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl,
         center: [-51, -22],
         zoom: 4,
       });
       const mapR = new maplibregl.Map({
         container: rightEl,
-        style: SAT_STYLE,
+        style: BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl,
         center: [-51, -22],
         zoom: 4,
       });
@@ -753,7 +788,7 @@ export default function AoVivo2Content() {
 
     const map = new maplibregl.Map({
       container,
-      style: SAT_STYLE,
+      style: BASE_MAP_OPTIONS.find(o => o.id === baseMapId)?.styleUrl || BASE_MAP_OPTIONS[0].styleUrl,
       center: [-51, -22],
       zoom: 4,
     });
@@ -772,6 +807,7 @@ export default function AoVivo2Content() {
       map.remove();
       mapSingleRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [splitScreen]);
 
   /** Ajusta enquadramento */
@@ -798,6 +834,25 @@ export default function AoVivo2Content() {
     if (!map || !mapReady) return;
     map.fitBounds(b, opts);
   }, [mapReady, focusedSlug, stationsWithBounds, superResMode, splitScreen, ppiSourceBySlug, radarConfigs]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const updateStyle = (map: maplibregl.Map | null) => {
+      if (!map) return;
+      const opt = BASE_MAP_OPTIONS.find((o) => o.id === baseMapId);
+      if (opt) {
+        setMapRasterIdle(false);
+        map.setStyle(opt.styleUrl);
+        map.once('idle', () => setMapRasterIdle(true));
+      }
+    };
+    if (splitScreen) {
+      updateStyle(mapSplitLeftRef.current);
+      updateStyle(mapSplitRightRef.current);
+    } else {
+      updateStyle(mapSingleRef.current);
+    }
+  }, [baseMapId, mapReady, splitScreen]);
 
   /** Marcadores (ícones como ao-vivo-1) */
   useEffect(() => {
@@ -1260,104 +1315,161 @@ export default function AoVivo2Content() {
       {!showEmptyBucketHelp && (
         <div className="absolute inset-0 z-20 pointer-events-none">
           {/* Barra vertical — topo esquerdo */}
-          <div className="absolute left-3 top-3 flex flex-col gap-2 pointer-events-auto sm:left-4 sm:top-4 z-50">
-            <button
-              type="button"
-              onClick={() => setIsMenuOpen((v) => !v)}
-              className="flex h-[60px] w-[60px] items-center justify-center transition-all z-50 hover:scale-105 hover:shadow-[0_0_20px_rgba(56,189,248,0.8)] rounded-full overflow-hidden shadow-lg bg-[#0f172a] border border-white/10"
-              title="Menu de Ferramentas"
-            >
-              <img 
-                src="https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/d74421978486f01e69b68cafcc5e311b5f407b59/%C3%8Dcone%20de%20trov%C3%A3o%20em%20fundo%20transparente.png" 
-                alt="Menu" 
-                className="h-full w-full object-cover scale-[1.35]"
-              />
-            </button>
+          <div className="absolute left-3 top-3 flex items-start gap-3 pointer-events-auto sm:left-4 sm:top-4 z-50">
+            
+            {/* Hambúrguer Menu original */}
+            <div className="flex flex-col gap-2 relative">
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen((v) => !v)}
+                className="flex h-[60px] w-[60px] items-center justify-center transition-all z-50 hover:scale-105 hover:shadow-[0_0_20px_rgba(56,189,248,0.8)] rounded-full overflow-hidden shadow-lg bg-[#0f172a] border border-white/10"
+                title="Menu de Ferramentas"
+              >
+                <img 
+                  src="https://raw.githubusercontent.com/stormchasermt-netizen/previsaomaster/d74421978486f01e69b68cafcc5e311b5f407b59/%C3%8Dcone%20de%20trov%C3%A3o%20em%20fundo%20transparente.png" 
+                  alt="Menu" 
+                  className="h-full w-full object-cover scale-[1.35]"
+                />
+              </button>
 
-            <div className={`flex flex-col gap-2 transition-all duration-300 origin-top overflow-hidden ${isMenuOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
-              <Link
-                href="/"
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
-                title="Início"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Link>
-              <button
-                type="button"
-                onClick={() => setSuperResMode((v) => !v)}
-                title="Super Res — refletividade: remove ruído branco/cinza. Doppler: remove roxo isolado junto de verde (±2 px), preservando interfaces verde↔vermelho (couplets)."
-                className={`flex min-h-[3.25rem] w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center shadow-lg ring-1 ring-black/5 transition ${
-                  superResMode ? 'bg-sky-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
-                }`}
-              >
-                <Sparkles className="h-4 w-4 shrink-0" />
-                <span className="max-w-full text-[6px] font-bold leading-[1.1]">
-                  <span className="block">Super</span>
-                  <span className="block">Res</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSplitScreen((s) => !s)}
-                title={splitScreen ? 'Voltar a ecrã único' : 'Dividir Tela — PPI à esquerda, Doppler à direita (mesmo instante)'}
-                className={`flex min-h-[3.25rem] w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 shadow-lg ring-1 ring-black/5 transition ${
-                  splitScreen ? 'bg-teal-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
-                }`}
-              >
-                <Columns2 className="h-4 w-4 shrink-0" />
-                <span className="max-w-full text-center text-[6px] font-bold leading-[1.1]">
-                  {splitScreen ? (
-                    'Único'
-                  ) : (
-                    <>
-                      Dividir
-                      <br />
-                      Tela
-                    </>
-                  )}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={flyToUserLocation}
-                title="Ir para a minha localização"
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
-              >
-                <Navigation className="h-5 w-5" />
-              </button>
-              {!splitScreen && (
+              <div className={`flex flex-col gap-2 transition-all duration-300 origin-top overflow-hidden ${isMenuOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
+                <Link
+                  href="/"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
+                  title="Início"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Link>
                 <button
                   type="button"
-                  title="Produto (atalho)"
-                  onClick={() => setProduct((p) => (p === 'ppi' ? 'doppler' : 'ppi'))}
-                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-amber-600 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
+                  onClick={() => setSuperResMode((v) => !v)}
+                  title="Super Res — refletividade: remove ruído branco/cinza. Doppler: remove roxo isolado junto de verde (±2 px), preservando interfaces verde↔vermelho (couplets)."
+                  className={`flex min-h-[3.25rem] w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center shadow-lg ring-1 ring-black/5 transition ${
+                    superResMode ? 'bg-sky-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
+                  }`}
                 >
-                  <Zap className="h-5 w-5" />
+                  <Sparkles className="h-4 w-4 shrink-0" />
+                  <span className="max-w-full text-[6px] font-bold leading-[1.1]">
+                    <span className="block">Super</span>
+                    <span className="block">Res</span>
+                  </span>
                 </button>
-              )}
-              {!splitScreen && (
-                <div className="flex flex-col overflow-hidden rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setSplitScreen((s) => !s)}
+                  title={splitScreen ? 'Voltar a ecrã único' : 'Dividir Tela — PPI à esquerda, Doppler à direita (mesmo instante)'}
+                  className={`flex min-h-[3.25rem] w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 shadow-lg ring-1 ring-black/5 transition ${
+                    splitScreen ? 'bg-teal-600 text-white' : 'bg-white/95 text-slate-700 hover:bg-white'
+                  }`}
+                >
+                  <Columns2 className="h-4 w-4 shrink-0" />
+                  <span className="max-w-full text-center text-[6px] font-bold leading-[1.1]">
+                    {splitScreen ? (
+                      'Único'
+                    ) : (
+                      <>
+                        Dividir
+                        <br />
+                        Tela
+                      </>
+                    )}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={flyToUserLocation}
+                  title="Ir para a minha localização"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
+                >
+                  <Navigation className="h-5 w-5" />
+                </button>
+                {!splitScreen && (
                   <button
                     type="button"
-                    onClick={() => setProduct('ppi')}
-                    className={`px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide ${
-                      product === 'ppi' ? 'bg-sky-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-                    }`}
+                    title="Produto (atalho)"
+                    onClick={() => setProduct((p) => (p === 'ppi' ? 'doppler' : 'ppi'))}
+                    className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/95 text-amber-600 shadow-lg ring-1 ring-black/5 transition hover:bg-white"
                   >
-                    PPI
+                    <Zap className="h-5 w-5" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setProduct('doppler')}
-                    className={`border-t border-slate-200 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide ${
-                      product === 'doppler' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    Dop
-                  </button>
-                </div>
-              )}
+                )}
+                {!splitScreen && (
+                  <div className="flex flex-col overflow-hidden rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setProduct('ppi')}
+                      className={`px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide ${
+                        product === 'ppi' ? 'bg-sky-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      PPI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProduct('doppler')}
+                      className={`border-t border-slate-200 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide ${
+                        product === 'doppler' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Dop
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* BaseMap Picker */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowBaseMapGallery((v) => !v)}
+                className={`flex h-[60px] w-[60px] items-center justify-center transition-all z-50 hover:scale-105 hover:shadow-[0_0_20px_rgba(56,189,248,0.8)] rounded-full overflow-hidden shadow-lg bg-[#0f172a] border border-white/10 ${showBaseMapGallery ? 'text-cyan-400' : 'text-slate-300 hover:text-white'}`}
+                title="Tipo de mapa"
+              >
+                <Layers className="w-6 h-6" />
+              </button>
+              <AnimatePresence>
+                {showBaseMapGallery && (
+                  <>
+                    <div className="fixed inset-0 z-30 cursor-default" onClick={() => setShowBaseMapGallery(false)} aria-hidden />
+                    <motion.div 
+                      initial={{ opacity: 0, x: -10 }} 
+                      animate={{ opacity: 1, x: 0 }} 
+                      exit={{ opacity: 0, x: -10 }}
+                      className="absolute top-0 left-full ml-3 z-40 w-[280px] rounded-2xl bg-[#0A0E17]/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] p-3 overflow-hidden grid grid-cols-2 gap-2 sm:gap-3"
+                    >
+                      <div className="col-span-2 px-1 pb-1">
+                        <p className="text-[10px] sm:text-xs font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
+                          <Layers className="w-3.5 h-3.5" />
+                          Estilo do Mapa
+                        </p>
+                      </div>
+                      {BASE_MAP_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          onClick={() => { setBaseMapId(opt.id); setShowBaseMapGallery(false); }}
+                          className={`rounded-xl overflow-hidden border-2 text-left transition-all duration-200 hover:scale-[1.03] ${baseMapId === opt.id ? 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'border-white/5 hover:border-white/20'}`}
+                        >
+                          <div className="relative aspect-video">
+                            <img src={opt.previewUrl} alt={opt.label} className="absolute inset-0 w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                            <div className="absolute bottom-0 left-0 right-0 p-1.5 sm:p-2 flex justify-between items-end">
+                              <span className="text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-wider">{opt.label}</span>
+                              {baseMapId === opt.id && (
+                                <div className="w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center text-[#0A0E17]">
+                                  <Check className="w-2.5 h-2.5" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+
           </div>
 
           {/* Legenda — centro superior (dividido: PPI + Doppler m/s) */}
