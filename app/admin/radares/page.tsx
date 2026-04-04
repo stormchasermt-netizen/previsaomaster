@@ -276,7 +276,6 @@ if (baseMapId === 'dark') {
     const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
     
     let computed = calc(latForBounds, lngForBounds, rangeKm);
-    const isIpmet = selectedStation?.type === 'cptec' && ((s as CptecRadarStation).slug === 'ipmet-bauru' || (s as CptecRadarStation).slug === 'ipmet-prudente');
     if (isIpmet) { computed = { north: IPMET_FIXED_BOUNDS.north, south: IPMET_FIXED_BOUNDS.south, east: IPMET_FIXED_BOUNDS.east, west: IPMET_FIXED_BOUNDS.west }; }
     return computed;
   }, [centerLat, centerLng, imageCenterLat, imageCenterLng, rangeKm, selectedStation]);
@@ -757,61 +756,10 @@ if (baseMapId === 'dark') {
           ctx.putImageData(imgData, 0, 0);
         }
         
-        // 3. Circular Mask (Ipmet Bauru / Prudente)
-        const isIpmet = selectedStation?.type === 'cptec' && 
-          ((selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru' || (selectedStation.station as CptecRadarStation).slug === 'ipmet-prudente');
-        
-        if (isIpmet && selectedStation?.type === 'cptec') {
-          const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
-          const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
-          const calcBounds = typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
-          const defaultB = calcBounds(latForBounds, lngForBounds, rangeKm);
-          
-          const currentB = (useCustomBounds && customBounds) ? { 
-             sw: { lat: customBounds.south, lng: customBounds.west }, 
-             ne: { lat: customBounds.north, lng: customBounds.east } 
-          } : defaultB;
-
-          const boundsForMask = {
-             north: currentB.ne.lat,
-             south: currentB.sw.lat,
-             east: currentB.ne.lng,
-             west: currentB.sw.lng,
-          };
-          
-          const W = canvas.width;
-          const H = canvas.height;
-          // Usa lat/lng passados ou usa default de imageCenter ou center (pois pode ter sido alterado visualmente)
-          const maskCenterLat = centerLat;
-          const maskCenterLng = centerLng;
-
-          const cx = W * (maskCenterLng - boundsForMask.west) / (boundsForMask.east - boundsForMask.west);
-          const cy = H * (boundsForMask.north - maskCenterLat) / (boundsForMask.north - boundsForMask.south);
-          
-          const radiusLatDeg = maskRadiusKm / 111.32;
-          const radiusLonDeg = maskRadiusKm / (111.32 * Math.cos((maskCenterLat * Math.PI) / 180));
-          
-          const rx = W * (radiusLonDeg / (boundsForMask.east - boundsForMask.west));
-          const ry = H * (radiusLatDeg / (boundsForMask.north - boundsForMask.south));
-          
-          const maskCanvas = document.createElement('canvas');
-          maskCanvas.width = W;
-          maskCanvas.height = H;
-          const maskCtx = maskCanvas.getContext('2d');
-          if (maskCtx) {
-            maskCtx.fillStyle = 'black';
-            maskCtx.beginPath();
-            maskCtx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-            maskCtx.fill();
-            
-            ctx.globalCompositeOperation = 'destination-in';
-            ctx.drawImage(maskCanvas, 0, 0);
-            ctx.globalCompositeOperation = 'source-over'; // reset
-          }
-        }
+        // 3. Circular Mask removed for IPMet
         
         // Se NENHUM filtro extra foi ativado E não for IPMet, não force a renderização para economizar processamento
-        if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0 && !isIpmet) {
+        if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0) {
           setProcessedImageUrl(null);
           return;
         }
