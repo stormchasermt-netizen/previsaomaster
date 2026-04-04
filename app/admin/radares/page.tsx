@@ -199,10 +199,36 @@ export default function AdminRadaresPage() {
     return () => { isMounted = false; };
   }, []);
 
+
+  // useEffect separado para o clique de escolha de centro da imagem
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReady) return;
     const map = mapInstanceRef.current;
-    if (baseMapId === 'dark') {
+    
+    if (pickingImageCenter) {
+      map.setOptions({ draggableCursor: 'crosshair' });
+    } else {
+      map.setOptions({ draggableCursor: '' });
+    }
+
+    const clickListener = map.addListener('click', (e: any) => {
+      if (pickingImageCenter && e.latLng) {
+        setImageCenterLat(e.latLng.lat());
+        setImageCenterLng(e.latLng.lng());
+        setPickingImageCenter(false);
+      }
+    });
+
+    return () => {
+      google.maps.event.removeListener(clickListener);
+    };
+  }, [mapReady, pickingImageCenter]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReady) return;
+    const map = mapInstanceRef.current;
+    
+if (baseMapId === 'dark') {
       map.setMapTypeId('roadmap');
       map.setOptions({ styles: MAP_STYLE_DARK });
     } else if (baseMapId === 'light') {
@@ -428,9 +454,23 @@ export default function AdminRadaresPage() {
     const id = (selectedStation.type === 'cptec' && radarSource === 'redemet') ? `${slug}-redemet` : slug;
     
     const isIpmet = selectedStation.type === 'cptec' && (s as CptecRadarStation).slug === 'ipmet-bauru';
-    const computedBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function'
-      ? calculateRadarBoundsGeodesic(lat, lng, rangeKm)
-      : calculateRadarBounds(lat, lng, rangeKm);
+    
+    // Calcula os bounds com base no centro da IMAGEM (ou fallback pro centro do radar se nulo/0)
+    const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : lat;
+    const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : lng;
+
+    let computedBounds;
+    const isDefaultIpmetSave = isIpmet && (s as CptecRadarStation).bounds && imageCenterLat === 0 && imageCenterLng === 0 && rangeKm === (s as CptecRadarStation).rangeKm;
+    if (isDefaultIpmetSave) {
+      computedBounds = {
+        ne: { lat: (s as CptecRadarStation).bounds!.maxLat, lng: (s as CptecRadarStation).bounds!.maxLon },
+        sw: { lat: (s as CptecRadarStation).bounds!.minLat, lng: (s as CptecRadarStation).bounds!.minLon }
+      };
+    } else {
+      const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
+      computedBounds = calcBounds(latForBounds, lngForBounds, rangeKm);
+    }
+    
     setSaving(true);
     try {
       await saveRadarConfig({
@@ -441,6 +481,8 @@ export default function AdminRadaresPage() {
         bounds: computedBounds,
         lat,
         lng,
+        imageCenterLat: imageCenterLat !== 0 ? imageCenterLat : undefined,
+        imageCenterLng: imageCenterLng !== 0 ? imageCenterLng : undefined,
         rangeKm,
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,
@@ -493,8 +535,8 @@ export default function AdminRadaresPage() {
     originalAntennaMarkerRef.current = originalMarker;
 
     // Marcador Editável (Centro da Máscara)
-    const lat = liveCenter ? liveCenter.lat : centerLat;
-    const lng = liveCenter ? liveCenter.lng : centerLng;
+    const lat = liveCenter ? liveCenter.lat : (imageCenterLat !== 0 ? imageCenterLat : centerLat);
+    const lng = liveCenter ? liveCenter.lng : (imageCenterLng !== 0 ? imageCenterLng : centerLng);
     const marker = new google.maps.Marker({
       map,
       position: { lat, lng },
@@ -507,7 +549,7 @@ export default function AdminRadaresPage() {
         strokeColor: "#ffffff",
         strokeWeight: 2,
       },
-      title: 'Centro da Máscara (Arraste para mover)',
+      title: 'Centro da Imagem (Arraste para mover)',
       zIndex: 1000,
     });
     marker.addListener('dragend', () => {
@@ -515,8 +557,8 @@ export default function AdminRadaresPage() {
       if (pos) {
         const newLat = pos.lat();
         const newLng = pos.lng();
-        setCenterLat(newLat);
-        setCenterLng(newLng);
+        setImageCenterLat(newLat);
+        setImageCenterLng(newLng);
         setLiveCenter(null);
         handleSavePosition(newLat, newLng);
       }
@@ -591,8 +633,63 @@ export default function AdminRadaresPage() {
           ctx.putImageData(imgData, 0, 0);
         }
         
+        // 3. Circular Mask (Ipmet Bauru / Prudente)
+        const isIpmet = selectedStation?.type === 'cptec' && 
+          ((selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru' || (selectedStation.station as CptecRadarStation).slug === 'ipmet-prudente');
+        
+        if (isIpmet && selectedStation?.type === 'cptec') {
+          const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
+          const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
+          const isDefaultIpmet = !!(selectedStation.station as CptecRadarStation).bounds;
+          const calcBounds = typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
+          const defaultB = isDefaultIpmet
+            ? {
+                sw: { lat: (selectedStation.station as CptecRadarStation).bounds!.minLat, lng: (selectedStation.station as CptecRadarStation).bounds!.minLon },
+                ne: { lat: (selectedStation.station as CptecRadarStation).bounds!.maxLat, lng: (selectedStation.station as CptecRadarStation).bounds!.maxLon }
+              }
+            : calcBounds(latForBounds, lngForBounds, rangeKm);
+          
+          const currentB = (useCustomBounds && customBounds) ? { 
+             sw: { lat: customBounds.south, lng: customBounds.west }, 
+             ne: { lat: customBounds.north, lng: customBounds.east } 
+          } : defaultB;
+
+          const boundsForMask = {
+             north: currentB.ne.lat,
+             south: currentB.sw.lat,
+             east: currentB.ne.lng,
+             west: currentB.sw.lng,
+          };
+          
+          const W = canvas.width;
+          const H = canvas.height;
+          const cx = W * (centerLng - boundsForMask.west) / (boundsForMask.east - boundsForMask.west);
+          const cy = H * (boundsForMask.north - centerLat) / (boundsForMask.north - boundsForMask.south);
+          
+          const radiusLatDeg = rangeKm / 111.32;
+          const radiusLonDeg = rangeKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
+          
+          const rx = W * (radiusLonDeg / (boundsForMask.east - boundsForMask.west));
+          const ry = H * (radiusLatDeg / (boundsForMask.north - boundsForMask.south));
+          
+          const maskCanvas = document.createElement('canvas');
+          maskCanvas.width = W;
+          maskCanvas.height = H;
+          const maskCtx = maskCanvas.getContext('2d');
+          if (maskCtx) {
+            maskCtx.fillStyle = 'black';
+            maskCtx.beginPath();
+            maskCtx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+            maskCtx.fill();
+            
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(maskCanvas, 0, 0);
+            ctx.globalCompositeOperation = 'source-over'; // reset
+          }
+        }
+        
         // Se NENHUM filtro extra foi ativado, não force a renderização para economizar processamento
-        if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0) {
+        if (chromaKeyDeltaThreshold === 0 && cropTop === 0 && cropBottom === 0 && cropLeft === 0 && cropRight === 0 && !isIpmet) {
           setProcessedImageUrl(null);
           return;
         }
@@ -605,7 +702,7 @@ export default function AdminRadaresPage() {
     };
     runFilter();
     return () => { active = false; };
-  }, [previewImageUrl, chromaKeyDeltaThreshold, cropTop, cropBottom, cropLeft, cropRight]);
+  }, [previewImageUrl, chromaKeyDeltaThreshold, cropTop, cropBottom, cropLeft, cropRight, selectedStation, centerLat, centerLng, imageCenterLat, imageCenterLng, rangeKm, customBounds, useCustomBounds]);
 
   /** Overlay da imagem no mapa — arrastável, e Suporte a Rectangle Bounds */
   useEffect(() => {
@@ -621,13 +718,21 @@ export default function AdminRadaresPage() {
       ((selectedStation.station as CptecRadarStation).slug === 'ipmet-bauru' || (selectedStation.station as CptecRadarStation).slug === 'ipmet-prudente');
     const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
     
-    // Para radares com limites fixos (mosaicos como IPMet), usamos eles como defaultB em vez de calcular a partir do centro
-    const defaultB = (isIpmet && selectedStation?.type === 'cptec' && selectedStation.station.bounds)
+    const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
+    const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
+
+    // Para radares com limites fixos (mosaicos como IPMet), usamos eles como defaultB em vez de calcular a partir do centro.
+    // A imagem do mosaico tem um tamanho fixo e nunca deve ser espremida num quadrado.
+    const isDefaultIpmet = isIpmet && 
+                           selectedStation?.type === 'cptec' && 
+                           (selectedStation.station as CptecRadarStation).bounds;
+
+    const defaultB = isDefaultIpmet
       ? {
-          sw: { lat: selectedStation.station.bounds.minLat, lng: selectedStation.station.bounds.minLon },
-          ne: { lat: selectedStation.station.bounds.maxLat, lng: selectedStation.station.bounds.maxLon }
+          sw: { lat: (selectedStation.station as CptecRadarStation).bounds!.minLat, lng: (selectedStation.station as CptecRadarStation).bounds!.minLon },
+          ne: { lat: (selectedStation.station as CptecRadarStation).bounds!.maxLat, lng: (selectedStation.station as CptecRadarStation).bounds!.maxLon }
         }
-      : calcBounds(centerLat, centerLng, rangeKm);
+      : calcBounds(latForBounds, lngForBounds, rangeKm);
     
     // Matriz Fonte de Origem
     const currentB = (useCustomBounds && customBounds) ? { 
@@ -865,7 +970,21 @@ export default function AdminRadaresPage() {
     const isIpmet = selectedStation.type === 'cptec' && 
       ((s as CptecRadarStation).slug === 'ipmet-bauru' || (s as CptecRadarStation).slug === 'ipmet-prudente');
     const calcBounds = isIpmet && typeof calculateRadarBoundsGeodesic === 'function' ? calculateRadarBoundsGeodesic : calculateRadarBounds;
-    const computedBounds = calcBounds(centerLat, centerLng, rangeKm);
+    
+    // Calcula os bounds com base no centro da IMAGEM (ou fallback pro centro do radar se nulo/0)
+    const latForBounds = (imageCenterLat !== 0) ? imageCenterLat : centerLat;
+    const lngForBounds = (imageCenterLng !== 0) ? imageCenterLng : centerLng;
+    
+    let computedBounds;
+    const isDefaultIpmetSave = isIpmet && (s as CptecRadarStation).bounds;
+    if (isDefaultIpmetSave) {
+      computedBounds = {
+        ne: { lat: (s as CptecRadarStation).bounds!.maxLat, lng: (s as CptecRadarStation).bounds!.maxLon },
+        sw: { lat: (s as CptecRadarStation).bounds!.minLat, lng: (s as CptecRadarStation).bounds!.minLon }
+      };
+    } else {
+      computedBounds = calcBounds(latForBounds, lngForBounds, rangeKm);
+    }
     
     setSaving(true);
     try {
@@ -877,6 +996,8 @@ export default function AdminRadaresPage() {
         bounds: computedBounds,
         lat: centerLat,
         lng: centerLng,
+        imageCenterLat: imageCenterLat !== 0 ? imageCenterLat : undefined,
+        imageCenterLng: imageCenterLng !== 0 ? imageCenterLng : undefined,
         rangeKm,
         updateIntervalMinutes: updateIntervalMinutes,
         rotationDegrees: rotationDegrees,

@@ -53,15 +53,28 @@ function findCptecBySlug(slug: string, radarConfigs?: RadarConfig[]): CptecRadar
     const config = radarConfigs.find(c => c.stationSlug === base.slug);
     if (config) {
       const merged = { ...base, iconLat: base.lat, iconLng: base.lng };
-      if (config.lat !== undefined && config.lat !== 0) merged.lat = config.lat;
-      if (config.lng !== undefined && config.lng !== 0) merged.lng = config.lng;
+      
+      if (config.lat !== undefined && config.lat !== 0) merged.iconLat = config.lat;
+      if (config.lng !== undefined && config.lng !== 0) merged.iconLng = config.lng;
+      
+      merged.lat = merged.iconLat;
+      merged.lng = merged.iconLng;
+
       if (config.rangeKm !== undefined && config.rangeKm !== 0) merged.rangeKm = config.rangeKm;
+      
       if (config.customBounds && config.customBounds.north) {
         merged.bounds = {
           maxLat: config.customBounds.north,
           minLat: config.customBounds.south,
           maxLon: config.customBounds.east,
           minLon: config.customBounds.west
+        };
+      } else if (config.bounds && config.bounds.ne) {
+        merged.bounds = {
+          maxLat: config.bounds.ne.lat,
+          minLat: config.bounds.sw.lat,
+          maxLon: config.bounds.ne.lng,
+          minLon: config.bounds.sw.lng
         };
       }
       return merged;
