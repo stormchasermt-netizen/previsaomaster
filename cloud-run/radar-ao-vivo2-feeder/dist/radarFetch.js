@@ -14,6 +14,19 @@ export const CLIMATEMPO_POA_LATEST = 'https://statics.climatempo.com.br/radar_po
  * Ordem alfabética para diffs estáveis.
  */
 export const DEFAULT_SYNC_SLUGS = [
+    'sipam-belem',
+    'sipam-boavista',
+    'sipam-cruzeirodosul',
+    'sipam-macapa',
+    'sipam-manaus',
+    'sipam-portovelho',
+    'sipam-santarem',
+    'sipam-saogabriel',
+    'sipam-tabatinga',
+    'sipam-tefe',
+    'sipam-natal',
+    'sipam-saoluis',
+    'sipam-teresina',
     'almeirim',
     'almenara',
     'belem',
@@ -1065,4 +1078,59 @@ export async function downloadSigmaImagesInWindow(slug, nominalTs12, windowMinut
     if (station.sigmaConfig.vento)
         await fetchProduct(station.sigmaConfig.vento, 'doppler');
     return found;
+}
+export async function downloadSipamImagesInWindow(slug, targetTs12, windowMinutes, sipamSlug) {
+    const images = [];
+    try {
+        const res = await fetch('https://apihidro.sipam.gov.br/radares/', {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://hidro.sipam.gov.br/',
+            },
+            signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok)
+            throw new Error(`HTTP ${res.status}`);
+        const radars = await res.json();
+        const radar = radars.find((r) => r.nomeRadar === sipamSlug);
+        if (!radar || !radar.varreduras || radar.varreduras.length === 0) {
+            return images;
+        }
+        const frames = radar.varreduras.map((v) => {
+            const d = new Date(v);
+            const ts12 = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}${String(d.getUTCHours()).padStart(2, '0')}${String(d.getUTCMinutes()).padStart(2, '0')}`;
+            const sipamTs = `${d.getUTCFullYear()}_${String(d.getUTCMonth() + 1).padStart(2, '0')}_${String(d.getUTCDate()).padStart(2, '0')}_${String(d.getUTCHours()).padStart(2, '0')}_${String(d.getUTCMinutes()).padStart(2, '0')}_${String(d.getUTCSeconds()).padStart(2, '0')}`;
+            return { ts12, sipamTs };
+        });
+        frames.sort((a, b) => b.ts12.localeCompare(a.ts12));
+        const windowEnd = parseInt(targetTs12, 10);
+        const validFrames = frames.filter((f) => parseInt(f.ts12, 10) <= windowEnd).slice(0, 12);
+        for (const frame of validFrames) {
+            const imgUrl = `https://siger.sipam.gov.br/radar/${sipamSlug}/dbz/${frame.sipamTs}.png`;
+            const fileName = `${slug}_${frame.ts12}.png`;
+            try {
+                const imgRes = await fetch(imgUrl, {
+                    signal: AbortSignal.timeout(15000),
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Referer': 'https://hidro.sipam.gov.br/'
+                    }
+                });
+                if (imgRes.ok) {
+                    const buf = Buffer.from(await imgRes.arrayBuffer());
+                    images.push({ buffer: buf, fileName, url: imgUrl, ts12: frame.ts12, layer: 'ppi' });
+                }
+                else {
+                    console.log(`[SIPAM] Falha ao baixar ${imgUrl}: ${imgRes.status}`);
+                }
+            }
+            catch (e) {
+                console.log(`[SIPAM] Falha ao baixar ${imgUrl}: ${e.message}`);
+            }
+        }
+    }
+    catch (e) {
+        console.error(`[SIPAM] Erro ao buscar lista ${sipamSlug}: ${e.message}`);
+    }
+    return images;
 }

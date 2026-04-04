@@ -13,6 +13,7 @@ import {
   downloadSimeparImagesInWindow,
   downloadIpmetRainviewerInWindow,
   downloadSigmaImagesInWindow,
+  downloadSipamImagesInWindow,
   ts12ToUtcMs,
 } from './radarFetch.js';
 
@@ -165,7 +166,7 @@ async function executeSync(targetSlug?: string): Promise<{
       return exists;
     };
 
-    let found;
+    let found: any[];
     if (slug.startsWith('argentina-')) {
       found = await downloadArgentinaImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
         checkExists,
@@ -178,6 +179,14 @@ async function executeSync(targetSlug?: string): Promise<{
       found = await downloadSigmaImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
         checkExists,
       });
+    } else if (slug.startsWith('sipam-')) {
+      const baseSlug = slug.replace('sipam-', '');
+      const sipamSlug = CPTEC_STATIONS[baseSlug]?.sipamSlug || CPTEC_STATIONS[slug]?.sipamSlug;
+      if (sipamSlug) {
+        found = await downloadSipamImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, sipamSlug);
+      } else {
+        found = [];
+      }
     } else if (slug === 'simepar-cascavel') {
       found = await downloadSimeparImagesInWindow(slug, nominalTs12, SYNC_WINDOW_MINUTES, {
         checkExists,
@@ -255,6 +264,15 @@ async function executeHistorico(targetTs12: string, windowMinutes: number): Prom
       if (st && st.sigmaConfig) {
         const sigma = await downloadSigmaImagesInWindow(slug, targetTs12, windowMinutes);
         r = sigma.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
+      } else {
+        r = [];
+      }
+    } else if (slug.startsWith('sipam-')) {
+      const baseSlug = slug.replace('sipam-', '');
+      const sipamSlug = CPTEC_STATIONS[baseSlug]?.sipamSlug || CPTEC_STATIONS[slug]?.sipamSlug;
+      if (sipamSlug) {
+        const sipamData = await downloadSipamImagesInWindow(slug, targetTs12, windowMinutes, sipamSlug);
+        r = sipamData.map(s => ({ buffer: s.buffer, fileName: s.fileName, url: s.url }));
       } else {
         r = [];
       }
