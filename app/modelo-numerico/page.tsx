@@ -8,6 +8,7 @@ import {
   formatRodadaDropdownLabel,
   getForecastHourFromRun,
   domainLabel,
+  getRunInitUtcMs,
 } from '@/lib/wrfModelRuns';
 import { getMapBoundsForRunFolder, imagePixelToLatLonParana, imagePixelToLatLonCentroSul, isParanaRun } from '@/lib/wrfDomainBounds';
 
@@ -342,8 +343,9 @@ function getValidDateStr(name: string) {
       .then(r => r.json())
       .then(data => {
         if (data.runs && data.runs.length > 0) {
-          setRuns(data.runs);
-          setSelectedRun(data.runs[0]);
+          const sorted = [...data.runs].sort((a, b) => getRunInitUtcMs(b) - getRunInitUtcMs(a));
+          setRuns(sorted);
+          setSelectedRun(sorted[0]);
         } else {
           setIsLoading(false);
         }
