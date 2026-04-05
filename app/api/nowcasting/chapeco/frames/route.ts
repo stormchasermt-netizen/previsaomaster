@@ -35,10 +35,11 @@ export async function GET(request: Request) {
     products = cached.products;
   } else {
     const encodedName = encodeURIComponent('Chapecó');
-    const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/2247/imagens?quantidade=400&nome=${encodedName}`;
+    const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/2247/imagens?quantidade=48&nome=${encodedName}`;
 
     try {
-      const res = await fetch(apiUrl, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+      // increased timeout to 25s, lowered quantidade to 48 (last 8 hours of 10-min data) to avoid payload too large aborts from Nowcasting CDN
+      const res = await fetch(apiUrl, { cache: 'no-store', signal: AbortSignal.timeout(25000) });
       if (!res.ok) {
         return NextResponse.json({ error: `Nowcasting API error: ${res.status}` }, { status: res.status });
       }
@@ -51,6 +52,8 @@ export async function GET(request: Request) {
 
   const productData = products.find(p => p.id === radarId);
   if (!productData || !productData.imagens || productData.imagens.length === 0) {
+    // try checking if any product exists just for debug info
+    console.log(`[chapeco/frames] radarId=${radarId} not found in products. Available IDs:`, products.map(p => p.id));
     return NextResponse.json({ frames: [] });
   }
 
