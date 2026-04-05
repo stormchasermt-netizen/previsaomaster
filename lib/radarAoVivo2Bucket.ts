@@ -25,6 +25,12 @@ export function isValidRadarAoVivo2ObjectPath(filePath: string): boolean {
     if (!isValidRadarAoVivo2StationSlug(slug)) return false;
     if (!/^[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|gif)$/i.test(name)) return false;
     return true;
+  } else if (parts.length === 4 && parts[0] === 'historico') {
+    const [, slug, date, name] = parts;
+    if (!isValidRadarAoVivo2StationSlug(slug)) return false;
+    if (!/^\d{8}$/.test(date)) return false;
+    if (!/^[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|gif)$/i.test(name)) return false;
+    return true;
   }
   return false;
 }
