@@ -121,26 +121,29 @@ export async function POST(req: NextRequest) {
       // CHAPECO (NOWCASTING API DIRECT)
       if (slug === 'chapeco') {
         try {
-          const resPpi = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=2247`);
+          const resPpi = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=R12137761`);
           if (resPpi.ok) {
             const data = await resPpi.json();
             if (data.frames) {
               const valid = data.frames.filter((f: any) => f.ts12 <= targetTs12).slice(-12);
               valid.forEach((f: any) => {
-                const epoch = new Date(f.datahora + 'Z').getTime();
-                results[slug].ppi.push({ name: `${f.ts12}.png`, url: `https://nowcasting.cptec.inpe.br/api/camadas/radar/2247/imagens/2/${epoch}` });
+                // The nowcasting API sometimes 404s on the epoch URL. Fallback to CPTEC CDN format:
+                const y = f.ts12.slice(0, 4);
+                const m = f.ts12.slice(4, 6);
+                results[slug].ppi.push({ name: `${f.ts12}.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppicz/${y}/${m}/R12137761_${f.ts12}.png` });
               });
             }
           }
           // doppler
-          const resDop = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=7762`);
+          const resDop = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=R12137762`);
           if (resDop.ok) {
             const data = await resDop.json();
             if (data.frames) {
               const valid = data.frames.filter((f: any) => f.ts12 <= targetTs12).slice(-12);
               valid.forEach((f: any) => {
-                const epoch = new Date(f.datahora + 'Z').getTime();
-                results[slug].doppler.push({ name: `${f.ts12}-ppivr.png`, url: `https://nowcasting.cptec.inpe.br/api/camadas/radar/7762/imagens/2/${epoch}` });
+                const y = f.ts12.slice(0, 4);
+                const m = f.ts12.slice(4, 6);
+                results[slug].doppler.push({ name: `${f.ts12}-ppivr.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppivr/${y}/${m}/R12137762_${f.ts12}.png` });
               });
             }
           }
