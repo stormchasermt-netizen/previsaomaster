@@ -10,7 +10,7 @@ import {
   domainLabel,
   getRunInitUtcMs,
 } from '@/lib/wrfModelRuns';
-import { getMapBoundsForRunFolder, imagePixelToLatLonParana, imagePixelToLatLonCentroSul, isParanaRun } from '@/lib/wrfDomainBounds';
+import { getMapBoundsForRunFolder, isParanaRun } from '@/lib/wrfDomainBounds';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl', 'scp', 'stp'],
@@ -70,7 +70,7 @@ function getValidDateStr(name: string) {
   return '';
 }
 
-  import * as pako from 'pako';
+  
 
   export default function NumericModelPage() {
   const [isMounted, setIsMounted] = useState(false);
@@ -88,8 +88,7 @@ function getValidDateStr(name: string) {
   // States para Sondagem (WRF)
   const [hoverPos, setHoverPos] = useState<{x: number, y: number, lat: number, lon: number, gridX?: number, gridY?: number} | null>(null);
   const [hoverValue, setHoverValue] = useState<number | null>(null);
-  const [currentDataArray, setCurrentDataArray] = useState<Float32Array | null>(null);
-    const [currentDataGridDims, setCurrentDataGridDims] = useState<{width: number, height: number, isFortran: boolean} | null>(null);
+  const [currentMapData, setCurrentMapData] = useState<{bounds: any, rows: number, cols: number, data: number[][]} | null>(null);
   const [isSoundingLoading, setIsSoundingLoading] = useState(false);
   const [soundingImageUrl, setSoundingImageUrl] = useState<string | null>(null);
   const [soundingPos, setSoundingPos] = useState<{lat: number, lon: number} | null>(null);
@@ -175,78 +174,37 @@ function getValidDateStr(name: string) {
       return;
     }
 
-    let lat: number;
-    let lon: number;
-    let gridX: number;
-    let gridY: number;
-    if (selectedRun && isParanaRun(selectedRun)) {
-      const ll = imagePixelToLatLonParana(
-        ox,
-        oy,
-        drawnWidth,
-        drawnHeight,
-        selectedVariable,
-        naturalWidth,
-        naturalHeight
-      );
-      if (!ll) {
-        setHoverPos(null);
-        setHoverValue(null);
-        return;
-      }
-      lat = ll.lat;
-      lon = ll.lon;
-      gridX = ll.gridX;
-      gridY = ll.gridY;
-    } else {
-      const ll = imagePixelToLatLonCentroSul(
-        ox,
-        oy,
-        drawnWidth,
-        drawnHeight,
-        selectedVariable,
-        naturalWidth,
-        naturalHeight
-      );
-      if (!ll) {
-        setHoverPos(null);
-        setHoverValue(null);
-        return;
-      }
-      lat = ll.lat;
-      lon = ll.lon;
-      gridX = ll.gridX;
-      gridY = ll.gridY;
+    if (!currentMapData) {
+      setHoverPos(null);
+      setHoverValue(null);
+      return;
     }
-  
-      setHoverPos({
-        x: ox,
-        y: oy,
-        lat,
-        lon,
-        gridX,
-        gridY,
-      });
 
-      // Se tivermos os dados numéricos carregados em memória para o frame atual, pegamos o valor
-      if (currentDataArray && currentDataGridDims) {
-        // Garantir que não está fora dos limites
-        if (gridX >= 0 && gridX < currentDataGridDims.width && gridY >= 0 && gridY < currentDataGridDims.height) {
-          // Flatten index para array 1D
-          let index = gridY * currentDataGridDims.width + gridX;
-          if (currentDataGridDims.isFortran) {
-            index = gridX * currentDataGridDims.height + gridY;
-          }
-          const val = currentDataArray[index];
-          // Pode ter valors de Fill / NaN na borda
-          setHoverValue(!isNaN(val) && val > -9000 ? val : null);
-        } else {
-          setHoverValue(null);
-        }
-      } else {
-        setHoverValue(null);
-      }
-    };
+    const percentX = ox / drawnWidth;
+    const percentY = oy / drawnHeight;
+
+    const lon = currentMapData.bounds.lon_min + (percentX * (currentMapData.bounds.lon_max - currentMapData.bounds.lon_min));
+    const lat = currentMapData.bounds.lat_max - (percentY * (currentMapData.bounds.lat_max - currentMapData.bounds.lat_min));
+
+    const colIndex = Math.floor(percentX * currentMapData.cols);
+    const rowIndex = Math.floor(percentY * currentMapData.rows);
+
+    setHoverPos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      lat,
+      lon,
+      gridX: colIndex,
+      gridY: rowIndex,
+    });
+
+    if (rowIndex >= 0 && rowIndex < currentMapData.rows && colIndex >= 0 && colIndex < currentMapData.cols) {
+      const val = currentMapData.data[rowIndex][colIndex];
+      setHoverValue(val);
+    } else {
+      setHoverValue(null);
+    }
+  };
 
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
     if (!hoverPos || !images[currentIndex]) return;
@@ -453,93 +411,28 @@ function getValidDateStr(name: string) {
     });
   }, [images]);
 
-  // Função para carregar .npy.gz do frame atual
+  // Função para carregar .json do frame atual
   useEffect(() => {
     async function loadDataForCurrentFrame() {
       const currentImage = images[currentIndex];
-      if (!currentImage || !currentImage.dataUrl) {
-        setCurrentDataArray(null);
+      if (!currentImage || !currentImage.url) {
+        setCurrentMapData(null);
         setHoverValue(null);
         return;
       }
 
       try {
-        const res = await fetch(currentImage.dataUrl);
-        if (!res.ok) throw new Error("Failed to fetch data");
-        const buf = await res.arrayBuffer();
-        
-        // Unzip .gz
-        const unzipped = pako.inflate(new Uint8Array(buf));
-        
-        // Parse basic .npy format header (np.save format v1.0 or v2.0)
-        // Magic string is 6 bytes: \x93NUMPY
-        const magic = new Uint8Array(unzipped.buffer, unzipped.byteOffset, 6);
-        if (magic[0] !== 0x93 || magic[1] !== 78 || magic[2] !== 85) {
-            throw new Error("Not a valid NPY file");
+        const jsonUrl = currentImage.url.replace('.jpg', '.json');
+        const res = await fetch(jsonUrl);
+        if (!res.ok) {
+          setCurrentMapData(null);
+          return;
         }
-        const major = unzipped[6];
-        let headerLen = 0;
-        let headerStr = "";
-        let dataOffset = 0;
-
-        if (major === 1) {
-            headerLen = new DataView(unzipped.buffer, unzipped.byteOffset + 8, 2).getUint16(0, true);
-            dataOffset = 10 + headerLen;
-            headerStr = new TextDecoder().decode(new Uint8Array(unzipped.buffer, unzipped.byteOffset + 10, headerLen));
-        } else if (major === 2) {
-            headerLen = new DataView(unzipped.buffer, unzipped.byteOffset + 8, 4).getUint32(0, true);
-            dataOffset = 12 + headerLen;
-            headerStr = new TextDecoder().decode(new Uint8Array(unzipped.buffer, unzipped.byteOffset + 12, headerLen));
-        }
-        
-        // Extract dimensions from the header dictionary string: {'descr': '<f2', 'fortran_order': False, 'shape': (651, 651), }
-        const shapeMatch = headerStr.match(/'shape':\s*\(\s*(\d+)\s*,\s*(\d+)/);
-        if (!shapeMatch) throw new Error("Could not parse shape from NPY header");
-        
-        const fortranMatch = headerStr.match(/'fortran_order':\s*(True|False)/);
-        const isFortran = fortranMatch ? fortranMatch[1] === 'True' : false;
-
-        const height = parseInt(shapeMatch[1], 10);
-        const width = parseInt(shapeMatch[2], 10);
-        setCurrentDataGridDims({width, height, isFortran});
-
-        // Verificamos o descritor do tipo. Definimos float16 ('<f2') no back-end.
-        // Javascript nativo nao tem Float16Array fácil, então vamos ler os Uint16 e converter
-        const isFloat16 = headerStr.includes("'<f2'");
-        const isFloat32 = headerStr.includes("'<f4'");
-
-        if (isFloat16) {
-          // Precisamos decodificar float16 para float32
-          const raw16 = new Uint16Array(unzipped.buffer, unzipped.byteOffset + dataOffset);
-          const f32 = new Float32Array(raw16.length);
-          for (let i = 0; i < raw16.length; i++) {
-              const h = raw16[i];
-              const s = (h & 0x8000) >> 15;
-              const e = (h & 0x7C00) >> 10;
-              const f = h & 0x03FF;
-
-              if (e === 0) {
-                  f32[i] = (s ? -1 : 1) * Math.pow(2, -14) * (f / 1024);
-              } else if (e === 0x1F) {
-                  f32[i] = f ? NaN : ((s ? -1 : 1) * Infinity);
-              } else {
-                  f32[i] = (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
-              }
-          }
-          setCurrentDataArray(f32);
-        } else if (isFloat32) {
-          setCurrentDataArray(new Float32Array(unzipped.buffer, unzipped.byteOffset + dataOffset));
-        } else {
-          // Se for float64
-          const f64 = new Float64Array(unzipped.buffer, unzipped.byteOffset + dataOffset);
-          const f32 = new Float32Array(f64.length);
-          for(let i=0; i<f64.length; i++) f32[i] = f64[i];
-          setCurrentDataArray(f32);
-        }
-
+        const data = await res.json();
+        setCurrentMapData(data);
       } catch (err) {
         console.error("Erro ao carregar dados numéricos do mapa:", err);
-        setCurrentDataArray(null);
+        setCurrentMapData(null);
       }
     }
 
