@@ -523,7 +523,6 @@ export default function AoVivo2Content() {
   const [histIsInterval, setHistIsInterval] = useState(false);
   const [histLoading, setHistLoading] = useState(false);
   const [historicalStats, setHistoricalStats] = useState<Record<string, number>>({});
-  const [historicalStats, setHistoricalStats] = useState<Record<string, number>>({});
 
   const startHistoricalJob = async () => {
     if (!histStartDate) return;
