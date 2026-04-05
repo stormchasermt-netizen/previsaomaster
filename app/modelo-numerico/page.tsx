@@ -460,8 +460,15 @@ function getValidDateStr(name: string) {
           setCurrentMapData(null);
           return;
         }
-        const data = await res.json();
-        setCurrentMapData(data);
+        
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          setCurrentMapData(data);
+        } else {
+          console.warn('Resposta não é JSON:', contentType);
+          setCurrentMapData(null);
+        }
       } catch (err) {
         console.error("Erro ao carregar dados numéricos do mapa:", err);
         setCurrentMapData(null);
