@@ -10,12 +10,27 @@ import {
   domainLabel,
   getRunInitUtcMs,
 } from '@/lib/wrfModelRuns';
-import { getMapBoundsForRunFolder, isParanaRun } from '@/lib/wrfDomainBounds';
+import { imagePixelToLatLonCentroSul } from '@/lib/wrfDomainBounds';
 
 const VARIABLE_CATEGORIES: Record<string, string[]> = {
   'Severo': ['hrt01km', 'hrt03km', 'mllr', 'mlcape', 'mucape', 'sblcl', 'scp', 'stp'],
   'Atributos da Tempestade': ['mdbz'],
   'Sinótico': ['T2m', 'Td_2m', 'Thetae_2m']
+};
+
+const VARIABLE_UNITS: Record<string, { unit: string; label: string }> = {
+  mlcape:    { unit: 'J/kg',   label: 'ml-CAPE' },
+  mucape:    { unit: 'J/kg',   label: 'mu-CAPE' },
+  mllr:      { unit: '°C/km', label: 'ml-LR' },
+  hrt01km:   { unit: 'm²/s²', label: 'SRH 0-1km' },
+  hrt03km:   { unit: 'm²/s²', label: 'SRH 0-3km' },
+  sblcl:     { unit: 'm',     label: 'sb-LCL' },
+  scp:       { unit: '',      label: 'SCP' },
+  stp:       { unit: '',      label: 'STP' },
+  mdbz:      { unit: 'dBZ',   label: 'Ref. Max.' },
+  T2m:       { unit: '°C',    label: 'Temp. 2m' },
+  Td_2m:     { unit: '°C',    label: 'Td 2m' },
+  Thetae_2m: { unit: 'K',     label: 'Theta-e 2m' },
 };
 
 /** Pastas no bucket que são só overlay — nunca aparecem na lista lateral / Outros */
@@ -138,72 +153,87 @@ function getValidDateStr(name: string) {
     // Show popup immediately when component mounts
     setShowPremiumPopup(true);
   }, []);
-    const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
-    // Como a imagem pode estar redimensionada com object-fit: contain, 
-    // precisamos saber o tamanho REAL pintado na tela em vez do tamanho da <img> tag inteira
+  const mapImageToCoords = (e: React.MouseEvent<HTMLImageElement>) => {
     const imgElement = e.currentTarget;
     const rect = imgElement.getBoundingClientRect();
-    
-    // Obter as dimensões naturais e da tag
     const naturalWidth = imgElement.naturalWidth;
     const naturalHeight = imgElement.naturalHeight;
-    
     if (naturalWidth === 0 || naturalHeight === 0) return;
-    
-    // Calcula a proporção da imagem pintada dentro do container (para object-fit: contain)
+
+    // Posição do mouse dentro do contêiner da <img> (sem compensar object-fit ainda)
+    const containerOffsetX = e.clientX - rect.left;
+    const containerOffsetY = e.clientY - rect.top;
+
+    // Compensar object-fit: contain — descobrir a área realmente desenhada
     const scaleX = rect.width / naturalWidth;
     const scaleY = rect.height / naturalHeight;
     const scale = Math.min(scaleX, scaleY);
-    
-    // Tamanho final desenhado na tela
-    const drawnWidth = naturalWidth * scale;
+    const drawnWidth  = naturalWidth  * scale;
     const drawnHeight = naturalHeight * scale;
-    
-    // As bordas vazias (espaço em branco criado pelo object-fit)
-    const emptySpaceX = (rect.width - drawnWidth) / 2;
+    const emptySpaceX = (rect.width  - drawnWidth)  / 2;
     const emptySpaceY = (rect.height - drawnHeight) / 2;
-    
-    // O clique do rato (e.clientX) convertido para coordenadas dentro da imagem DESENHADA
-    const ox = e.clientX - rect.left - emptySpaceX;
-    const oy = e.clientY - rect.top - emptySpaceY;
-    
-    // Se clicou fora da área desenhada da imagem (nas bordas vazias do contain), ignora
+
+    // Posição dentro da imagem desenhada (pixels escalados)
+    const ox = containerOffsetX - emptySpaceX;
+    const oy = containerOffsetY - emptySpaceY;
     if (ox < 0 || ox > drawnWidth || oy < 0 || oy > drawnHeight) {
       setHoverPos(null);
       setHoverValue(null);
       return;
     }
 
-    if (!currentMapData) {
+    // Converter para pixels no espaço da imagem natural (para passar para imagePixelToLatLonCentroSul)
+    const nativeX = ox / scale;
+    const nativeY = oy / scale;
+
+    // ETAPA 1: pixel → lat/lon usando a projeção LCC correta (descontando colorbar e legendas)
+    // imagePixelToLatLonCentroSul espera offsetX/Y no espaço nativo e rectWidth/Height também nativos
+    const domain = parsedSelectedRun?.domain ?? 'centro-sul';
+    let coords: { lat: number; lon: number } | null = null;
+
+    if (domain === 'centro-sul' || !domain) {
+      coords = imagePixelToLatLonCentroSul(
+        nativeX, nativeY,
+        naturalWidth, naturalHeight,  // passa dimensões nativas como rectWidth/Height
+        selectedVariable,
+        naturalWidth, naturalHeight
+      );
+    } else {
+      // Para domínios sem função LCC dedicada: fallback linear com bounds do JSON
+      // (menos preciso mas evita travar a tela)
+      if (!currentMapData) { setHoverPos(null); setHoverValue(null); return; }
+      const percentX = ox / drawnWidth;
+      const percentY = oy / drawnHeight;
+      const lon = currentMapData.bounds.lon_min + percentX * (currentMapData.bounds.lon_max - currentMapData.bounds.lon_min);
+      const lat = currentMapData.bounds.lat_max - percentY * (currentMapData.bounds.lat_max - currentMapData.bounds.lat_min);
+      coords = { lat, lon };
+    }
+
+    if (!coords) {
+      // Mouse está sobre legenda/colorbar — sem dado nessa área
       setHoverPos(null);
       setHoverValue(null);
       return;
     }
 
-    const percentX = ox / drawnWidth;
-    const percentY = oy / drawnHeight;
+    const { lat, lon } = coords;
 
-    const lon = currentMapData.bounds.lon_min + (percentX * (currentMapData.bounds.lon_max - currentMapData.bounds.lon_min));
-    const lat = currentMapData.bounds.lat_max - (percentY * (currentMapData.bounds.lat_max - currentMapData.bounds.lat_min));
-
-    const colIndex = Math.floor(percentX * currentMapData.cols);
-    const rowIndex = Math.floor(percentY * currentMapData.rows);
-
-    setHoverPos({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      lat,
-      lon,
-      gridX: colIndex,
-      gridY: rowIndex,
-    });
-
-    if (rowIndex >= 0 && rowIndex < currentMapData.rows && colIndex >= 0 && colIndex < currentMapData.cols) {
-      const val = currentMapData.data[rowIndex][colIndex];
-      setHoverValue(val);
-    } else {
-      setHoverValue(null);
+    // ETAPA 2: lat/lon → índice na grade PlateCarree do JSON
+    let hval: number | null = null;
+    if (currentMapData) {
+      const b = currentMapData.bounds;
+      const percentXjson = (lon - b.lon_min) / (b.lon_max - b.lon_min);
+      const percentYjson = (b.lat_max - lat)  / (b.lat_max - b.lat_min);
+      const colIndex = Math.floor(percentXjson * currentMapData.cols);
+      const rowIndex = Math.floor(percentYjson  * currentMapData.rows);
+      if (rowIndex >= 0 && rowIndex < currentMapData.rows && colIndex >= 0 && colIndex < currentMapData.cols) {
+        const raw = currentMapData.data[rowIndex][colIndex];
+        hval = raw !== null && raw !== undefined ? raw : null;
+      }
     }
+
+    setHoverPos({ x: containerOffsetX, y: containerOffsetY, lat, lon });
+    setHoverValue(hval);
   };
 
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
@@ -422,9 +452,11 @@ function getValidDateStr(name: string) {
       }
 
       try {
-        const jsonUrl = currentImage.url.replace('.jpg', '.json');
+        // As imagens são .jpg — substitui para .json (o proxy aceita qualquer extensão do bucket)
+        const jsonUrl = currentImage.url.replace(/\.(jpg|jpeg|png)$/i, '.json');
         const res = await fetch(jsonUrl);
         if (!res.ok) {
+          // JSON ainda não existe para este frame (rodada anterior sem suporte)
           setCurrentMapData(null);
           return;
         }
@@ -792,28 +824,47 @@ function getValidDateStr(name: string) {
               )
             )}
 
-            {/* Hover tooltip for Lat/Lon */}
+            {/* Hover tooltip for Lat/Lon + Valor */}
             {hoverPos && !isSoundingLoading && !soundingImageUrl && (
-              <div 
-                className="absolute pointer-events-none bg-black/80 text-white text-[10px] px-2 py-1.5 rounded shadow-lg z-50 transform -translate-x-1/2 -translate-y-full mt-[-10px] min-w-[120px]"
-                style={{ 
-                  left: hoverPos.x, 
-                  top: hoverPos.y 
+              <div
+                className="absolute pointer-events-none z-50"
+                style={{
+                  left: hoverPos.x + 14,
+                  top: hoverPos.y - 10,
+                  transform: 'translateY(-100%)'
                 }}
               >
-                <div className="flex justify-between border-b border-gray-600 pb-1 mb-1">
-                  <span className="text-gray-400 uppercase tracking-widest text-[8px] font-bold">Coord:</span>
-                  <span>{hoverPos.lat.toFixed(3)}, {hoverPos.lon.toFixed(3)}</span>
-                </div>
-                
-                {hoverValue !== null && (
-                  <div className="flex justify-between items-center text-[12px] font-bold text-yellow-300">
-                    <span>Valor:</span>
-                    <span className="font-mono text-[14px]">{hoverValue.toFixed(1)}</span>
+                <div className="bg-slate-900/95 text-white text-[10px] px-2.5 py-2 rounded-lg shadow-xl ring-1 ring-white/10 min-w-[140px] space-y-1">
+                  {/* Coordenadas */}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-400 text-[8px] font-bold uppercase tracking-widest">Lat / Lon</span>
+                    <span className="font-mono text-[10px]">{hoverPos.lat.toFixed(2)}, {hoverPos.lon.toFixed(2)}</span>
                   </div>
-                )}
-                
-                <div className="text-blue-300 font-bold mt-1 text-[9px] text-center opacity-80">Clique para sondagem</div>
+
+                  {/* Valor da variável — só mostra se JSON carregou E tem dado nessa célula */}
+                  {currentMapData ? (
+                    hoverValue !== null ? (
+                      <div className="border-t border-white/10 pt-1 flex items-baseline justify-between gap-2">
+                        <span className="text-slate-300 text-[9px] font-semibold">
+                          {VARIABLE_UNITS[selectedVariable]?.label ?? selectedVariable}
+                        </span>
+                        <span className="font-mono font-bold text-yellow-300 text-[13px]">
+                          {hoverValue.toFixed(1)}
+                          {VARIABLE_UNITS[selectedVariable]?.unit
+                            ? <span className="text-slate-400 text-[9px] font-normal ml-0.5">{VARIABLE_UNITS[selectedVariable]?.unit}</span>
+                            : null
+                          }
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="border-t border-white/10 pt-1 text-slate-500 text-[9px] italic">Sem dado (área externa)</div>
+                    )
+                  ) : (
+                    <div className="border-t border-white/10 pt-1 text-slate-500 text-[9px] italic">JSON indisponível</div>
+                  )}
+
+                  <div className="text-blue-400 text-[8px] text-center opacity-70 pt-0.5">Clique → sondagem</div>
+                </div>
               </div>
             )}
 
