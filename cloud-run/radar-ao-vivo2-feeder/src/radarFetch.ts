@@ -747,7 +747,8 @@ export async function downloadCptecImagesFromNowcastingApi(
   options?: { fetchDoppler?: boolean; checkExists?: (fileName: string) => Promise<boolean> }
 ): Promise<CptecSyncedFile[]> {
   const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
-  const quantidade = 12; // Busca sempre só as últimas 12 da API (cobre a última 1 hora para radares de 5 min)
+  // If windowMinutes > 60, we need more than 12 images from Nowcasting (e.g. for historico)
+  const quantidade = windowMinutes > 60 ? Math.ceil(windowMinutes / 5) : 12; // Busca sempre só as últimas 12 da API (cobre a última 1 hora para radares de 5 min), a menos que solicitado histórico
   const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/${nw.id}/imagens?quantidade=${quantidade}&nome=${encodeURIComponent(nw.nome)}`;
   let data: NowcastingProduto[];
   try {
@@ -820,13 +821,16 @@ export async function downloadCptecImagesInWindow(
   options?: { fetchDoppler?: boolean; checkExists?: (fileName: string) => Promise<boolean> }
 ): Promise<CptecSyncedFile[]> {
   const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
+  
+  // if historico request, skip nowcasting API entirely
+  const isHistorico = windowMinutes > 60;
   const nw = NOWCASTING_RADAR_MAP[slug];
-  if (nw && process.env.CPTEC_SKIP_NOWCASTING_API !== 'true') {
+  if (!isHistorico && nw && process.env.CPTEC_SKIP_NOWCASTING_API !== 'true') {
     const fromApi = await downloadCptecImagesFromNowcastingApi(station, nw, windowMinutes, { fetchDoppler, checkExists: options?.checkExists });
     if (fromApi.length > 0) return fromApi;
   }
 
-  const candidates = enumerateMinuteTs12InWindow(nowTs12, windowMinutes);
+  const candidates = isHistorico ? enumerateMinuteTs12InWindow(nowTs12, windowMinutes).filter((_, i) => i % 10 === 0) : enumerateMinuteTs12InWindow(nowTs12, windowMinutes);
   const out: CptecSyncedFile[] = [];
 
   for (const ts12 of candidates) {
