@@ -51,6 +51,7 @@ let lastSyncAt: string | null = null;
 let lastCleanupAt: string | null = null;
 let lastAutoError: string | null = null;
 let jobRunning = false;
+let historicoJobRunning = false;
 
 function requireSecret(req: Request, res: Response, next: express.NextFunction) {
   if (!CRON_SECRET) {
@@ -483,15 +484,21 @@ app.post('/historico', requireSecret, async (req, res) => {
       return res.status(400).json({ error: 'Missing targetTs12 or windowMinutes' });
     }
     
+    historicoJobRunning = true;
+    
     // Run async so it doesn't block
     executeHistorico(targetTs12, windowMinutes)
-      .then(r => console.log('Historico finished', r))
-      .catch(e => console.error('Historico error', e));
+      .then(r => { console.log('Historico finished', r); historicoJobRunning = false; })
+      .catch(e => { console.error('Historico error', e); historicoJobRunning = false; });
       
     res.json({ ok: true, status: 'job_started', targetTs12, windowMinutes });
   } catch (error) {
     res.status(500).json({ error: String(error) });
   }
+});
+
+app.get('/historico-status', (req, res) => {
+  res.json({ running: historicoJobRunning });
 });
 
 app.all('/cleanup', requireSecret, async (req, res) => {

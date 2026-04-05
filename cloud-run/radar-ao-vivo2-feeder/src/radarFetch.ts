@@ -834,7 +834,11 @@ export async function downloadCptecImagesInWindow(
     if (options?.checkExists && await options.checkExists(ppiFileName)) {
       // Já existe, não precisamos sacar o PPI
     } else {
-      const ppi = await fetchCptecPngFromCdn(station, ts12, 'ppi');
+      let ppi: any = await checkFirebaseStorageFallback(slug, ts12, 'reflectividade');
+        if (!ppi) {
+          const cdnPpi = await fetchCptecPngFromCdn(station, ts12, 'ppi');
+          if (cdnPpi) ppi = { buffer: cdnPpi.buffer, fileName: ppiFileName, url: cdnPpi.url };
+        }
       if (ppi) {
         out.push({
           ts12,
@@ -851,7 +855,11 @@ export async function downloadCptecImagesInWindow(
       if (options?.checkExists && await options.checkExists(dopFileName)) {
         // Já existe
       } else {
-        const dop = await fetchCptecPngFromCdn(station, ts12, 'doppler');
+        let dop: any = await checkFirebaseStorageFallback(slug, ts12, 'velocidade');
+          if (!dop) {
+            const cdnDop = await fetchCptecPngFromCdn(station, ts12, 'doppler');
+            if (cdnDop) dop = { buffer: cdnDop.buffer, fileName: dopFileName, url: cdnDop.url };
+          }
         if (dop) {
           out.push({
             ts12,
@@ -1199,7 +1207,11 @@ export async function downloadRedemetImagesInWindow(
     }
 
     if (shouldDownload) {
-      const got = await tryFetchRedemetImageForTs12(area, currentTs);
+      let got: any = await checkFirebaseStorageFallback(slug, currentTs, 'reflectividade');
+        if (!got) {
+          const live = await tryFetchRedemetImageForTs12(area, currentTs);
+          if (live) got = { buffer: live.buffer, fileName: fileName, url: live.url };
+        }
       if (got) {
         out.push({
           ts12: currentTs,
@@ -1384,6 +1396,24 @@ export async function downloadSigmaImagesInWindow(
   const nominalMs = ts12ToUtcMs(nominalTs12);
   const minMs = nominalMs - windowMinutes * 60 * 1000;
 
+  // HISTORICAL FALLBACK
+  if (Date.now() - nominalMs > 12 * 3600 * 1000) {
+    let currentTs = nominalTs12;
+    while (found.length < 12 && ts12ToUtcMs(currentTs) >= minMs) {
+      if (station.sigmaConfig.cappi) {
+        const fb = await checkFirebaseStorageFallback(slug, currentTs, 'reflectividade');
+        if (fb) found.push({ ts12: currentTs, layer: 'ppi', fileName: fb.fileName, url: fb.url, buffer: fb.buffer });
+      }
+      if (station.sigmaConfig.vento) {
+        const fbd = await checkFirebaseStorageFallback(slug, currentTs, 'velocidade');
+        if (fbd) found.push({ ts12: currentTs, layer: 'doppler', fileName: fbd.fileName, url: fbd.url, buffer: fbd.buffer });
+      }
+      currentTs = subtractMinutesFromTs12(currentTs, 10);
+    }
+    return found;
+  }
+
+
   const fetchProduct = async (codigo: number, layer: 'ppi' | 'doppler') => {
     try {
       const controller = new AbortController();
@@ -1439,6 +1469,20 @@ export async function downloadSipamImagesInWindow(
   sipamSlug: string
 ): Promise<CptecSyncedFile[]> {
   const images: CptecSyncedFile[] = [];
+
+  const tMs = ts12ToUtcMs(targetTs12);
+  const minMs = tMs - windowMinutes * 60 * 1000;
+
+  // HISTORICAL FALLBACK
+  if (Date.now() - tMs > 12 * 3600 * 1000) {
+    let currentTs = targetTs12;
+    while (images.length < 12 && ts12ToUtcMs(currentTs) >= minMs) {
+      const fb = await checkFirebaseStorageFallback(slug, currentTs, 'reflectividade');
+      if (fb) images.push({ ts12: currentTs, layer: 'ppi', fileName: fb.fileName, url: fb.url, buffer: fb.buffer });
+      currentTs = subtractMinutesFromTs12(currentTs, 15);
+    }
+    return images;
+  }
 
   try {
     const res = await fetch('https://apihidro.sipam.gov.br/radares/', {

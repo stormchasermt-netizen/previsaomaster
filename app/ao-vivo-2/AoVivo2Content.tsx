@@ -560,11 +560,11 @@ export default function AoVivo2Content() {
     } catch (e) {
       if (typeof addToast === 'function') addToast('Erro ao buscar histórico', 'error');
     } finally {
-      setHistLoading(false);
-    }
-  };
+      // setHistLoading(false) only when polling is done
+      }
+    };
 
-  const closeHistoricalMode = () => {
+    const closeHistoricalMode = () => {
     setIsHistoricalMode(false);
   };
 
