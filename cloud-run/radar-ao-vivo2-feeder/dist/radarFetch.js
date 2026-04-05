@@ -661,7 +661,8 @@ function pickNowcastingImageUrl(img, expectedTs12) {
  */
 export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMinutes, options) {
     const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
-    const quantidade = 12; // Busca sempre só as últimas 12 da API (cobre a última 1 hora para radares de 5 min)
+    // If windowMinutes > 60, we need more than 12 images from Nowcasting (e.g. for historico)
+    const quantidade = windowMinutes > 60 ? Math.ceil(windowMinutes / 5) : 12; // Busca sempre só as últimas 12 da API (cobre a última 1 hora para radares de 5 min), a menos que solicitado histórico
     const apiUrl = `https://nowcasting.cptec.inpe.br/api/camadas/radar/${nw.id}/imagens?quantidade=${quantidade}&nome=${encodeURIComponent(nw.nome)}`;
     let data;
     try {
@@ -728,13 +729,15 @@ export async function downloadCptecImagesFromNowcastingApi(station, nw, windowMi
  */
 export async function downloadCptecImagesInWindow(station, slug, nowTs12, windowMinutes, options) {
     const fetchDoppler = options?.fetchDoppler ?? process.env.CPTEC_FETCH_DOPPLER !== 'false';
+    // if historico request, skip nowcasting API entirely
+    const isHistorico = windowMinutes > 60;
     const nw = NOWCASTING_RADAR_MAP[slug];
-    if (nw && process.env.CPTEC_SKIP_NOWCASTING_API !== 'true') {
+    if (!isHistorico && nw && process.env.CPTEC_SKIP_NOWCASTING_API !== 'true') {
         const fromApi = await downloadCptecImagesFromNowcastingApi(station, nw, windowMinutes, { fetchDoppler, checkExists: options?.checkExists });
         if (fromApi.length > 0)
             return fromApi;
     }
-    const candidates = enumerateMinuteTs12InWindow(nowTs12, windowMinutes);
+    const candidates = isHistorico ? enumerateMinuteTs12InWindow(nowTs12, windowMinutes).filter((_, i) => i % 10 === 0) : enumerateMinuteTs12InWindow(nowTs12, windowMinutes);
     const out = [];
     for (const ts12 of candidates) {
         const ppiFileName = `${ts12}.png`;
@@ -742,7 +745,12 @@ export async function downloadCptecImagesInWindow(station, slug, nowTs12, window
             // Já existe, não precisamos sacar o PPI
         }
         else {
-            const ppi = await fetchCptecPngFromCdn(station, ts12, 'ppi');
+            let ppi = await checkFirebaseStorageFallback(slug, ts12, 'reflectividade');
+            if (!ppi) {
+                const cdnPpi = await fetchCptecPngFromCdn(station, ts12, 'ppi');
+                if (cdnPpi)
+                    ppi = { buffer: cdnPpi.buffer, fileName: ppiFileName, url: cdnPpi.url };
+            }
             if (ppi) {
                 out.push({
                     ts12,
@@ -759,7 +767,12 @@ export async function downloadCptecImagesInWindow(station, slug, nowTs12, window
                 // Já existe
             }
             else {
-                const dop = await fetchCptecPngFromCdn(station, ts12, 'doppler');
+                let dop = await checkFirebaseStorageFallback(slug, ts12, 'velocidade');
+                if (!dop) {
+                    const cdnDop = await fetchCptecPngFromCdn(station, ts12, 'doppler');
+                    if (cdnDop)
+                        dop = { buffer: cdnDop.buffer, fileName: dopFileName, url: cdnDop.url };
+                }
                 if (dop) {
                     out.push({
                         ts12,
@@ -1055,7 +1068,12 @@ export async function downloadRedemetImagesInWindow(slug, nowTs12, windowMinutes
             shouldDownload = false;
         }
         if (shouldDownload) {
-            const got = await tryFetchRedemetImageForTs12(area, currentTs);
+            let got = await checkFirebaseStorageFallback(slug, currentTs, 'reflectividade');
+            if (!got) {
+                const live = await tryFetchRedemetImageForTs12(area, currentTs);
+                if (live)
+                    got = { buffer: live.buffer, fileName: fileName, url: live.url };
+            }
             if (got) {
                 out.push({
                     ts12: currentTs,
@@ -1193,6 +1211,24 @@ export async function downloadSigmaImagesInWindow(slug, nominalTs12, windowMinut
     const found = [];
     const nominalMs = ts12ToUtcMs(nominalTs12);
     const minMs = nominalMs - windowMinutes * 60 * 1000;
+    // HISTORICAL FALLBACK
+    if (Date.now() - nominalMs > 12 * 3600 * 1000) {
+        let currentTs = nominalTs12;
+        while (found.length < 12 && ts12ToUtcMs(currentTs) >= minMs) {
+            if (station.sigmaConfig.cappi) {
+                const fb = await checkFirebaseStorageFallback(slug, currentTs, 'reflectividade');
+                if (fb)
+                    found.push({ ts12: currentTs, layer: 'ppi', fileName: fb.fileName, url: fb.url, buffer: fb.buffer });
+            }
+            if (station.sigmaConfig.vento) {
+                const fbd = await checkFirebaseStorageFallback(slug, currentTs, 'velocidade');
+                if (fbd)
+                    found.push({ ts12: currentTs, layer: 'doppler', fileName: fbd.fileName, url: fbd.url, buffer: fbd.buffer });
+            }
+            currentTs = subtractMinutesFromTs12(currentTs, 10);
+        }
+        return found;
+    }
     const fetchProduct = async (codigo, layer) => {
         try {
             const controller = new AbortController();
@@ -1243,6 +1279,19 @@ export async function downloadSigmaImagesInWindow(slug, nominalTs12, windowMinut
 }
 export async function downloadSipamImagesInWindow(slug, targetTs12, windowMinutes, sipamSlug) {
     const images = [];
+    const tMs = ts12ToUtcMs(targetTs12);
+    const minMs = tMs - windowMinutes * 60 * 1000;
+    // HISTORICAL FALLBACK
+    if (Date.now() - tMs > 12 * 3600 * 1000) {
+        let currentTs = targetTs12;
+        while (images.length < 12 && ts12ToUtcMs(currentTs) >= minMs) {
+            const fb = await checkFirebaseStorageFallback(slug, currentTs, 'reflectividade');
+            if (fb)
+                images.push({ ts12: currentTs, layer: 'ppi', fileName: fb.fileName, url: fb.url, buffer: fb.buffer });
+            currentTs = subtractMinutesFromTs12(currentTs, 15);
+        }
+        return images;
+    }
     try {
         const res = await fetch('https://apihidro.sipam.gov.br/radares/', {
             headers: {

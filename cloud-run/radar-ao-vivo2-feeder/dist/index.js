@@ -24,6 +24,7 @@ let lastSyncAt = null;
 let lastCleanupAt = null;
 let lastAutoError = null;
 let jobRunning = false;
+let historicoJobRunning = false;
 function requireSecret(req, res, next) {
     if (!CRON_SECRET) {
         console.warn('⚠️ CRON_SECRET not set. Protected endpoints are public!');
@@ -193,11 +194,15 @@ async function executeSync(targetSlug) {
         results,
     };
 }
-async function executeHistorico(targetTs12, windowMinutes) {
+async function executeHistorico(targetTs12, windowMinutes, reqSlug) {
     const bucket = storage.bucket(GCS_BUCKET);
     const results = [];
     const dateStr = targetTs12.substring(0, 8);
-    const activeSlugs = SYNC_SLUGS.filter(slug => !SLUGS_WITHOUT_CDN_SYNC.has(slug));
+    let activeSlugs = SYNC_SLUGS.filter(slug => !SLUGS_WITHOUT_CDN_SYNC.has(slug));
+    if (reqSlug) {
+        activeSlugs = activeSlugs.filter(slug => slug === reqSlug);
+    }
+    console.log(`[executeHistorico] Starting for targetTs12=${targetTs12}, windowMinutes=${windowMinutes}, slugs=${activeSlugs.length}`);
     // Clear existing history for all active slugs in parallel to speed up
     await Promise.all(activeSlugs.map(async (slug) => {
         try {
@@ -426,19 +431,23 @@ app.all('/sync', requireSecret, async (req, res) => {
 });
 app.post('/historico', requireSecret, async (req, res) => {
     try {
-        const { targetTs12, windowMinutes } = req.body;
+        const { targetTs12, windowMinutes, slug } = req.body;
         if (!targetTs12 || typeof windowMinutes !== 'number') {
             return res.status(400).json({ error: 'Missing targetTs12 or windowMinutes' });
         }
+        historicoJobRunning = true;
         // Run async so it doesn't block
-        executeHistorico(targetTs12, windowMinutes)
-            .then(r => console.log('Historico finished', r))
-            .catch(e => console.error('Historico error', e));
+        executeHistorico(targetTs12, windowMinutes, slug)
+            .then(r => { console.log('Historico finished', r); historicoJobRunning = false; })
+            .catch(e => { console.error('Historico error', e); historicoJobRunning = false; });
         res.json({ ok: true, status: 'job_started', targetTs12, windowMinutes });
     }
     catch (error) {
         res.status(500).json({ error: String(error) });
     }
+});
+app.get('/historico-status', (req, res) => {
+    res.json({ running: historicoJobRunning });
 });
 app.all('/cleanup', requireSecret, async (req, res) => {
     try {

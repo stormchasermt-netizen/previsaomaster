@@ -231,8 +231,9 @@ export async function POST(req: NextRequest) {
       // CPTEC (Generic)
       // Needs to find first valid via espiral
       try {
-        // Fetch radarConfigs to get station data
-        const configsRes = await fetch(`${origin}/api/radar-configs`);
+        // Fetch radarConfigs to get station data. 
+        // We use the local absolute URL to avoid external routing issues (which was causing 404/html responses)
+        const configsRes = await fetch(`${origin}/api/radar-configs`, { headers: { 'Content-Type': 'application/json' } });
         let station: any = null;
         if (configsRes.ok) {
           const configs = await configsRes.json();
