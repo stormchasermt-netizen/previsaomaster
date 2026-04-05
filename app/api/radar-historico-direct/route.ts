@@ -198,6 +198,32 @@ export async function POST(req: NextRequest) {
               }
             }
           }
+
+          // 3) If even nowcasting API had nothing (e.g. historical date), we will forge standard urls assuming 10-min interval, to at least attempt display without 404s crashing the loop
+          if (results[slug].ppi.length === 0) {
+            let curTs = targetTs12;
+            for (let i = 0; i < 12; i++) {
+              const y = curTs.slice(0, 4);
+              const m = curTs.slice(4, 6);
+              results[slug].ppi.push({ name: `${curTs}.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppicz/${y}/${m}/R12137761_${curTs}.png` });
+              const d = new Date(Date.UTC(parseInt(y), parseInt(m)-1, parseInt(curTs.slice(6,8)), parseInt(curTs.slice(8,10)), parseInt(curTs.slice(10,12))));
+              d.setUTCMinutes(d.getUTCMinutes() - 10);
+              curTs = `${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,'0')}${String(d.getUTCDate()).padStart(2,'0')}${String(d.getUTCHours()).padStart(2,'0')}${String(d.getUTCMinutes()).padStart(2,'0')}`;
+            }
+            results[slug].ppi.reverse();
+          }
+          if (results[slug].doppler.length === 0) {
+            let curTs = targetTs12;
+            for (let i = 0; i < 12; i++) {
+              const y = curTs.slice(0, 4);
+              const m = curTs.slice(4, 6);
+              results[slug].doppler.push({ name: `${curTs}-ppivr.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppivr/${y}/${m}/R12137762_${curTs}.png` });
+              const d = new Date(Date.UTC(parseInt(y), parseInt(m)-1, parseInt(curTs.slice(6,8)), parseInt(curTs.slice(8,10)), parseInt(curTs.slice(10,12))));
+              d.setUTCMinutes(d.getUTCMinutes() - 10);
+              curTs = `${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,'0')}${String(d.getUTCDate()).padStart(2,'0')}${String(d.getUTCHours()).padStart(2,'0')}${String(d.getUTCMinutes()).padStart(2,'0')}`;
+            }
+            results[slug].doppler.reverse();
+          }
         } catch(e) {}
         return;
       }
