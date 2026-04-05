@@ -57,6 +57,11 @@ export function getRedemetArea(slug: string): string | null {
   return CPTEC_TO_REDEMET[slug] ?? null;
 }
 
+export function getCptecSlugFromRedemetArea(area: string): string | null {
+  const entry = Object.entries(CPTEC_TO_REDEMET).find(([_, v]) => v === area);
+  return entry ? entry[0] : null;
+}
+
 /** Pasta no bucket `riobranco` ↔ slug de catálogo `rio-branco`. */
 export function bucketCatalogSlugFromBucketName(bucketSlug: string): string {
   if (bucketSlug === 'riobranco') return 'rio-branco';

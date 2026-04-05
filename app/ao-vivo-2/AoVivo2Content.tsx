@@ -31,7 +31,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { CPTEC_RADAR_STATIONS, getRadarImageBounds, type CptecRadarStation } from '@/lib/cptecRadarStations';
-import { hasRedemetFallback, getRedemetBucketSlugForCptecBucket } from '@/lib/redemetRadar';
+import { hasRedemetFallback, getRedemetBucketSlugForCptecBucket, getCptecSlugFromRedemetArea } from '@/lib/redemetRadar';
 import { hasSigmaFallback, getSigmaBucketSlugForCptecBucket, hasSipamFallback, getSipamBucketSlugForCptecBucket } from '@/lib/cptecRadarStations';
 import {
   filterClimatempoRadarImage,
@@ -651,7 +651,19 @@ export default function AoVivo2Content() {
     () => {
       const baseSlugs = new Set<string>();
       for (const s of stations) {
-        const base = bucketSlugToCatalogSlug(s);
+        let base = bucketSlugToCatalogSlug(s);
+        
+        // Se a pasta for puramente um fallback Redemet (ex: redemet-sg), 
+        // mapeamos para o radar base CPTEC correspondente (ex: santiago) 
+        // para não criar ícones duplicados.
+        if (base.startsWith('redemet-')) {
+          const area = base.replace('redemet-', '');
+          const cptecSlug = getCptecSlugFromRedemetArea(area);
+          if (cptecSlug) {
+            base = cptecSlug;
+          }
+        }
+
         if (Boolean(findCptecBySlug(base, radarConfigs))) {
           baseSlugs.add(base);
         }
