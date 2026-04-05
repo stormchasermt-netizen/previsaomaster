@@ -118,33 +118,84 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      // CHAPECO (NOWCASTING API DIRECT)
+      // CHAPECO (NOWCASTING API DIRECT OR FALLBACK)
       if (slug === 'chapeco') {
         try {
-          const resPpi = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=R12137761`);
-          if (resPpi.ok) {
-            const data = await resPpi.json();
-            if (data.frames) {
-              const valid = data.frames.filter((f: any) => f.ts12 <= targetTs12).slice(-12);
-              valid.forEach((f: any) => {
-                // The nowcasting API sometimes 404s on the epoch URL. Fallback to CPTEC CDN format:
-                const y = f.ts12.slice(0, 4);
-                const m = f.ts12.slice(4, 6);
-                results[slug].ppi.push({ name: `${f.ts12}.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppicz/${y}/${m}/R12137761_${f.ts12}.png` });
-              });
+          // 1) First attempt to get the exact data using the generic CPTEC logic via the espiral
+          // We can generate candidates like we do for Generic CPTEC and test them
+          const station = { id: 'R12137761', dopplerId: 'R12137762', server: ['s1','s2','s3','s0'], org: 'sdcsc', slug: 'chapeco' };
+          let curTs = targetTs12;
+          for (let i = 0; i < 12; i++) {
+            const candidatesPpi = [];
+            const candidatesDop = [];
+            for (let off = 0; off < 5; off++) {
+               const d = new Date(Date.UTC(parseInt(curTs.slice(0,4)), parseInt(curTs.slice(4,6))-1, parseInt(curTs.slice(6,8)), parseInt(curTs.slice(8,10)), parseInt(curTs.slice(10,12))));
+               d.setUTCMinutes(d.getUTCMinutes() - off);
+               const t = `${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,'0')}${String(d.getUTCDate()).padStart(2,'0')}${String(d.getUTCHours()).padStart(2,'0')}${String(d.getUTCMinutes()).padStart(2,'0')}`;
+               candidatesPpi.push(...getCptecUrlCandidates(station, t, 'ppi'));
+               candidatesDop.push(...getCptecUrlCandidates(station, t, 'doppler'));
+            }
+
+            const reqPpi = await fetch(`${origin}/api/radar-find-first-valid`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ urls: candidatesPpi })
+            });
+            if (reqPpi.ok) {
+              const res = await reqPpi.json();
+              if (res.exists && res.url) {
+                const m = res.url.match(/_(\d{12})\.png/);
+                const actualTs = m ? m[1] : curTs;
+                results[slug].ppi.push({ name: `${actualTs}.png`, url: res.url });
+              }
+            }
+
+            const reqDop = await fetch(`${origin}/api/radar-find-first-valid`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ urls: candidatesDop })
+            });
+            if (reqDop.ok) {
+              const res = await reqDop.json();
+              if (res.exists && res.url) {
+                const m = res.url.match(/_(\d{12})\.png/);
+                const actualTs = m ? m[1] : curTs;
+                results[slug].doppler.push({ name: `${actualTs}-ppivr.png`, url: res.url });
+              }
+            }
+
+            const d = new Date(Date.UTC(parseInt(curTs.slice(0,4)), parseInt(curTs.slice(4,6))-1, parseInt(curTs.slice(6,8)), parseInt(curTs.slice(8,10)), parseInt(curTs.slice(10,12))));
+            d.setUTCMinutes(d.getUTCMinutes() - 10);
+            curTs = `${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,'0')}${String(d.getUTCDate()).padStart(2,'0')}${String(d.getUTCHours()).padStart(2,'0')}${String(d.getUTCMinutes()).padStart(2,'0')}`;
+          }
+          results[slug].ppi.reverse();
+          results[slug].doppler.reverse();
+
+          // 2) If the espiral yielded nothing, we can try the nowcasting API frames directly
+          if (results[slug].ppi.length === 0) {
+            const resPpi = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=R12137761`);
+            if (resPpi.ok) {
+              const data = await resPpi.json();
+              if (data.frames) {
+                const valid = data.frames.filter((f: any) => f.ts12 <= targetTs12).slice(-12);
+                valid.forEach((f: any) => {
+                  const y = f.ts12.slice(0, 4);
+                  const m = f.ts12.slice(4, 6);
+                  results[slug].ppi.push({ name: `${f.ts12}.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppicz/${y}/${m}/R12137761_${f.ts12}.png` });
+                });
+              }
             }
           }
-          // doppler
-          const resDop = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=R12137762`);
-          if (resDop.ok) {
-            const data = await resDop.json();
-            if (data.frames) {
-              const valid = data.frames.filter((f: any) => f.ts12 <= targetTs12).slice(-12);
-              valid.forEach((f: any) => {
-                const y = f.ts12.slice(0, 4);
-                const m = f.ts12.slice(4, 6);
-                results[slug].doppler.push({ name: `${f.ts12}-ppivr.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppivr/${y}/${m}/R12137762_${f.ts12}.png` });
-              });
+          if (results[slug].doppler.length === 0) {
+            const resDop = await fetch(`${origin}/api/nowcasting/chapeco/frames?radarId=R12137762`);
+            if (resDop.ok) {
+              const data = await resDop.json();
+              if (data.frames) {
+                const valid = data.frames.filter((f: any) => f.ts12 <= targetTs12).slice(-12);
+                valid.forEach((f: any) => {
+                  const y = f.ts12.slice(0, 4);
+                  const m = f.ts12.slice(4, 6);
+                  results[slug].doppler.push({ name: `${f.ts12}-ppivr.png`, url: `https://s1.cptec.inpe.br/radar/sdcsc/chapeco/ppi/ppivr/${y}/${m}/R12137762_${f.ts12}.png` });
+                });
+              }
             }
           }
         } catch(e) {}
