@@ -1,6 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
+import * as admin from 'firebase-admin';
+import { getRadarAoVivo2BucketName } from '@/lib/radarAoVivo2Bucket';
 
 export const dynamic = 'force-dynamic';
+
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp();
+  } catch (error) {
+    console.error('Erro ao inicializar firebase-admin:', error);
+  }
+}
+
+async function downloadAndUpload(url: string, destSlug: string, targetName: string) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return false;
+    const buffer = await resp.arrayBuffer();
+    
+    const bucket = admin.storage().bucket(getRadarAoVivo2BucketName());
+    const dateSegment = targetName.slice(0, 8); // extrai YYYYMMDD do inicio do nome (ex: 202511072100.png)
+    let finalSlug = destSlug;
+    
+    // Simplificar slugs originados de fallbacks/alias para salvar no path limpo
+    if (finalSlug.startsWith('sigma-')) finalSlug = finalSlug.replace('sigma-', '');
+    if (finalSlug.startsWith('sipam-')) finalSlug = finalSlug.replace('sipam-', ''); 
+    if (finalSlug.startsWith('redemet-')) finalSlug = finalSlug.replace('redemet-', ''); // note: maybe keep it mapped, but frontend reads exact station. 
+
+    // Destino padrão de histórico do Ao Vivo 2: historico/<slug>/<YYYYMMDD>/<name>
+    const destPath = `historico/${finalSlug}/${dateSegment}/${targetName}`;
+    
+    const file = bucket.file(destPath);
+    await file.save(Buffer.from(buffer), {
+      contentType: 'image/png',
+      metadata: {
+         cacheControl: 'public, max-age=31536000, immutable'
+      }
+    });
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
 
 function getCptecUrlCandidates(station: any, ts12: string, layer: 'ppi' | 'doppler') {
   const urls: string[] = [];
@@ -126,8 +167,8 @@ export async function POST(req: NextRequest) {
           const station = { id: 'R12137761', dopplerId: 'R12137762', server: ['s1','s2','s3','s0'], org: 'sdcsc', slug: 'chapeco' };
           let curTs = targetTs12;
           for (let i = 0; i < 12; i++) {
-            const candidatesPpi = [];
-            const candidatesDop = [];
+            const candidatesPpi: string[] = [];
+            const candidatesDop: string[] = [];
             for (let off = 0; off < 5; off++) {
                const d = new Date(Date.UTC(parseInt(curTs.slice(0,4)), parseInt(curTs.slice(4,6))-1, parseInt(curTs.slice(6,8)), parseInt(curTs.slice(8,10)), parseInt(curTs.slice(10,12))));
                d.setUTCMinutes(d.getUTCMinutes() - off);
@@ -252,8 +293,8 @@ export async function POST(req: NextRequest) {
           let curTs = targetTs12;
           for (let i = 0; i < 12; i++) {
             // Generate candidates: exact, -1, -2, -3
-            const candidatesPpi = [];
-            const candidatesDop = [];
+            const candidatesPpi: string[] = [];
+            const candidatesDop: string[] = [];
             for (let off = 0; off < 5; off++) {
                const d = new Date(Date.UTC(parseInt(curTs.slice(0,4)), parseInt(curTs.slice(4,6))-1, parseInt(curTs.slice(6,8)), parseInt(curTs.slice(8,10)), parseInt(curTs.slice(10,12))));
                d.setUTCMinutes(d.getUTCMinutes() - off);
@@ -306,7 +347,33 @@ export async function POST(req: NextRequest) {
 
     await Promise.all(promises);
 
-    return NextResponse.json({ ok: true, results });
+    // === NEW PIPELINE: DOWNLAOD & UPLOAD TO BUCKET ===
+    // Agora que encontramos as URLs externas, vamos puxá-las pró-ativamente
+    // para acelerar a leitura no cliente e isolar falhas de CORS/404s.
+    const uploadPromises: Promise<void>[] = [];
+    const stats: Record<string, number> = {};
+
+    for (const slug of Object.keys(results)) {
+       stats[slug] = 0;
+       
+       for (const img of results[slug].ppi) {
+          uploadPromises.push((async () => {
+             const success = await downloadAndUpload(img.url, slug, img.name);
+             if (success) stats[slug]++;
+          })());
+       }
+       
+       for (const img of results[slug].doppler) {
+          uploadPromises.push((async () => {
+             const success = await downloadAndUpload(img.url, slug, img.name);
+             if (success) stats[slug]++;
+          })());
+       }
+    }
+    
+    await Promise.allSettled(uploadPromises);
+
+    return NextResponse.json({ ok: true, results, stats });
   } catch (error: any) {
     console.error('Error in radar-historico-direct:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

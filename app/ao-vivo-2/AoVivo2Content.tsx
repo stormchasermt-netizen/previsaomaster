@@ -522,6 +522,8 @@ export default function AoVivo2Content() {
   const [histEndDate, setHistEndDate] = useState('');
   const [histIsInterval, setHistIsInterval] = useState(false);
   const [histLoading, setHistLoading] = useState(false);
+  const [historicalStats, setHistoricalStats] = useState<Record<string, number>>({});
+  const [historicalStats, setHistoricalStats] = useState<Record<string, number>>({});
 
   const startHistoricalJob = async () => {
     if (!histStartDate) return;
@@ -570,42 +572,21 @@ export default function AoVivo2Content() {
       if (!res.ok) throw new Error('Erro ao iniciar job');
       
       const data = await res.json();
-      if (data.ok && data.results) {
-        const nextPpi = { ...imagesByStationPpi };
-        const nextDop = { ...imagesByStationDoppler };
-        const nextRed = { ...imagesRedemetPpiByCptec };
-        const nextSigPpi = { ...imagesSigmaPpiByCptec };
-        const nextSigDop = { ...imagesSigmaDopplerByCptec };
-        const nextSipPpi = { ...imagesSipamPpiByCptec };
+      if (data.ok && data.stats) {
+        setHistoricalStats(data.stats);
 
-        for (const slug of Object.keys(data.results)) {
-           // Se for um fallback Redemet
-           if (slug.startsWith('redemet-')) {
-              const cptecSlug = getCptecSlugFromRedemetArea(slug.replace('redemet-', ''));
-              if (cptecSlug) nextRed[cptecSlug] = data.results[slug].ppi;
-           } else if (slug.startsWith('sigma-')) {
-              const cptecSlug = slug.replace('sigma-', '');
-              nextSigPpi[cptecSlug] = data.results[slug].ppi;
-              nextSigDop[cptecSlug] = data.results[slug].doppler;
-           } else if (slug.startsWith('sipam-')) {
-              const sipamSlug = slug.replace('sipam-', '');
-              // find the cptec slug that corresponds to this sipamSlug
-              const cptecSlug = stationsWithBounds.find(s => getSipamBucketSlugForCptecBucket(s) === slug);
-              if (cptecSlug) nextSipPpi[cptecSlug] = data.results[slug].ppi;
-           } else {
-              nextPpi[slug] = data.results[slug].ppi;
-              nextDop[slug] = data.results[slug].doppler;
-           }
-        }
+        // Limpar o estado atual para forçar o listImages a rebuscar do bucket GCS
+        setImagesByStationPpi({});
+        setImagesByStationDoppler({});
+        setImagesRedemetPpiByCptec({});
+        setImagesSigmaPpiByCptec({});
+        setImagesSigmaDopplerByCptec({});
+        setImagesSipamPpiByCptec({});
         
-        setImagesByStationPpi(nextPpi);
-        setImagesByStationDoppler(nextDop);
-        setImagesRedemetPpiByCptec(nextRed);
-        setImagesSigmaPpiByCptec(nextSigPpi);
-        setImagesSigmaDopplerByCptec(nextSigDop);
-        setImagesSipamPpiByCptec(nextSipPpi);
+        // Retomar o polling normal (que agora vai ler os novos arquivos no bucket)
+        fetchAllData();
 
-        if (typeof addToast === 'function') addToast('Histórico carregado com sucesso!', 'success');
+        if (typeof addToast === 'function') addToast('Histórico carregado com sucesso! Mosaico pronto.', 'success');
       }
 
     } catch (e) {
@@ -979,9 +960,10 @@ export default function AoVivo2Content() {
     setIsLoading(true);
     setError(null);
 
+    const dateStr = (isHistoricalMode && histStartDate) ? histStartDate.replace(/\D/g, '').slice(0, 8) : '';
     const fetchStationProduct = (slug: string, prod: 'ppi' | 'doppler') =>
       fetch(
-        `/api/radar-ao-vivo2?action=listImages&station=${encodeURIComponent(slug)}&product=${prod}${isHistoricalMode ? '&mode=historico' : ''}`
+        `/api/radar-ao-vivo2?action=listImages&station=${encodeURIComponent(slug)}&product=${prod}${isHistoricalMode ? '&mode=historico&date=' + dateStr : ''}`
       )
         .then(async (r) => {
           const data = (await r.json()) as { images?: { name: string; url: string }[]; error?: string };
@@ -1261,13 +1243,24 @@ export default function AoVivo2Content() {
       for (const slug of stationsWithBounds) {
         const st = findCptecBySlug(slug, radarConfigs);
         if (!st) continue;
-        const hasAny =
-          (imagesByStationPpi[slug]?.length ?? 0) > 0 ||
-          (imagesRedemetPpiByCptec[slug]?.length ?? 0) > 0 ||
-          (imagesSigmaPpiByCptec[slug]?.length ?? 0) > 0 ||
-          (imagesSigmaDopplerByCptec[slug]?.length ?? 0) > 0 ||
-          (imagesSipamPpiByCptec[slug]?.length ?? 0) > 0 ||
-          (imagesByStationDoppler[slug]?.length ?? 0) > 0;
+        let hasAny = false;
+        if (isHistoricalMode && Object.keys(historicalStats).length > 0) {
+          const redemetSlug = getRedemetBucketSlugForCptecBucket(slug) || '';
+          const sigmaSlug = getSigmaBucketSlugForCptecBucket(slug) || '';
+          const sipamSlug = getSipamBucketSlugForCptecBucket(slug) || '';
+          hasAny = (historicalStats[slug] ?? 0) > 0 ||
+                   (redemetSlug ? (historicalStats[redemetSlug] ?? 0) > 0 : false) ||
+                   (sigmaSlug ? (historicalStats[sigmaSlug] ?? 0) > 0 : false) ||
+                   (sipamSlug ? (historicalStats[sipamSlug] ?? 0) > 0 : false);
+        } else {
+          hasAny =
+            (imagesByStationPpi[slug]?.length ?? 0) > 0 ||
+            (imagesRedemetPpiByCptec[slug]?.length ?? 0) > 0 ||
+            (imagesSigmaPpiByCptec[slug]?.length ?? 0) > 0 ||
+            (imagesSigmaDopplerByCptec[slug]?.length ?? 0) > 0 ||
+            (imagesSipamPpiByCptec[slug]?.length ?? 0) > 0 ||
+            (imagesByStationDoppler[slug]?.length ?? 0) > 0;
+        }
 
         const createMarker = (lat: number, lng: number, title: string) => {
           const el = document.createElement('div');
